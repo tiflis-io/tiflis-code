@@ -19,6 +19,7 @@ struct TerminalView: View {
     @State private var currentInput = ""
     @State private var showConnectionPopover = false
     @FocusState private var isInputFocused: Bool
+    @Environment(\.isDrawerOpen) private var isDrawerOpen
     
     var body: some View {
         VStack(spacing: 0) {
@@ -126,6 +127,15 @@ struct TerminalView: View {
         .onAppear {
             loadInitialOutput()
             isInputFocused = true
+        }
+        .onChange(of: isDrawerOpen) { oldValue, newValue in
+            if !newValue && oldValue {
+                // Drawer just closed - restore focus if this is terminal
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(250)) // Wait for animation
+                    isInputFocused = true
+                }
+            }
         }
     }
     

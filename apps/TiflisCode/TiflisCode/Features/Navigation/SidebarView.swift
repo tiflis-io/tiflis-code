@@ -35,6 +35,7 @@ struct SidebarView: View {
                         selectSession(supervisor.id)
                     } label: {
                         SessionRow(session: supervisor, isSelected: appState.selectedSessionId == supervisor.id)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -48,6 +49,7 @@ struct SidebarView: View {
                             selectSession(session.id)
                         } label: {
                             SessionRow(session: session, isSelected: appState.selectedSessionId == session.id)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -69,6 +71,7 @@ struct SidebarView: View {
                             selectSession(session.id)
                         } label: {
                             SessionRow(session: session, isSelected: appState.selectedSessionId == session.id)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -97,6 +100,7 @@ struct SidebarView: View {
                                 .foregroundStyle(Color.accentColor)
                         }
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
@@ -164,6 +168,7 @@ struct SessionRow: View {
             }
         }
         .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

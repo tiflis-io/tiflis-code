@@ -33,3 +33,16 @@ func hideKeyboard() {
         for: nil
     )
 }
+
+// MARK: - Drawer State Environment
+
+private struct IsDrawerOpenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isDrawerOpen: Bool {
+        get { self[IsDrawerOpenKey.self] }
+        set { self[IsDrawerOpenKey.self] = newValue }
+    }
+}

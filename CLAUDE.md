@@ -282,7 +282,8 @@ On iPhone, the sidebar opens as a **full-screen drawer** with gesture support:
 
 **Hit Testing:** The drawer uses `allowsHitTesting` to ensure buttons work correctly:
 - Main content is disabled when drawer is open
-- Drawer buttons are enabled when drawer is open or opening
+- Drawer buttons are enabled only when drawer is actually visible (at least 90% on screen)
+- Uses position-based check: `drawerOffsetValue(drawerWidth: drawerWidth) > -drawerWidth * 0.9` instead of just state flag
 
 The drawer automatically closes when:
 - User selects a different session
@@ -308,6 +309,11 @@ The sidebar serves as the primary navigation hub:
 #### Selection Indicator
 
 The currently active item in the sidebar displays a **checkmark** (✓) next to it. Tapping on an already-selected item closes the sidebar menu (on iPhone).
+
+**Button Clickability:** All sidebar buttons must be fully clickable across their entire row width, including empty areas on the right. This is achieved by:
+- Adding `.frame(maxWidth: .infinity, alignment: .leading)` to `SessionRow` to fill the entire width
+- Adding `.contentShape(Rectangle())` to the button label to make the entire rectangular area tappable
+- This ensures buttons work even when content is sparse (e.g., short session names)
 
 **Session Subscription Logic:**
 - Entering a session → automatically subscribes to session events
@@ -564,6 +570,34 @@ Configuration is shared from the iOS app using **WatchConnectivity**:
 | **SwiftLint** | Code style enforcement and linting |
 | **SwiftFormat** | Automatic code formatting |
 | **Xcode Instruments** | Performance profiling and debugging |
+
+#### Info.plist Configuration
+
+The `Info.plist` file must include interface orientation support to avoid Xcode warnings:
+
+**Required Keys:**
+
+```xml
+<key>UISupportedInterfaceOrientations</key>
+<array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+</array>
+<key>UISupportedInterfaceOrientations~ipad</key>
+<array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+</array>
+```
+
+**Orientation Support:**
+- **iPhone**: Portrait, Landscape Left, Landscape Right (no upside down - standard for modern iPhone apps)
+- **iPad**: All four orientations including upside down (standard for iPad apps)
+
+This configuration resolves the Xcode warning: "All interface orientations must be supported unless the app requires full screen."
 
 ### Project Structure
 

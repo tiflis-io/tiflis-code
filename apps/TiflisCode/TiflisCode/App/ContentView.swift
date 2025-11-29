@@ -75,12 +75,18 @@ struct DrawerNavigationView: View {
                 // Main content
                 NavigationStack {
                     if appState.isShowingSettings {
-                        SettingsView(onMenuTap: { withAnimation(.easeOut(duration: 0.25)) { isDrawerOpen = true } })
+                        SettingsView(onMenuTap: { 
+                            hideKeyboard()
+                            withAnimation(.easeOut(duration: 0.25)) { isDrawerOpen = true } 
+                        })
                     } else if let session = appState.selectedSession {
                         SessionDetailView(
                             session: session,
                             columnVisibility: .constant(.detailOnly),
-                            onMenuTap: { withAnimation(.easeOut(duration: 0.25)) { isDrawerOpen = true } }
+                            onMenuTap: { 
+                                hideKeyboard()
+                                withAnimation(.easeOut(duration: 0.25)) { isDrawerOpen = true } 
+                            }
                         )
                     } else {
                         EmptyStateView()
@@ -88,6 +94,7 @@ struct DrawerNavigationView: View {
                 }
                 .frame(width: geometry.size.width)
                 .allowsHitTesting(!isDrawerOpen)
+                .environment(\.isDrawerOpen, isDrawerOpen)
                 
                 // Drawer (full width)
                 NavigationStack {
@@ -107,7 +114,7 @@ struct DrawerNavigationView: View {
                 }
                 .frame(width: drawerWidth)
                 .offset(x: drawerOffsetValue(drawerWidth: drawerWidth))
-                .allowsHitTesting(isDrawerOpen || dragOffset > 0)
+                .allowsHitTesting(drawerOffsetValue(drawerWidth: drawerWidth) > -drawerWidth * 0.9)
             }
             .gesture(
                 DragGesture()
@@ -144,6 +151,7 @@ struct DrawerNavigationView: View {
                             } else {
                                 // Open ONLY if started from left edge AND dragged right enough
                                 if startX < edgeWidth && (translation > drawerWidth / 3 || velocity > 500) {
+                                    hideKeyboard()
                                     isDrawerOpen = true
                                 }
                             }
@@ -151,6 +159,13 @@ struct DrawerNavigationView: View {
                         }
                     }
             )
+            .onChange(of: isDrawerOpen) { oldValue, newValue in
+                if newValue {
+                    // Drawer opened - hide keyboard
+                    hideKeyboard()
+                }
+                // When drawer closes, TerminalView will restore focus via onChange
+            }
         }
     }
     

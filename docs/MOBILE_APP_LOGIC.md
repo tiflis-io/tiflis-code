@@ -150,15 +150,17 @@ if translation < -drawerWidth / 3 || velocity < -500 {
 
 **Hit Testing:**
 
-The drawer uses `allowsHitTesting` to ensure buttons work correctly:
+The drawer uses `allowsHitTesting` to ensure buttons work correctly. The key improvement is checking the actual drawer position rather than just the state flag:
 
 ```swift
 // Main content: disabled when drawer is open
 .allowsHitTesting(!isDrawerOpen)
 
-// Drawer: enabled when open or opening
-.allowsHitTesting(isDrawerOpen || dragOffset > 0)
+// Drawer: enabled only when actually visible (at least 90% on screen)
+.allowsHitTesting(drawerOffsetValue(drawerWidth: drawerWidth) > -drawerWidth * 0.9)
 ```
+
+This ensures buttons are only tappable when the drawer is actually visible, preventing issues during the opening animation.
 
 ### iPad Navigation (Split View)
 
@@ -586,6 +588,8 @@ Assistant Message (left-aligned):
 
 ### Keyboard Handling
 
+#### Dismissing Keyboard
+
 Tap anywhere in scroll view dismisses keyboard:
 
 ```swift
@@ -601,6 +605,65 @@ func hideKeyboard() {
     )
 }
 ```
+
+#### Drawer and Keyboard Interaction
+
+When the drawer opens on iPhone, the keyboard is automatically dismissed. When the drawer closes, the keyboard is restored if the terminal session was active:
+
+**Implementation using Environment Values (Best Practice):**
+
+1. **Environment Key** - Define a custom Environment key for drawer state:
+
+```swift
+// View+Extensions.swift
+private struct IsDrawerOpenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isDrawerOpen: Bool {
+        get { self[IsDrawerOpenKey.self] }
+        set { self[IsDrawerOpenKey.self] = newValue }
+    }
+}
+```
+
+2. **DrawerNavigationView** - Pass state via Environment and hide keyboard on open:
+
+```swift
+// Main content
+NavigationStack { ... }
+    .environment(\.isDrawerOpen, isDrawerOpen)
+    .onChange(of: isDrawerOpen) { oldValue, newValue in
+        if newValue {
+            hideKeyboard()
+        }
+    }
+```
+
+3. **TerminalView** - Restore focus when drawer closes:
+
+```swift
+@Environment(\.isDrawerOpen) private var isDrawerOpen
+@FocusState private var isInputFocused: Bool
+
+.onChange(of: isDrawerOpen) { oldValue, newValue in
+    if !newValue && oldValue {
+        // Drawer just closed - restore focus
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250)) // Wait for animation
+            isInputFocused = true
+        }
+    }
+}
+```
+
+**Why This Approach:**
+- ✅ Uses Environment for state passing (standard SwiftUI pattern)
+- ✅ Uses `.onChange` for reactivity (Apple recommended)
+- ✅ Uses `@FocusState` for focus management (official API)
+- ✅ Uses `Task.sleep` instead of `DispatchQueue.asyncAfter` (modern async/await)
+- ✅ Avoids private APIs and NotificationCenter
 
 ---
 
@@ -817,7 +880,7 @@ struct SessionIcon: View {
 
 ### SessionRow
 
-Row in sidebar with icon, title, subtitle, and selection checkmark:
+Row in sidebar with icon, title, subtitle, and selection checkmark. **Important:** The entire row must be clickable, including empty areas on the right:
 
 ```swift
 struct SessionRow: View {
@@ -847,9 +910,17 @@ struct SessionRow: View {
                     .foregroundStyle(Color.accentColor)
             }
         }
+        .padding(.vertical, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 }
 ```
+
+**Key Implementation Details:**
+- `.frame(maxWidth: .infinity, alignment: .leading)` - Makes the row fill the entire width
+- `.contentShape(Rectangle())` - Makes the entire rectangular area tappable, not just visible content
+- Applied to the label inside the Button, ensuring the full row is clickable even when content is sparse
 
 ### ConnectionIndicator
 
@@ -932,6 +1003,37 @@ Generated at multiple scales for crisp display:
 | @1x | 80px |
 | @2x | 160px |
 | @3x | 240px |
+
+---
+
+## Environment Values
+
+### Custom Environment Keys
+
+The app uses custom Environment values for cross-view state communication:
+
+#### isDrawerOpen
+
+Tracks whether the iPhone drawer menu is open, used for keyboard management:
+
+```swift
+// View+Extensions.swift
+private struct IsDrawerOpenKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var isDrawerOpen: Bool {
+        get { self[IsDrawerOpenKey.self] }
+        set { self[IsDrawerOpenKey.self] = newValue }
+    }
+}
+```
+
+**Usage:**
+- Set in `DrawerNavigationView` via `.environment(\.isDrawerOpen, isDrawerOpen)`
+- Read in `TerminalView` via `@Environment(\.isDrawerOpen) private var isDrawerOpen`
+- Used to restore keyboard focus when drawer closes
 
 ---
 
