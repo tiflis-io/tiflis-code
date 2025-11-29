@@ -1,9 +1,26 @@
-<img src="assets/branding/logo.svg" width="96" height="96" alt="Tiflis Code Logo">
+# 🔌 Tiflis Code — WebSocket Protocol
 
-# Tiflis Code — WebSocket Protocol Specification
+<p align="center">
+  <img src="assets/branding/logo.svg" width="120" height="120" alt="Tiflis Code">
+</p>
 
-## Version: 1.0 (Draft)
-## Date: 2024-11-29
+<p align="center">
+  <strong>Unified communication protocol specification</strong>
+</p>
+
+<p align="center">
+  <a href="#1-overview">Overview</a> •
+  <a href="#2-tunnel-server-protocol">Tunnel</a> •
+  <a href="#3-workstation-server-protocol">Workstation</a> •
+  <a href="#4-supervisor-commands">Supervisor</a> •
+  <a href="#5-session-commands">Sessions</a>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/version-1.0-blue" alt="Version 1.0">
+  <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
+  <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
+</p>
 
 ---
 

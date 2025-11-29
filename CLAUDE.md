@@ -1,12 +1,37 @@
-<img src="assets/branding/logo.svg" width="96" height="96" alt="Tiflis Code Logo">
+# 📘 Tiflis Code — Project Guide
 
-# CLAUDE.md — tiflis-code Project Guide
+<p align="center">
+  <img src="assets/branding/logo.svg" width="120" height="120" alt="Tiflis Code">
+</p>
+
+<p align="center">
+  <strong>Complete development guide for contributors and AI agents</strong>
+</p>
+
+<p align="center">
+  <a href="#project-overview">Overview</a> •
+  <a href="#system-architecture">Architecture</a> •
+  <a href="#ios--watchos-development-stack">iOS Stack</a> •
+  <a href="#typescript--nodejs-development-stack">Node.js Stack</a> •
+  <a href="#local-development-setup">Setup</a>
+</p>
+
+---
 
 ## Project Overview
 
 **Project Name:** `tiflis-code` (lowercase, hyphen-separated, Latin characters only)
 
 **tiflis-code** is a comprehensive suite of applications designed to provide users with seamless remote access to their workstation through a secure network tunnel deployed on a remote server. The system enables voice-controlled interaction with AI agents running on the user's workstation from mobile devices.
+
+### ✨ Key Capabilities
+
+- 🎤 **Voice-First** — Dictate commands to AI agents from anywhere
+- 🤖 **Multi-Agent** — Run Cursor, Claude Code, OpenCode simultaneously
+- 📱 **Mobile & Watch** — Native iOS and watchOS apps
+- 💻 **Terminal Access** — Full PTY terminal in your pocket
+- 🔐 **Self-Hosted** — Your code never leaves your machine
+- 🌐 **Tunnel-Based** — No public IP required
 
 ### Core Components
 
