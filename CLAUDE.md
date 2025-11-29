@@ -1,7 +1,7 @@
 # 📘 Tiflis Code — Project Guide
 
 <p align="center">
-  <img src="assets/branding/logo.svg" width="120" height="120" alt="Tiflis Code">
+  <img src="assets/branding/logo-large.svg" width="120" height="120" alt="Tiflis Code">
 </p>
 
 <p align="center">
@@ -11,8 +11,8 @@
 <p align="center">
   <a href="#project-overview">Overview</a> •
   <a href="#system-architecture">Architecture</a> •
-  <a href="#ios--watchos-development-stack">iOS Stack</a> •
-  <a href="#typescript--nodejs-development-stack">Node.js Stack</a> •
+  <a href="#ios-watchos-development-stack">iOS Stack</a> •
+  <a href="#typescript-nodejs-development-stack">Node.js Stack</a> •
   <a href="#local-development-setup">Setup</a>
 </p>
 

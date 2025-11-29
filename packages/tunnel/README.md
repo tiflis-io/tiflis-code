@@ -1,7 +1,7 @@
 # @tiflis/tiflis-code-tunnel
 
 <p align="center">
-  <img src="../../assets/branding/logo.svg" width="80" height="80" alt="Tiflis Code">
+  <img src="../../assets/branding/logo-large.svg" width="80" height="80" alt="Tiflis Code">
 </p>
 
 <p align="center">
