@@ -51,7 +51,7 @@ ${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${pu
        ${dim}v${SERVER_VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
        ${dim}https://github.com/tiflis-io/tiflis-code${reset}
 `;
-  console.log(banner);
+  process.stdout.write(banner);
 }
 import { createLogger } from './infrastructure/logging/pino-logger.js';
 import {

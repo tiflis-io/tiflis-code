@@ -641,9 +641,21 @@ This section defines the technology stack, architecture, and best practices for 
 
 | Library | Purpose |
 |---------|---------|
-| **@langchain/core** | LLM orchestration framework |
-| **@langchain/langgraph** | Stateful agent graphs |
-| **@langchain/openai** | OpenAI provider (or other LLM providers) |
+| **@langchain/core** | LangChain core framework for building AI agents |
+| **@langchain/langgraph** | LangGraph for stateful agent graphs with tools |
+| **@langchain/openai** | LangChain OpenAI integration (works with compatible APIs) |
+| **nanoid** | Unique ID generation for sessions and messages |
+
+> **LLM Provider Support**: The Supervisor Agent uses LangGraph with OpenAI-compatible APIs:
+> - **OpenAI** (gpt-4o, gpt-4o-mini)
+> - **Cerebras** (llama3.1-70b, llama3.1-8b) via OpenAI-compatible API
+> - **Anthropic** (claude-3-5-sonnet, claude-3-haiku) via OpenAI-compatible API
+>
+> LangGraph provides structured tool calling for workspace discovery, session management, and file operations.
+
+> **Speech Provider Support**:
+> - **TTS**: OpenAI (tts-1, tts-1-hd), ElevenLabs (eleven_multilingual_v2, eleven_flash_v2_5)
+> - **STT**: OpenAI Whisper (whisper-1), ElevenLabs
 
 #### Data Persistence (Workstation only)
 
@@ -816,87 +828,97 @@ tiflis-code-tunnel/                      # Tunnel Server
 ```
 tiflis-code-workstation/                 # Workstation Server
 ├── src/
-│   ├── main.ts
-│   ├── app.ts
+│   ├── main.ts                          # Application entry point
+│   ├── app.ts                           # Fastify app setup
 │   │
 │   ├── domain/
 │   │   ├── entities/
 │   │   │   ├── session.ts               # Base session entity
 │   │   │   ├── agent-session.ts         # Headless agent session
 │   │   │   ├── terminal-session.ts      # PTY terminal session
-│   │   │   └── supervisor-session.ts    # Supervisor agent session
+│   │   │   ├── supervisor-session.ts    # Supervisor agent session
+│   │   │   └── client.ts                # Connected client entity
 │   │   ├── value-objects/
 │   │   │   ├── session-id.ts
-│   │   │   ├── workspace.ts
-│   │   │   └── project.ts
+│   │   │   ├── device-id.ts
+│   │   │   ├── auth-key.ts
+│   │   │   ├── workspace-path.ts
+│   │   │   └── chat-message.ts          # Structured chat message
 │   │   ├── errors/
 │   │   │   └── domain-errors.ts
 │   │   └── ports/
 │   │       ├── session-manager.ts
-│   │       ├── agent-executor.ts
-│   │       └── speech-service.ts
+│   │       ├── client-registry.ts
+│   │       ├── message-broadcaster.ts
+│   │       └── workspace-discovery.ts
 │   │
 │   ├── application/
 │   │   ├── commands/                    # Command handlers
 │   │   │   ├── create-session.ts
 │   │   │   ├── terminate-session.ts
-│   │   │   └── execute-command.ts
-│   │   ├── queries/                     # Query handlers
-│   │   │   ├── list-sessions.ts
-│   │   │   └── get-session-history.ts
+│   │   │   └── authenticate-client.ts
+│   │   ├── queries/
+│   │   │   └── list-sessions.ts
 │   │   └── services/
-│   │       └── subscription-service.ts
+│   │       ├── subscription-service.ts
+│   │       ├── message-broadcaster-impl.ts
+│   │       ├── chat-history-service.ts  # Chat persistence
+│   │       └── session-replay-service.ts # Session replay
 │   │
 │   ├── infrastructure/
 │   │   ├── websocket/
-│   │   │   ├── websocket-server.ts
 │   │   │   ├── tunnel-client.ts         # Connection to tunnel server
-│   │   │   └── message-router.ts
+│   │   │   └── message-router.ts        # WebSocket message routing
 │   │   ├── http/
 │   │   │   └── health-route.ts
 │   │   ├── agents/                      # Agent implementations
 │   │   │   ├── supervisor/
-│   │   │   │   ├── supervisor-agent.ts  # LangGraph supervisor
-│   │   │   │   └── tools/               # Supervisor tools
-│   │   │   │       ├── list-workspaces.ts
-│   │   │   │       ├── list-projects.ts
-│   │   │   │       ├── manage-worktrees.ts
-│   │   │   │       └── manage-sessions.ts
-│   │   │   └── headless/
-│   │   │       ├── cursor-agent.ts
-│   │   │       ├── claude-agent.ts
-│   │   │       └── opencode-agent.ts
+│   │   │   │   ├── supervisor-agent.ts  # LLM-based supervisor
+│   │   │   │   └── llm-provider.ts      # LLM provider abstraction
+│   │   │   ├── headless-agent-executor.ts  # CLI process spawner
+│   │   │   ├── agent-output-parser.ts   # JSON stream parser
+│   │   │   ├── agent-session-manager.ts # Agent lifecycle manager
+│   │   │   └── opencode-daemon.ts       # OpenCode serve manager
 │   │   ├── terminal/
 │   │   │   └── pty-manager.ts           # node-pty wrapper
 │   │   ├── speech/
-│   │   │   ├── stt-service.ts           # Speech-to-text
-│   │   │   └── tts-service.ts           # Text-to-speech
+│   │   │   ├── stt-service.ts           # Speech-to-text (OpenAI/ElevenLabs)
+│   │   │   └── tts-service.ts           # Text-to-speech (OpenAI/ElevenLabs)
 │   │   ├── persistence/
 │   │   │   ├── database/
 │   │   │   │   ├── schema.ts            # Drizzle schema definitions
-│   │   │   │   ├── migrations/          # SQL migrations
 │   │   │   │   └── client.ts            # Database client singleton
 │   │   │   ├── repositories/
 │   │   │   │   ├── session-repository.ts
-│   │   │   │   ├── message-repository.ts
-│   │   │   │   └── audio-repository.ts
-│   │   │   └── storage/
-│   │   │       └── audio-storage.ts     # File system audio storage
+│   │   │   │   └── message-repository.ts
+│   │   │   ├── storage/
+│   │   │   │   └── audio-storage.ts     # File system audio storage
+│   │   │   ├── in-memory-registry.ts    # Client registry
+│   │   │   ├── in-memory-session-manager.ts
+│   │   │   └── workspace-discovery.ts   # Workspace/project scanner
 │   │   └── logging/
 │   │       └── pino-logger.ts
 │   │
-│   ├── protocol/                        # Shared with tunnel
+│   ├── protocol/                        # WebSocket protocol types
 │   │   ├── messages.ts
 │   │   ├── schemas.ts
 │   │   └── errors.ts
 │   │
 │   └── config/
-│       ├── env.ts
-│       └── constants.ts
+│       ├── env.ts                       # Environment configuration
+│       └── constants.ts                 # Application constants
 │
 ├── tests/
+│   └── unit/
+│       ├── domain/
+│       │   ├── session-id.test.ts
+│       │   ├── auth-key.test.ts
+│       │   └── chat-message.test.ts
+│       └── infrastructure/
+│           └── agent-output-parser.test.ts
 ├── package.json
 ├── tsconfig.json
+├── drizzle.config.ts                    # Drizzle Kit config
 └── Dockerfile
 ```
 
@@ -1542,41 +1564,106 @@ describe('WebSocket Integration', () => {
 
 ### Environment Configuration
 
-```typescript
-// config/env.ts
-import { z } from 'zod';
+#### Tunnel Server Environment Variables
 
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(3000),
-  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
-  
-  // Tunnel server specific
-  TUNNEL_REGISTRATION_API_KEY: z.string().min(32).optional(),
-  
-  // Workstation server specific
-  TUNNEL_URL: z.string().url().optional(),
-  WORKSTATION_AUTH_KEY: z.string().min(16).optional(),
-  WORKSPACES_ROOT: z.string().default(process.env.HOME + '/work'),
-  
-  // Speech services
-  OPENAI_API_KEY: z.string().optional(),
-});
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | No | `development` | Environment mode |
+| `PORT` | No | `3000` | HTTP/WebSocket port |
+| `LOG_LEVEL` | No | `info` | Logging level (trace, debug, info, warn, error) |
+| `TUNNEL_REGISTRATION_API_KEY` | Yes | — | API key for workstation registration (min 32 chars) |
 
-export type Env = z.infer<typeof EnvSchema>;
+#### Workstation Server Environment Variables
 
-export function loadEnv(): Env {
-  const result = EnvSchema.safeParse(process.env);
-  
-  if (!result.success) {
-    console.error('Invalid environment variables:', result.error.format());
-    process.exit(1);
-  }
-  
-  return result.data;
-}
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | No | `development` | Environment mode |
+| `PORT` | No | `3002` | HTTP server port |
+| `LOG_LEVEL` | No | `info` | Logging level |
+| `TUNNEL_URL` | Yes | — | Tunnel server WebSocket URL |
+| `TUNNEL_API_KEY` | Yes | — | API key for tunnel registration |
+| `WORKSTATION_NAME` | No | hostname | Display name for workstation |
+| `WORKSTATION_AUTH_KEY` | Yes | — | Auth key for client connections |
+| `WORKSPACES_ROOT` | No | `~/work` | Root directory for workspaces |
+| `DATA_DIR` | No | `~/.tiflis-code` | Data directory for SQLite and audio |
 
-export const env = loadEnv();
+**Agent/LLM Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AGENT_PROVIDER` | No | `openai` | LLM provider (openai, cerebras, anthropic) |
+| `AGENT_API_KEY` | Yes | — | API key for LLM provider |
+| `AGENT_MODEL_NAME` | No | `gpt-4o-mini` | Model name for supervisor agent |
+| `AGENT_BASE_URL` | No | provider default | Custom API base URL |
+| `AGENT_TEMPERATURE` | No | `0` | LLM temperature (0-1) |
+
+**Speech-to-Text (STT) Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `STT_PROVIDER` | No | `openai` | STT provider (openai, elevenlabs) |
+| `STT_API_KEY` | Yes | — | API key for STT provider |
+| `STT_MODEL` | No | `whisper-1` | STT model name |
+| `STT_LANGUAGE` | No | `en` | Default transcription language |
+
+**Text-to-Speech (TTS) Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TTS_PROVIDER` | No | `openai` | TTS provider (openai, elevenlabs) |
+| `TTS_API_KEY` | Yes | — | API key for TTS provider |
+| `TTS_MODEL` | No | `tts-1` | TTS model name |
+| `TTS_VOICE` | No | `alloy` | Voice ID for TTS |
+
+**Headless Agent Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AGENT_EXECUTION_TIMEOUT` | No | `900` | Command timeout in seconds (15 min) |
+| `CLAUDE_SESSION_LOCK_WAIT_MS` | No | `1500` | Wait time for Claude CLI session lock |
+| `OPENCODE_DAEMON_URL` | No | `http://localhost:4200` | OpenCode daemon URL |
+
+#### Example Configuration
+
+```bash
+# Workstation Server (.env.local)
+NODE_ENV=development
+PORT=3002
+LOG_LEVEL=debug
+
+# Tunnel connection
+TUNNEL_URL=wss://tunnel.example.com/ws
+TUNNEL_API_KEY=your-32-char-tunnel-api-key-here!
+WORKSTATION_NAME=my-macbook
+WORKSTATION_AUTH_KEY=dev-workstation-key
+
+# Workspaces
+WORKSPACES_ROOT=/Users/yourname/work
+DATA_DIR=/Users/yourname/.tiflis-code
+
+# LLM (Supervisor Agent)
+AGENT_PROVIDER=cerebras
+AGENT_API_KEY=your-cerebras-api-key
+AGENT_MODEL_NAME=llama3.1-70b
+AGENT_BASE_URL=https://api.cerebras.ai/v1
+AGENT_TEMPERATURE=0
+
+# Speech-to-Text
+STT_PROVIDER=openai
+STT_API_KEY=sk-xxx
+STT_MODEL=whisper-1
+STT_LANGUAGE=en
+
+# Text-to-Speech
+TTS_PROVIDER=elevenlabs
+TTS_API_KEY=your-elevenlabs-key
+TTS_MODEL=eleven_flash_v2_5
+TTS_VOICE=uYXf8XasLslADfZ2MB4u
+
+# Headless Agents
+AGENT_EXECUTION_TIMEOUT=900
+CLAUDE_SESSION_LOCK_WAIT_MS=1500
+OPENCODE_DAEMON_URL=http://localhost:4200
 ```
 
 ### Docker Configuration
@@ -2521,16 +2608,26 @@ NODE_ENV=development
 ```bash
 # Required
 TUNNEL_URL=ws://localhost:3001/ws
+TUNNEL_API_KEY=dev-api-key-32-chars-minimum!!
 WORKSTATION_AUTH_KEY=dev-workstation-key
 
 # Optional
 PORT=3002
 WORKSPACES_ROOT=/Users/yourname/work
+DATA_DIR=/Users/yourname/.tiflis-code
 LOG_LEVEL=debug
 NODE_ENV=development
 
-# For STT/TTS (optional in dev)
-OPENAI_API_KEY=sk-...
+# LLM for Supervisor Agent
+AGENT_PROVIDER=openai          # or cerebras, anthropic
+AGENT_API_KEY=sk-xxx
+AGENT_MODEL_NAME=gpt-4o-mini
+
+# Speech (optional in dev)
+STT_PROVIDER=openai
+STT_API_KEY=sk-xxx
+TTS_PROVIDER=openai
+TTS_API_KEY=sk-xxx
 ```
 
 ### Debugging

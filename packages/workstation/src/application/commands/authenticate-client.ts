@@ -1,0 +1,76 @@
+/**
+ * @file authenticate-client.ts
+ * @copyright 2025 Roman Barinov <rbarinov@gmail.com>
+ * @license MIT
+ */
+
+import type { WebSocket } from 'ws';
+import type { Logger } from 'pino';
+import type { ClientRegistry } from '../../domain/ports/client-registry.js';
+import { DeviceId } from '../../domain/value-objects/device-id.js';
+import { AuthKey } from '../../domain/value-objects/auth-key.js';
+import { InvalidAuthKeyError } from '../../domain/errors/domain-errors.js';
+import type { AuthSuccessMessage } from '../../protocol/messages.js';
+
+export interface AuthenticateClientDeps {
+  clientRegistry: ClientRegistry;
+  expectedAuthKey: AuthKey;
+  logger: Logger;
+}
+
+export interface AuthenticateClientParams {
+  socket: WebSocket;
+  authKey: string;
+  deviceId: string;
+}
+
+/**
+ * Use case for authenticating mobile clients.
+ */
+export class AuthenticateClientUseCase {
+  private readonly deps: AuthenticateClientDeps;
+  private readonly logger: Logger;
+
+  constructor(deps: AuthenticateClientDeps) {
+    this.deps = deps;
+    this.logger = deps.logger.child({ useCase: 'authenticate-client' });
+  }
+
+  /**
+   * Authenticates a client and registers them.
+   */
+  execute(params: AuthenticateClientParams): AuthSuccessMessage {
+    const deviceId = new DeviceId(params.deviceId);
+    const authKey = new AuthKey(params.authKey);
+
+    // Validate auth key
+    if (!this.deps.expectedAuthKey.secureEquals(authKey)) {
+      this.logger.warn({ deviceId: deviceId.value }, 'Invalid auth key');
+      throw new InvalidAuthKeyError();
+    }
+
+    // Register or update client
+    const client = this.deps.clientRegistry.register(deviceId, params.socket);
+    client.markAuthenticated();
+
+    // Get restored subscriptions
+    const restoredSubscriptions = client.getSubscriptions();
+
+    this.logger.info(
+      {
+        deviceId: deviceId.value,
+        restoredSubscriptions: restoredSubscriptions.length,
+      },
+      'Client authenticated'
+    );
+
+    return {
+      type: 'auth.success',
+      payload: {
+        device_id: deviceId.value,
+        restored_subscriptions: restoredSubscriptions.length > 0 ? restoredSubscriptions : undefined,
+      },
+    };
+  }
+}
+
