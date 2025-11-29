@@ -1,0 +1,30 @@
+# Tiflis Code Tunnel Server - Local Development
+#
+# Usage:
+#   docker compose up -d
+#
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the MIT License.
+
+services:
+  tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      TUNNEL_REGISTRATION_API_KEY: ${TUNNEL_REGISTRATION_API_KEY:-dev-api-key-32-characters-min!!}
+      TRUST_PROXY: "false"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+

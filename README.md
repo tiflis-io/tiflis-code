@@ -192,7 +192,7 @@ Built with **SwiftUI** following Apple Human Interface Guidelines. Supports ligh
 
 ```bash
 # Clone the repository
-git clone https://github.com/tiflis/tiflis-code.git
+git clone https://github.com/tiflis-io/tiflis-code.git
 cd tiflis-code
 
 # Install dependencies

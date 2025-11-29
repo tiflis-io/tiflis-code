@@ -1,0 +1,90 @@
+/**
+ * @file in-memory-registry.ts
+ * @copyright 2025 Roman Barinov <rbarinov@gmail.com>
+ * @license MIT
+ */
+
+import type { Workstation } from '../../domain/entities/workstation.js';
+import type { MobileClient } from '../../domain/entities/mobile-client.js';
+import type { TunnelId } from '../../domain/value-objects/tunnel-id.js';
+import type { WorkstationRegistry } from '../../domain/ports/workstation-registry.js';
+import type { ClientRegistry } from '../../domain/ports/client-registry.js';
+
+/**
+ * In-memory implementation of WorkstationRegistry.
+ * Stores workstations in a Map indexed by tunnel ID.
+ */
+export class InMemoryWorkstationRegistry implements WorkstationRegistry {
+  private readonly workstations = new Map<string, Workstation>();
+
+  register(workstation: Workstation): void {
+    this.workstations.set(workstation.tunnelId.value, workstation);
+  }
+
+  unregister(tunnelId: TunnelId): boolean {
+    return this.workstations.delete(tunnelId.value);
+  }
+
+  get(tunnelId: TunnelId): Workstation | undefined {
+    return this.workstations.get(tunnelId.value);
+  }
+
+  has(tunnelId: TunnelId): boolean {
+    return this.workstations.has(tunnelId.value);
+  }
+
+  getAll(): Workstation[] {
+    return Array.from(this.workstations.values());
+  }
+
+  count(): number {
+    return this.workstations.size;
+  }
+
+  findTimedOut(timeoutMs: number): Workstation[] {
+    return this.getAll().filter((ws) => ws.hasTimedOut(timeoutMs));
+  }
+}
+
+/**
+ * In-memory implementation of ClientRegistry.
+ * Stores clients in a Map indexed by device ID.
+ */
+export class InMemoryClientRegistry implements ClientRegistry {
+  private readonly clients = new Map<string, MobileClient>();
+
+  register(client: MobileClient): void {
+    this.clients.set(client.deviceId, client);
+  }
+
+  unregister(deviceId: string): boolean {
+    return this.clients.delete(deviceId);
+  }
+
+  get(deviceId: string): MobileClient | undefined {
+    return this.clients.get(deviceId);
+  }
+
+  has(deviceId: string): boolean {
+    return this.clients.has(deviceId);
+  }
+
+  getByTunnelId(tunnelId: TunnelId): MobileClient[] {
+    return this.getAll().filter((client) =>
+      client.tunnelId.equals(tunnelId)
+    );
+  }
+
+  getAll(): MobileClient[] {
+    return Array.from(this.clients.values());
+  }
+
+  count(): number {
+    return this.clients.size;
+  }
+
+  findTimedOut(timeoutMs: number): MobileClient[] {
+    return this.getAll().filter((client) => client.hasTimedOut(timeoutMs));
+  }
+}
+

@@ -662,10 +662,58 @@ This section defines the technology stack, architecture, and best practices for 
 | **tsx** | TypeScript execution (dev mode) |
 | **tsup** | TypeScript bundler (production builds) |
 | **vitest** | Unit & integration testing |
-| **eslint** | Code linting |
+| **eslint** | Code linting (v9 flat config) |
 | **prettier** | Code formatting |
 | **husky** | Git hooks |
 | **lint-staged** | Pre-commit linting |
+
+#### ESLint 9 Configuration
+
+ESLint 9 uses the new **flat config** format (`eslint.config.js`):
+
+```javascript
+// eslint.config.js
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
+    ignores: ['dist/', 'node_modules/', 'coverage/'],
+  }
+);
+```
+
+**Required packages for ESLint 9 with TypeScript:**
+
+| Package | Purpose |
+|---------|---------|
+| `eslint` | ESLint v9 core |
+| `@eslint/js` | Base recommended rules |
+| `typescript-eslint` | TypeScript support (replaces `@typescript-eslint/parser` + `@typescript-eslint/eslint-plugin`) |
 
 ### TypeScript Configuration
 
@@ -1466,14 +1514,21 @@ export const env = loadEnv();
 
 ### Docker Configuration
 
+Multi-architecture Dockerfile supporting `linux/amd64` and `linux/arm64`:
+
 ```dockerfile
-# Dockerfile
-FROM node:22-alpine AS builder
+# Dockerfile (multi-arch)
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+
+# Build arguments for multi-arch
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG VERSION=0.0.0
 
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm (use specific version for reproducibility)
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Install dependencies
 COPY package.json pnpm-lock.yaml ./
@@ -1486,18 +1541,28 @@ RUN pnpm build
 # Production image
 FROM node:22-alpine AS runner
 
+# Labels for GitHub Container Registry
+LABEL org.opencontainers.image.source="https://github.com/tiflis-io/tiflis-code"
+
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 tiflis
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY package.json ./
+
+RUN chown -R tiflis:nodejs /app
+USER tiflis
 
 ENV NODE_ENV=production
-
 EXPOSE 3000
+
+# Use Node.js fetch for health check (no wget needed)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "dist/main.js"]
 ```
@@ -1508,7 +1573,7 @@ CMD ["node", "dist/main.js"]
 
 ### Repository Structure
 
-The project is hosted at **github.com/tiflis/tiflis-code** as a monorepo:
+The project is hosted at **github.com/tiflis-io/tiflis-code** as a monorepo:
 
 ```
 tiflis-code/
@@ -1809,12 +1874,12 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           
           # Build and push tunnel server
-          docker build -t ghcr.io/tiflis/tiflis-code-tunnel:latest -f packages/tunnel/Dockerfile packages/tunnel
-          docker push ghcr.io/tiflis/tiflis-code-tunnel:latest
+          docker build -t ghcr.io/tiflis-io/tiflis-code-tunnel:latest -f packages/tunnel/Dockerfile packages/tunnel
+          docker push ghcr.io/tiflis-io/tiflis-code-tunnel:latest
           
           # Build and push workstation server
-          docker build -t ghcr.io/tiflis/tiflis-code-workstation:latest -f packages/workstation/Dockerfile packages/workstation
-          docker push ghcr.io/tiflis/tiflis-code-workstation:latest
+          docker build -t ghcr.io/tiflis-io/tiflis-code-workstation:latest -f packages/workstation/Dockerfile packages/workstation
+          docker push ghcr.io/tiflis-io/tiflis-code-workstation:latest
 ```
 
 #### iOS/watchOS Release (with fastlane)
@@ -1989,7 +2054,7 @@ end
     "@changesets/cli": "^2.27.0",
     "turbo": "^2.0.0"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
@@ -2001,6 +2066,46 @@ end
 # pnpm-workspace.yaml
 packages:
   - 'packages/*'
+```
+
+### GitHub Packages Publishing
+
+All npm packages are published to **GitHub Packages** (not npmjs.com).
+
+#### Package Configuration
+
+```json
+// packages/*/package.json
+{
+  "name": "@tiflis/tiflis-code-tunnel",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  }
+}
+```
+
+#### npm Registry Configuration
+
+```
+# .npmrc (repository root)
+@tiflis:registry=https://npm.pkg.github.com
+```
+
+#### Installing from GitHub Packages
+
+Users need to authenticate with GitHub Packages:
+
+```bash
+# Add to ~/.npmrc (with personal access token)
+//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
+@tiflis:registry=https://npm.pkg.github.com
+```
+
+Then install:
+
+```bash
+npm install @tiflis/tiflis-code-tunnel
 ```
 
 ### Release Flow Summary
@@ -2523,7 +2628,7 @@ All `package.json` files must include:
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tiflis/tiflis-code.git"
+    "url": "https://github.com/tiflis-io/tiflis-code.git"
   }
 }
 ```

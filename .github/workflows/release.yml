@@ -1,0 +1,226 @@
+# Release Pipeline - npm & Docker Publishing
+#
+# Triggered on push to main after CI passes.
+# Uses Changesets for versioning and publishes to:
+# - npm registry (GitHub Packages)
+# - GitHub Container Registry (multi-arch Docker images)
+#
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the MIT License.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_docker_build:
+        description: 'Force Docker build even without new version'
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/tiflis-code-tunnel
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Release npm packages via Changesets
+  # ─────────────────────────────────────────────────────────────
+  release:
+    name: Release Packages
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      pull-requests: write
+      id-token: write
+    
+    outputs:
+      published: ${{ steps.changesets.outputs.published }}
+      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+      tunnel_version: ${{ steps.get_version.outputs.version }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@tiflis'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm --filter "@tiflis/tiflis-code-tunnel" build
+
+      - name: Run tests
+        run: pnpm --filter "@tiflis/tiflis-code-tunnel" test
+
+      - name: Create Release Pull Request or Publish
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm changeset publish
+          version: pnpm changeset version
+          title: 'chore: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get tunnel package version
+        id: get_version
+        run: |
+          VERSION=$(node -p "require('./packages/tunnel/package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Tunnel version: $VERSION"
+
+  # ─────────────────────────────────────────────────────────────
+  # Build and Push Multi-arch Docker Images
+  # ─────────────────────────────────────────────────────────────
+  docker:
+    name: Build & Push Docker Images
+    runs-on: ubuntu-latest
+    needs: release
+    # Run if packages were published OR force build was requested
+    if: needs.release.outputs.published == 'true' || github.event.inputs.force_docker_build == 'true'
+    
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Version tag from package.json
+            type=raw,value=${{ needs.release.outputs.tunnel_version }}
+            # Latest tag for main branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Git SHA tag
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push Docker image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./packages/tunnel
+          file: ./packages/tunnel/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.release.outputs.tunnel_version }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Output image digest
+        run: |
+          echo "## 🐳 Docker Image Published" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Registry:** \`${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Tags:**" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "${{ steps.meta.outputs.tags }}" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Digest:** \`${{ steps.push.outputs.digest }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Platforms:** \`linux/amd64\`, \`linux/arm64\`" >> $GITHUB_STEP_SUMMARY
+
+  # ─────────────────────────────────────────────────────────────
+  # Create GitHub Release
+  # ─────────────────────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [release, docker]
+    if: needs.release.outputs.published == 'true'
+    
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: tunnel-v${{ needs.release.outputs.tunnel_version }}
+          name: Tunnel Server v${{ needs.release.outputs.tunnel_version }}
+          body: |
+            ## 🚀 Tunnel Server v${{ needs.release.outputs.tunnel_version }}
+            
+            ### Docker Image
+            
+            ```bash
+            docker pull ghcr.io/${{ github.repository_owner }}/tiflis-code-tunnel:${{ needs.release.outputs.tunnel_version }}
+            ```
+            
+            **Supported architectures:** `linux/amd64`, `linux/arm64`
+            
+            ### npm Package
+            
+            ```bash
+            npm install @tiflis/tiflis-code-tunnel@${{ needs.release.outputs.tunnel_version }}
+            ```
+            
+            See [CHANGELOG.md](./packages/tunnel/CHANGELOG.md) for details.
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+
