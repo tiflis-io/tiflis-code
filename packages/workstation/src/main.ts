@@ -19,7 +19,6 @@ import { PtyManager } from './infrastructure/terminal/pty-manager.js';
 import { AgentSessionManager } from './infrastructure/agents/agent-session-manager.js';
 import { AuthKey } from './domain/value-objects/auth-key.js';
 import { SessionId } from './domain/value-objects/session-id.js';
-import { DeviceId } from './domain/value-objects/device-id.js';
 import type { ChatMessage } from './domain/value-objects/chat-message.js';
 import { isTerminalSession } from './domain/entities/terminal-session.js';
 import { AuthenticateClientUseCase } from './application/commands/authenticate-client.js';
@@ -30,6 +29,7 @@ import { SubscriptionService } from './application/services/subscription-service
 import { MessageBroadcasterImpl } from './application/services/message-broadcaster-impl.js';
 import { InMemorySessionManager } from './infrastructure/persistence/in-memory-session-manager.js';
 import { SupervisorAgent } from './infrastructure/agents/supervisor/supervisor-agent.js';
+import { AuthMessageSchema, getMessageType } from './protocol/schemas.js';
 
 /**
  * Prints the startup banner to console.
@@ -70,6 +70,68 @@ ${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${pu
        ${dim}https://github.com/tiflis-io/tiflis-code${reset}
 `;
   process.stdout.write(banner);
+}
+
+/**
+ * Handles authentication messages received via tunnel.
+ * Validates the message, authenticates the client, and sends the response back through the tunnel.
+ */
+function handleAuthMessageViaTunnel(
+  data: unknown,
+  tunnelClient: TunnelClient,
+  authenticateClient: AuthenticateClientUseCase,
+  logger: ReturnType<typeof createLogger>
+): void {
+  // Validate auth message with zod schema
+  const authResult = AuthMessageSchema.safeParse(data);
+  if (!authResult.success) {
+    logger.warn(
+      { errors: authResult.error.errors, message: JSON.stringify(data).slice(0, 100) },
+      'Invalid auth message format'
+    );
+    return;
+  }
+  
+  const authMessage = authResult.data;
+  
+  try {
+    // For tunnel connections, no socket is needed
+    // The client will be registered as a tunnel connection
+    const result = authenticateClient.execute({
+      // socket is undefined for tunnel connections
+      authKey: authMessage.payload.auth_key,
+      deviceId: authMessage.payload.device_id,
+    });
+    
+    // Send response back through tunnel
+    // The tunnel will forward to all clients, but the client will process the auth.success message
+    const responseJson = JSON.stringify(result);
+    if (tunnelClient.send(responseJson)) {
+      logger.info(
+        { deviceId: authMessage.payload.device_id },
+        'Processed auth message via tunnel and sent response'
+      );
+    } else {
+      logger.warn(
+        { deviceId: authMessage.payload.device_id },
+        'Failed to send auth response through tunnel'
+      );
+    }
+  } catch (error) {
+    logger.error(
+      { error, deviceId: authMessage.payload.device_id },
+      'Failed to authenticate client via tunnel'
+    );
+    // Send error response back through tunnel if possible
+    const errorResponse = {
+      type: 'auth.error',
+      payload: {
+        code: 'AUTHENTICATION_FAILED',
+        message: error instanceof Error ? error.message : 'Authentication failed',
+      },
+    };
+    tunnelClient.send(JSON.stringify(errorResponse));
+  }
 }
 
 /**
@@ -278,8 +340,7 @@ async function bootstrap(): Promise<void> {
       if (createMessage.payload.session_type === 'terminal') {
         const sessionId = new SessionId(result.response.payload.session_id as string);
         const session = sessionManager.getSession(sessionId);
-        // Capture references for the callback closure (guaranteed non-null from parent check)
-        const subs = subscriptionService;
+        // Capture reference for the callback closure (guaranteed non-null from parent check)
         const bcaster = messageBroadcaster;
         if (session && isTerminalSession(session)) {
           session.onOutput((data: string) => {
@@ -291,18 +352,9 @@ async function bootstrap(): Promise<void> {
                 data,
               },
             };
-            // Send to all subscribers
-            const subscribers = subs.getSubscribers(sessionId.value);
-            for (const deviceIdStr of subscribers) {
-              const client = clientRegistry.getByDeviceId(new DeviceId(deviceIdStr));
-              if (client) {
-                try {
-                  client.socket.send(JSON.stringify(outputEvent));
-                } catch {
-                  // Client may have disconnected
-                }
-              }
-            }
+            // Send to all subscribers via broadcaster
+            // Note: Direct socket.send() is not used for tunnel connections
+            // All messages go through broadcaster which handles both direct and tunnel connections
             // Also broadcast through tunnel
             bcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
           });
@@ -470,9 +522,13 @@ async function bootstrap(): Promise<void> {
           '📱 Magic link for mobile clients'
         );
         
-        // Also print to console for easy copy-paste
+        // Also print to console for easy copy-paste (using logger for consistency)
+        logger.info({ magicLink }, '📱 Magic Link for Mobile App');
+        // eslint-disable-next-line no-console
         console.log('\n📱 Magic Link for Mobile App:');
+        // eslint-disable-next-line no-console
         console.log(magicLink);
+        // eslint-disable-next-line no-console
         console.log('\n');
       },
       onDisconnected: () => {
@@ -483,9 +539,26 @@ async function bootstrap(): Promise<void> {
       },
       onClientMessage: (message) => {
         // Route messages from clients through tunnel
-        // For now, we'll need to create a virtual socket for the tunnel connection
-        // This is a simplified implementation
-        logger.debug({ message: message.slice(0, 100) }, 'Received client message via tunnel');
+        // Parse and validate the message before routing
+        try {
+          const data: unknown = JSON.parse(message);
+          const messageType = getMessageType(data);
+          
+          if (messageType === 'auth') {
+            handleAuthMessageViaTunnel(data, tunnelClient, authenticateClient, logger);
+          } else {
+            logger.debug(
+              { type: messageType, message: message.slice(0, 100) },
+              'Received client message via tunnel'
+            );
+            // TODO: Route other message types through message router
+          }
+        } catch (error) {
+          logger.warn(
+            { error, message: message.slice(0, 100) },
+            'Failed to process client message via tunnel'
+          );
+        }
       },
     }
   );
@@ -522,7 +595,6 @@ async function bootstrap(): Promise<void> {
 
   // Stream agent session output to subscribed clients
   const broadcaster = messageBroadcaster;
-  const subscriptions = subscriptionService;
   
   agentSessionManager.on('message', (sessionId: string, message: ChatMessage, isComplete: boolean) => {
     const outputEvent = {
@@ -541,20 +613,8 @@ async function bootstrap(): Promise<void> {
       },
     };
 
-    // Get subscribers for this session and send output
-    const subscribers = subscriptions.getSubscribers(sessionId);
-    for (const deviceIdStr of subscribers) {
-      const client = clientRegistry.getByDeviceId(new DeviceId(deviceIdStr));
-      if (client) {
-        try {
-          client.socket.send(JSON.stringify(outputEvent));
-        } catch {
-          // Client may have disconnected
-        }
-      }
-    }
-
-    // Also send through tunnel for mobile clients
+    // Send to all subscribers via broadcaster
+    // Broadcaster handles both direct WebSocket and tunnel connections
     broadcaster.broadcastToSubscribers(sessionId, JSON.stringify(outputEvent));
   });
 

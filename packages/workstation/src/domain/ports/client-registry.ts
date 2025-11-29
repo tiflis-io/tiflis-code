@@ -14,9 +14,14 @@ import type { SessionId } from '../value-objects/session-id.js';
  */
 export interface ClientRegistry {
   /**
-   * Registers a new client.
+   * Registers a new client with a direct WebSocket connection.
    */
   register(deviceId: DeviceId, socket: WebSocket): Client;
+
+  /**
+   * Registers a new client for tunnel connections (no direct socket).
+   */
+  registerTunnel(deviceId: DeviceId): Client;
 
   /**
    * Gets a client by device ID.

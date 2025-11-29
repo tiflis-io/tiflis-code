@@ -18,7 +18,7 @@ export type ClientStatus = 'connected' | 'authenticated' | 'disconnected';
  */
 export interface ClientProps {
   deviceId: DeviceId;
-  socket: WebSocket;
+  socket?: WebSocket; // Optional for tunnel connections
 }
 
 /**
@@ -26,15 +26,17 @@ export interface ClientProps {
  */
 export class Client {
   private readonly _deviceId: DeviceId;
-  private _socket: WebSocket;
+  private _socket: WebSocket | undefined;
   private _status: ClientStatus;
   private readonly _connectedAt: Date;
   private _lastPingAt: Date;
   private readonly _subscriptions: Set<string>;
+  private readonly _isTunnelConnection: boolean;
 
   constructor(props: ClientProps) {
     this._deviceId = props.deviceId;
     this._socket = props.socket;
+    this._isTunnelConnection = props.socket === undefined;
     this._status = 'connected';
     this._connectedAt = new Date();
     this._lastPingAt = new Date();
@@ -45,8 +47,12 @@ export class Client {
     return this._deviceId;
   }
 
-  get socket(): WebSocket {
+  get socket(): WebSocket | undefined {
     return this._socket;
+  }
+
+  get isTunnelConnection(): boolean {
+    return this._isTunnelConnection;
   }
 
   get status(): ClientStatus {
@@ -96,8 +102,12 @@ export class Client {
 
   /**
    * Updates the socket connection (for reconnection scenarios).
+   * Only valid for direct WebSocket connections, not tunnel connections.
    */
   updateSocket(socket: WebSocket): void {
+    if (this._isTunnelConnection) {
+      throw new Error('Cannot update socket for tunnel connections');
+    }
     this._socket = socket;
     this._lastPingAt = new Date();
   }
@@ -145,9 +155,17 @@ export class Client {
 
   /**
    * Sends a message to the client.
+   * For tunnel connections, this returns false (messages should be sent via broadcaster).
    */
   send(message: string): boolean {
-    if (!this.isConnected || this._socket.readyState !== 1) {
+    if (!this.isConnected) {
+      return false;
+    }
+    if (this._isTunnelConnection || !this._socket) {
+      // Tunnel connections should use broadcaster, not direct socket
+      return false;
+    }
+    if (this._socket.readyState !== 1) {
       return false;
     }
     this._socket.send(message);

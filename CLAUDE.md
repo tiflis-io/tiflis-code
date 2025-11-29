@@ -3016,6 +3016,273 @@ The agent must embody the expertise of a **world-class Swift developer** with de
 - UI testing with XCUITest
 - Documentation comments for public APIs
 
+#### Swift Concurrency Best Practices
+
+> **⚠️ CRITICAL**: These patterns are mandatory for all async operations in the project.
+
+##### 1. Task-Based Periodic Operations (Not Timer)
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Timer requires RunLoop and doesn't work well in async contexts
+private var pingTimer: Timer?
+
+func startHeartbeat() {
+    pingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: true) { [weak self] _ in
+        self?.sendPing()
+    }
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use Task.sleep for periodic operations in async contexts
+private var pingTask: Task<Void, Never>?
+
+func startHeartbeat() {
+    pingTask = Task { [weak self] in
+        guard let self = self else { return }
+        
+        // Initial delay before first periodic ping
+        try? await Task.sleep(for: .seconds(self.pingInterval))
+        
+        // Periodic loop
+        while !Task.isCancelled {
+            // Check connection state on MainActor before sending
+            let shouldContinue = await MainActor.run {
+                guard self.isConnected else { return false }
+                return true
+            }
+            
+            guard shouldContinue else { break }
+            
+            // Send ping
+            await self.sendPing()
+            
+            // Wait for next interval
+            try? await Task.sleep(for: .seconds(self.pingInterval))
+        }
+    }
+}
+
+func stopHeartbeat() {
+    pingTask?.cancel()
+    pingTask = nil
+}
+```
+
+**Why:** `Task.sleep` works reliably in any async context, doesn't require RunLoop, and integrates seamlessly with Swift concurrency cancellation.
+
+##### 2. Actor Isolation for State Access
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Accessing MainActor-isolated properties from non-isolated context
+private func sendPing() async {
+    guard isConnected, let task = webSocketTask else { return } // ❌ Data race warning
+    // ...
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Access state on MainActor, then use the captured values
+private func sendPing() async {
+    // Capture state on MainActor first
+    let canSend = await MainActor.run {
+        guard self.isConnected, let task = self.webSocketTask, task.state == .running else {
+            return false
+        }
+        return true
+    }
+    
+    guard canSend else { return }
+    
+    // Now use the captured state safely
+    // ...
+}
+```
+
+**Why:** Prevents data races and ensures thread-safe access to UI-related state.
+
+##### 3. Connection State Management
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Multiple simultaneous connection attempts
+func connect() async throws {
+    // No guard against concurrent calls
+    webSocketTask = urlSession.webSocketTask(with: url)
+    // ...
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Prevent multiple simultaneous attempts
+private var isConnecting = false
+private var isReconnecting = false
+
+func connect() async throws {
+    // Prevent concurrent connection attempts
+    guard !isConnecting, !isReconnecting, !isConnected else {
+        WebSocketClient.log("⚠️ WebSocket: Connection already in progress or connected")
+        return
+    }
+    
+    isConnecting = true
+    defer { isConnecting = false }
+    
+    do {
+        // Connection logic...
+        isConnecting = false
+    } catch {
+        isConnecting = false
+        throw error
+    }
+}
+```
+
+**Why:** Prevents connection storms and ensures predictable state transitions.
+
+##### 4. Message Listening Patterns
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Using timeout-based receive for ongoing listening
+private func listenForMessages() async {
+    while true {
+        let message = try await receiveMessage(timeout: 30.0) // ❌ Times out after auth
+        // ...
+    }
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use timeout for setup, direct receive for ongoing listening
+private func receiveMessage(timeout: TimeInterval) async throws -> [String: Any] {
+    // Use with timeout for connection setup (connect, auth)
+    // ...
+}
+
+private func listenForMessages() async {
+    guard let task = webSocketTask else { return }
+    
+    while !Task.isCancelled {
+        do {
+            // Use task.receive() directly (no timeout) for ongoing listening
+            let wsMessage = try await task.receive()
+            // Process message...
+        } catch {
+            if Task.isCancelled { break }
+            // Handle error...
+        }
+    }
+}
+```
+
+**Why:** Connection setup needs timeouts, but ongoing listening should wait indefinitely for messages.
+
+##### 5. Task Cancellation and Cleanup
+
+**✅ Best Practice:**
+```swift
+// Always track tasks and cancel them properly
+private var pingTask: Task<Void, Never>?
+private var pongTimeoutTask: Task<Void, Never>?
+private var listenTask: Task<Void, Never>?
+
+func disconnect() {
+    // Cancel all tasks
+    pingTask?.cancel()
+    pingTask = nil
+    pongTimeoutTask?.cancel()
+    pongTimeoutTask = nil
+    listenTask?.cancel()
+    listenTask = nil
+    
+    // Clean up resources
+    webSocketTask?.cancel()
+    webSocketTask = nil
+}
+
+// In task loops, always check cancellation
+while !Task.isCancelled {
+    // Work...
+    try? await Task.sleep(for: .seconds(interval))
+}
+```
+
+**Why:** Prevents resource leaks and ensures proper cleanup when connections close.
+
+##### 6. Static Logging Utilities
+
+**✅ Best Practice:**
+```swift
+// DO: Use static methods for logging utilities
+final class WebSocketClient {
+    private static var timestamp: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: Date())
+    }
+    
+    private static func log(_ message: String) {
+        print("[\(WebSocketClient.timestamp)] \(message)")
+    }
+    
+    // Usage throughout the class
+    private func connect() async throws {
+        WebSocketClient.log("🔌 WebSocket: Connecting to \(url)")
+        // ...
+    }
+}
+```
+
+**Why:** Avoids `self.` requirements in closures, provides consistent formatting, and improves readability.
+
+##### 7. Sendable Safety in Task Groups
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Passing non-Sendable types through TaskGroup
+let result = try await withThrowingTaskGroup(of: [String: Any].self) { group in
+    // ❌ [String: Any] is not Sendable
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use Sendable types (Data) in TaskGroup, parse after
+let result = try await withThrowingTaskGroup(of: Data.self) { group in
+    group.addTask {
+        let wsMessage = try await task.receive()
+        // Convert to Data (which is Sendable)
+        switch wsMessage {
+        case .string(let text):
+            return text.data(using: .utf8) ?? Data()
+        case .data(let data):
+            return data
+        }
+    }
+    
+    // Wait for result
+    guard let messageData = try await group.next() else {
+        throw WebSocketError.connectionClosed
+    }
+    
+    // Parse JSON on current actor (not in TaskGroup)
+    guard let dict = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else {
+        throw WebSocketError.invalidMessage
+    }
+    
+    return dict
+}
+```
+
+**Why:** Ensures thread safety and prevents data race warnings in concurrent code.
+
 #### Naming Conventions
 
 ```swift
@@ -3163,6 +3430,18 @@ src/
 4. **Fail Fast**: Validate inputs early, throw meaningful errors
 5. **Immutability**: Prefer immutable data structures when possible
 6. **Pure Functions**: Minimize side effects, maximize testability
+
+### Swift Concurrency Guidelines
+
+> **⚠️ MANDATORY**: These patterns must be followed for all async operations.
+
+1. **Always use `Task.sleep` for periodic operations** — Never use `Timer` in async contexts (see [Swift Concurrency Best Practices](#swift-concurrency-best-practices) above)
+2. **Access MainActor-isolated state explicitly** — Use `await MainActor.run` to capture state before use in non-isolated contexts
+3. **Track all tasks and cancel them properly** — Store tasks as properties and cancel in cleanup methods (`disconnect()`, `deinit`, etc.)
+4. **Use Sendable types in TaskGroups** — Convert to `Data` or other Sendable types before passing through concurrent boundaries
+5. **Distinguish setup vs. ongoing operations** — Use timeouts for connection setup, direct receive for ongoing listening
+6. **Prevent concurrent operations** — Use flags (`isConnecting`, `isReconnecting`) to prevent race conditions and connection storms
+7. **Static utilities for logging** — Use static methods to avoid `self.` requirements in closures and improve code clarity
 
 ### Error Handling
 

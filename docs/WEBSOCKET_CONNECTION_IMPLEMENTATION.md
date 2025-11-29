@@ -4,6 +4,8 @@
 
 > **⚠️ CRITICAL SECURITY NOTE:** This implementation includes `NSAllowsArbitraryLoads = true` in `Info.plist` for local development. **This MUST be removed before production deployment.** See [Security Considerations](#security-considerations) section for details.
 
+> **✅ Status:** Fully functional - connection, authentication, heartbeat, and reconnection all working. Last updated: January 30, 2025.
+
 ## Overview
 
 This document describes the implementation of the WebSocket connection feature that replaces the stub connection logic with a fully functional, production-ready connection system following MVVM + Services architecture.
@@ -11,6 +13,56 @@ This document describes the implementation of the WebSocket connection feature t
 ## Implementation Date
 
 January 2025
+
+## Update History
+
+### January 30, 2025 - Heartbeat Refactoring and Architecture Improvements
+
+**Major Improvements:**
+1. **Task-Based Heartbeat:** Replaced `Timer`-based heartbeat with `Task.sleep`-based periodic pings
+   - More reliable in async contexts (no RunLoop dependency)
+   - Better cancellation handling
+   - Sends initial ping immediately after authentication
+   - Periodic pings every 20 seconds using `Task.sleep`
+2. **Task-Based Pong Timeout:** Replaced `Timer`-based pong timeout with `Task`-based timeout
+   - Properly cancellable when pong is received
+   - No RunLoop dependency
+   - Better integration with Swift concurrency
+3. **Timestamp Logging:** Added human-readable timestamps to all log messages
+   - Format: `[HH:mm:ss.SSS]` prefix on all log messages
+   - Static logging utility for consistent formatting
+   - Improves debugging and log analysis
+4. **Actor Isolation Improvements:** Enhanced thread safety for ping/pong operations
+   - Connection state checks happen on MainActor
+   - Proper synchronization for all state mutations
+   - Eliminated data race warnings
+
+**Fixed Issues:**
+1. **Connection Timeout After Auth:** Fixed connection closing after authentication by refactoring message listening
+   - `listenForMessages()` now uses `task.receive()` directly (no timeout)
+   - `receiveMessage()` only used for connection setup with explicit timeouts
+   - Prevents premature disconnection after successful auth
+2. **Multiple Reconnection Attempts:** Enhanced reconnection logic to prevent simultaneous attempts
+   - Checks both `isConnecting` and `isReconnecting` flags
+   - Prevents reconnection if already connected
+   - Better state management during connection lifecycle
+
+### January 29, 2025 - Bug Fixes and Improvements
+
+**Fixed Issues:**
+1. **URL Normalization:** Fixed to not add default ports (80/443) for URLs with paths (e.g., `/ws`), as these are service-specific and should include the port explicitly
+2. **Continuation Leaks:** Fixed Swift task continuation leaks in `waitForConnection()` by ensuring continuations are always resumed, even on connection close
+3. **Workstation Offline Handling:** Added proper error handling for workstation offline scenarios with `workstationOffline` error type
+4. **Workstation Auth Processing:** Fixed workstation server's `onClientMessage` handler to actually process auth messages (was previously only logging)
+5. **Type Safety:** Replaced `any` types with proper Zod schema validation
+6. **Code Quality:** Extracted helper functions for better maintainability and added comprehensive error handling
+
+**Improvements:**
+- Added extensive logging throughout connection flow for debugging
+- Improved error messages with actionable guidance
+- Added timeout handling for message receiving operations
+- Prevented multiple simultaneous connection attempts
+- Better error handling for authentication failures
 
 ## Architecture
 
@@ -121,27 +173,42 @@ The implementation follows the project's **MVVM + Services** pattern with proper
     4. Wait for connection via continuation (delegate callback)
     5. Send `connect` message to tunnel
     6. Wait for `connected` response
-    7. Send `auth` message to workstation
-    8. Wait for `auth.success` response
-    9. Start heartbeat mechanism
+7. Send `auth` message to workstation (via tunnel)
+8. Workstation processes auth message and sends `auth.success` response
+9. Tunnel forwards response to client
+10. Client receives `auth.success` and completes authentication
+11. Start heartbeat mechanism
   - **URL Normalization:**
     - Converts `http://` → `ws://` and `https://` → `wss://`
-    - Adds default ports: 80 for `ws://`, 443 for `wss://` (if missing)
+    - Only adds default ports (80 for `ws://`, 443 for `wss://`) if port is missing AND no path is present
+    - URLs with paths (like `/ws`) are assumed to be service-specific and should include the port explicitly
     - Validates WebSocket URL format
+    - Logs warnings when port is missing to guide users
   - **Heartbeat:**
-    - Sends `ping` every 20 seconds
+    - **Task-Based Implementation:** Uses `Task.sleep` for periodic pings (no Timer/RunLoop dependency)
+    - Sends initial ping immediately after authentication
+    - Sends `ping` every 20 seconds using async task loop
     - Tracks last `pong` timestamp
+    - **Pong Timeout:** Uses `Task`-based timeout (30 seconds) instead of Timer
     - Marks connection stale if no `pong` received within 30 seconds
     - Automatically reconnects on stale connection
+    - Properly cancels all tasks on disconnection
   - **Reconnection:**
     - Exponential backoff: 1s → 2s → 4s → ... → 30s max
     - Automatic reconnection on disconnect or stale connection
+    - **Smart Reconnection:** Skips reconnection attempts when workstation is offline (user needs to start workstation first)
     - Restores subscriptions after reconnect
+    - Prevents multiple simultaneous connection attempts with `isConnecting` flag
   - **Message Handling:**
-    - Parses incoming JSON messages
+    - **Connection Setup:** Uses `receiveMessage()` with 30s timeout for initial connection/auth
+    - **Ongoing Listening:** Uses `task.receive()` directly (no timeout) after authentication
+    - Uses `Data` (Sendable) in task groups to avoid concurrency issues
     - Routes to delegate callbacks (all dispatched to main actor)
-    - Handles `pong` responses for heartbeat
+    - Handles `pong` responses for heartbeat (cancels pong timeout task)
     - Handles `connection.workstation_offline/online` events
+    - Handles error messages during auth flow (workstation offline, tunnel not found)
+    - **Timestamp Logging:** All log messages include human-readable timestamps `[HH:mm:ss.SSS]`
+    - Comprehensive logging at each step for debugging
 
 ### 6. Connection Service
 
@@ -269,24 +336,45 @@ UI updates to show connected status
 ### 2. Heartbeat Mechanism
 
 ```
+After authentication:
+    ↓
+Send initial ping immediately
+    ↓
+Start periodic ping task (Task.sleep-based)
+    ↓
 Every 20 seconds:
     ↓
-WebSocketClient.sendPing()
+Check connection state on MainActor
     ↓
-Send {"type": "ping", "timestamp": ...}
+If connected:
+    WebSocketClient.sendPing()
+        ↓
+    Send {"type": "ping", "timestamp": ...}
+        ↓
+    Start 30-second pong timeout task (Task-based)
+        ↓
+    If pong received within 30s:
+        - Cancel pong timeout task
+        - Update lastPongTimestamp
+        - Continue normal operation
+        ↓
+    If no pong within 30s:
+        - handlePongTimeout() called
+        - Mark connection stale
+        - Disconnect
+        - Schedule reconnection
     ↓
-Start 30-second timeout timer
-    ↓
-If pong received within 30s:
-    - Cancel timeout timer
-    - Update lastPongTimestamp
-    - Continue normal operation
-    ↓
-If no pong within 30s:
-    - Mark connection stale
-    - Disconnect
-    - Schedule reconnection
+If not connected:
+    - Stop ping task
+    - Exit loop
 ```
+
+**Key Implementation Details:**
+- **Task-Based:** Uses `Task.sleep` instead of `Timer` for better async integration
+- **Initial Ping:** Sends ping immediately after authentication to keep connection alive
+- **Cancellation:** All tasks properly cancelled on disconnection via `stopHeartbeat()`
+- **Thread Safety:** Connection state checks happen on MainActor
+- **No RunLoop Dependency:** Works reliably in any async context
 
 ### 3. Reconnection Flow
 
@@ -298,7 +386,13 @@ WebSocketClient.handleDisconnection()
 Cancel heartbeat
 Notify delegate (on main actor)
     ↓
+Check error type:
+    - If workstationOffline: Skip reconnection (user must start workstation)
+    - Otherwise: scheduleReconnect()
+    ↓
 scheduleReconnect()
+    ↓
+Prevent multiple simultaneous attempts (isConnecting flag)
     ↓
 Calculate delay: min(1s * 2^attempts, 30s)
     ↓
@@ -308,10 +402,12 @@ Retry connect() with stored credentials
     ↓
 If successful:
     - Reset reconnectAttempts
+    - Clear isConnecting flag
     - Restore subscriptions
     ↓
 If failed:
     - Increment reconnectAttempts
+    - Clear isConnecting flag
     - Schedule another reconnect with increased delay
 ```
 
@@ -403,7 +499,12 @@ If failed:
   - All delegate callbacks are dispatched to main actor via `MainActor.run`
   - URLSession operations are thread-safe
   - State mutations are properly synchronized
+  - Message receiving uses `Data` (which is Sendable) in task groups instead of `[String: Any]`
+  - Connection state checks in ping task happen on MainActor
+  - All task-based operations use proper actor isolation
 - `ConnectionService` stores concrete `WebSocketClient` type (not protocol) to avoid Sendable protocol issues
+- `receiveMessage()` uses `withThrowingTaskGroup(of: Data.self)` to avoid Sendable issues with `[String: Any]`
+- **Heartbeat Tasks:** All ping/pong timeout tasks use `weak self` and proper cancellation
 
 ### Delegate Callback Pattern
 
@@ -420,16 +521,41 @@ This ensures:
 - No data races when accessing `@Published` properties
 - Consistent actor isolation throughout the call chain
 
+### Continuation Management
+
+The `waitForConnection()` function uses a continuation that must always be resumed to prevent leaks:
+
+```swift
+private func waitForConnection() async throws {
+    return try await withCheckedThrowingContinuation { continuation in
+        self.connectionContinuation = continuation
+        // Timeout task ensures continuation is always resumed
+        Task {
+            try? await Task.sleep(for: .seconds(10))
+            if let cont = self.connectionContinuation {
+                self.connectionContinuation = nil
+                cont.resume(throwing: WebSocketError.connectionClosed)
+            }
+        }
+    }
+}
+```
+
+The continuation is also resumed in the `didCloseWith` delegate method to handle cases where the connection closes before opening.
+
 ## URL Normalization
 
 The `normalizeWebSocketURL()` function handles various URL formats:
 
 | Input | Output | Notes |
 |-------|--------|-------|
-| `http://192.168.1.112/ws` | `ws://192.168.1.112:80/ws` | Converts http→ws, adds port 80 |
-| `https://example.com/ws` | `wss://example.com:443/ws` | Converts https→wss, adds port 443 |
+| `http://192.168.1.112/ws` | `ws://192.168.1.112/ws` | Converts http→ws, **does NOT add port** (path present) |
+| `https://example.com/ws` | `wss://example.com/ws` | Converts https→wss, **does NOT add port** (path present) |
 | `ws://192.168.1.112:3001/ws` | `ws://192.168.1.112:3001/ws` | No change (port already specified) |
-| `192.168.1.112/ws` | `ws://192.168.1.112:80/ws` | Adds protocol and port |
+| `ws://192.168.1.112` | `ws://192.168.1.112:80` | Adds default port 80 (no path) |
+| `wss://example.com` | `wss://example.com:443` | Adds default port 443 (no path) |
+
+**Important:** URLs with paths (like `/ws`) are assumed to be service-specific endpoints and should include the port explicitly. The tunnel server typically runs on port 3001, so URLs should be: `ws://host:3001/ws`.
 
 ## Error Handling
 
@@ -437,9 +563,17 @@ The `normalizeWebSocketURL()` function handles various URL formats:
 
 - `WebSocketError.invalidURL` - URL format is invalid
 - `WebSocketError.notConnected` - Attempted operation on closed connection
-- `WebSocketError.connectionClosed` - Connection was closed unexpectedly
-- `WebSocketError.authenticationFailed` - Auth key rejected by workstation
+- `WebSocketError.connectionClosed` - Connection was closed unexpectedly (includes helpful message about port)
+- `WebSocketError.authenticationFailed(String)` - Auth key rejected by workstation
 - `WebSocketError.missingCredentials` - Required credentials not available
+- `WebSocketError.workstationOffline(String)` - Workstation is not connected to tunnel (new)
+
+### Error Handling Improvements
+
+- **Workstation Offline Detection:** Client now properly detects when workstation is offline and shows clear error message
+- **No Automatic Reconnection:** When workstation is offline, client does not attempt reconnection (user must start workstation first)
+- **Error Messages:** All error messages include actionable guidance (e.g., "Check that the tunnel server is running and the URL includes the correct port (default: 3001)")
+- **Timeout Protection:** Message receiving operations have 30-second timeout to prevent indefinite waiting
 
 ### Error Flow
 
@@ -477,6 +611,14 @@ Automatic reconnection scheduled (if credentials available)
 - ✅ Invalid auth key rejection
 - ✅ Workstation offline/online events
 - ✅ URL normalization (http→ws, missing ports)
+- ✅ Workstation offline error detection and handling
+- ✅ Multiple simultaneous connection attempt prevention
+- ✅ Continuation leak prevention
+- ✅ Message receiving timeout protection
+- ✅ Proper error responses for authentication failures
+- ✅ Task-based heartbeat (no Timer/RunLoop dependency)
+- ✅ Human-readable timestamp logging
+- ✅ Improved reconnection state management
 
 ## Security Considerations
 
@@ -509,17 +651,94 @@ Automatic reconnection scheduled (if credentials available)
 
 ## Known Limitations
 
-1. **Default Ports:** Currently adds ports 80/443 by default, but tunnel server typically runs on 3001. Users must include port in URL for non-standard ports.
+1. **URL Port Requirement:** URLs with paths (like `/ws`) do not get default ports added. Users must include the port explicitly (e.g., `ws://host:3001/ws`). This is intentional to avoid incorrect port assumptions for service-specific endpoints.
 2. **Reconnection:** Maximum reconnection delay is 30 seconds; after that, manual reconnect may be needed.
 3. **Message Queueing:** Messages sent during disconnection are not queued (future enhancement).
+4. **Tunnel Socket Architecture:** The workstation server now supports optional socket for tunnel connections. Clients registered via tunnel don't require a direct WebSocket socket, improving architecture and eliminating the previous workaround.
+5. **Broadcast to All Clients:** When workstation sends auth response, tunnel forwards it to all clients (not just the requesting client). This works because clients only process messages intended for them, but is not optimal for multi-client scenarios.
 
 ## Future Enhancements
 
 1. **Message Queueing:** Queue messages during disconnection and send on reconnect
 2. **Connection Quality Monitoring:** Track latency and connection quality metrics
-3. **Adaptive Heartbeat:** Adjust ping interval based on connection quality
+3. **Adaptive Heartbeat:** Adjust ping interval based on connection quality (currently fixed at 20s)
 4. **Background Reconnection:** Continue reconnection attempts when app is backgrounded
 5. **Certificate Pinning:** For production WSS connections
+6. **Voice Activity Detection (VAD):** Automatic end-of-speech detection for voice input (currently requires manual stop)
+
+## Workstation Server Authentication Flow
+
+### Tunnel-Based Authentication
+
+When a mobile client sends an `auth` message through the tunnel:
+
+1. **Tunnel receives message** from mobile client
+2. **Tunnel forwards to workstation** via `forwardToWorkstation()`
+3. **Workstation receives** via `onClientMessage` callback
+4. **Message validation** using Zod `AuthMessageSchema`
+5. **Client authentication** via `AuthenticateClientUseCase`
+6. **Client registration** in client registry (optional socket for tunnel connections)
+7. **Response generation** - `auth.success` or `auth.error`
+8. **Response sent** through `MessageBroadcaster.sendToClient()` via tunnel
+9. **Tunnel forwards** response to all connected clients
+10. **Mobile client receives** and processes response
+
+### Implementation Details
+
+**Architecture Improvements (January 30, 2025):**
+
+- **Optional Socket Support:** `Client` entity now supports optional `socket` for tunnel connections
+- **Tunnel Registration:** `ClientRegistry.registerTunnel()` method for registering clients without direct socket
+- **Clean Architecture:** Removed workaround functions; proper domain-driven design
+- **Message Broadcasting:** Uses `MessageBroadcaster` to send responses via tunnel instead of direct socket access
+
+**Error Handling:**
+
+- Invalid message format: Logged and ignored
+- Authentication failure: Sends `auth.error` response with error details
+- All errors logged with structured logging for debugging
+
+**Type Safety:**
+
+- Uses Zod schemas for runtime validation (`AuthMessageSchema`)
+- Proper error types instead of `any`
+- Type-safe message parsing
+
+## Debugging and Logging
+
+### Client-Side Logging
+
+The WebSocket client includes comprehensive logging with **human-readable timestamps**:
+
+**Log Format:**
+- All log messages are prefixed with timestamp: `[HH:mm:ss.SSS]`
+- Example: `[22:27:29.556] 🔌 WebSocket: Connecting to ws://192.168.1.112:3001/ws`
+
+**Log Categories:**
+- `🔌 WebSocket: Connecting to...` - Connection attempts
+- `✅ WebSocket: Connection opened successfully` - Connection established
+- `📤 WebSocket: Sending connect message...` - Message sending
+- `📥 WebSocket: Received message: ...` - Message reception
+- `⏳ WebSocket: Waiting for...` - Waiting states
+- `❌ WebSocket: ...` - Errors and failures
+- `⚠️ WebSocket: ...` - Warnings (e.g., missing port)
+- `📤 WebSocket: Sent ping (timestamp: ...)` - Heartbeat pings
+- `📥 WebSocket: Received pong (timestamp: ...)` - Heartbeat pongs
+- `⏰ WebSocket: Ping task started (interval: ...)` - Heartbeat initialization
+- `🛑 WebSocket: Ping task ended` - Heartbeat cancellation
+
+**Implementation:**
+- Static `log(_:)` method for consistent formatting
+- Static `timestamp` computed property using `DateFormatter`
+- All logging centralized through `WebSocketClient.log()` helper
+
+### Server-Side Logging
+
+Workstation server logs:
+- Auth message processing
+- Authentication results
+- Error responses
+- Tunnel communication status
 
 ## References
 

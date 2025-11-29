@@ -12,8 +12,13 @@ import Foundation
 
 /// Message sent from mobile client to tunnel server to establish connection
 struct ConnectMessage: Codable {
-    let type: String = "connect"
+    let type: String
     let payload: ConnectPayload
+    
+    init(payload: ConnectPayload) {
+        self.type = "connect"
+        self.payload = payload
+    }
     
     struct ConnectPayload: Codable {
         let tunnelId: String
@@ -50,8 +55,13 @@ struct ConnectedMessage: Codable {
 
 /// Message sent from mobile client to workstation (via tunnel) for authentication
 struct AuthMessage: Codable {
-    let type: String = "auth"
+    let type: String
     let payload: AuthPayload
+    
+    init(payload: AuthPayload) {
+        self.type = "auth"
+        self.payload = payload
+    }
     
     struct AuthPayload: Codable {
         let authKey: String
@@ -95,18 +105,24 @@ struct AuthErrorMessage: Codable {
 
 /// Ping message sent periodically to keep connection alive
 struct PingMessage: Codable {
-    let type: String = "ping"
+    let type: String
     let timestamp: Int64
     
     init(timestamp: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) {
+        self.type = "ping"
         self.timestamp = timestamp
     }
 }
 
 /// Pong message sent in response to ping
 struct PongMessage: Codable {
-    let type: String = "pong"
+    let type: String
     let timestamp: Int64
+    
+    init(timestamp: Int64) {
+        self.type = "pong"
+        self.timestamp = timestamp
+    }
 }
 
 // MARK: - Error Messages

@@ -19,7 +19,7 @@ export interface AuthenticateClientDeps {
 }
 
 export interface AuthenticateClientParams {
-  socket: WebSocket;
+  socket?: WebSocket; // Optional for tunnel connections
   authKey: string;
   deviceId: string;
 }
@@ -50,7 +50,10 @@ export class AuthenticateClientUseCase {
     }
 
     // Register or update client
-    const client = this.deps.clientRegistry.register(deviceId, params.socket);
+    // For tunnel connections, socket is undefined
+    const client = params.socket
+      ? this.deps.clientRegistry.register(deviceId, params.socket)
+      : this.deps.clientRegistry.registerTunnel(deviceId);
     client.markAuthenticated();
 
     // Get restored subscriptions

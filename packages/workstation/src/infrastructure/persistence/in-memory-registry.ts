@@ -21,6 +21,10 @@ export class InMemoryClientRegistry implements ClientRegistry {
     // Check if client already exists (reconnection)
     const existing = this.clients.get(deviceId.value);
     if (existing) {
+      if (existing.isTunnelConnection) {
+        // Cannot convert tunnel connection to direct connection
+        throw new Error('Cannot update tunnel connection with direct socket');
+      }
       existing.updateSocket(socket);
       this.socketToDevice.set(socket, deviceId.value);
       return existing;
@@ -29,6 +33,20 @@ export class InMemoryClientRegistry implements ClientRegistry {
     const client = new Client({ deviceId, socket });
     this.clients.set(deviceId.value, client);
     this.socketToDevice.set(socket, deviceId.value);
+    return client;
+  }
+
+  registerTunnel(deviceId: DeviceId): Client {
+    // Check if client already exists (reconnection)
+    const existing = this.clients.get(deviceId.value);
+    if (existing) {
+      // For tunnel connections, we just return the existing client
+      // (no socket to update)
+      return existing;
+    }
+
+    const client = new Client({ deviceId }); // No socket for tunnel connections
+    this.clients.set(deviceId.value, client);
     return client;
   }
 
@@ -50,7 +68,10 @@ export class InMemoryClientRegistry implements ClientRegistry {
       return false;
     }
 
-    this.socketToDevice.delete(client.socket);
+    // Only delete from socket map if it's a direct connection
+    if (client.socket) {
+      this.socketToDevice.delete(client.socket);
+    }
     this.clients.delete(deviceId.value);
     return true;
   }
