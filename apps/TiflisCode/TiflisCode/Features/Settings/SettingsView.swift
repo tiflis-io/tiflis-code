@@ -217,12 +217,13 @@ struct SettingsView: View {
         // Auto-connect after setting credentials
         appState.connect()
     }
-    
-    private struct MagicLinkPayload: Codable {
-        let tunnel_id: String
-        let url: String
-        let key: String
-    }
+}
+
+/// Magic link payload structure
+private struct MagicLinkPayload: Codable {
+    let tunnel_id: String
+    let url: String
+    let key: String
 }
 
 /// QR code scanner view
