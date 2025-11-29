@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import Combine
 
 @main
 struct TiflisCodeApp: App {
@@ -30,6 +31,10 @@ final class AppState: ObservableObject {
     @Published var selectedSessionId: String? = "supervisor"
     
     @AppStorage("tunnelURL") private var tunnelURL = ""
+    @AppStorage("tunnelId") private var tunnelId = ""
+    
+    private let connectionService: ConnectionServicing
+    private var cancellables = Set<AnyCancellable>()
     
     var selectedSession: Session? {
         guard selectedSessionId != Self.settingsId else { return nil }
@@ -42,14 +47,37 @@ final class AppState: ObservableObject {
     
     /// Check if we have saved connection credentials
     var hasConnectionConfig: Bool {
-        !tunnelURL.isEmpty
+        !tunnelURL.isEmpty && !tunnelId.isEmpty
     }
     
-    init() {
+    init(connectionService: ConnectionServicing? = nil) {
+        // Create services with default implementations
+        let keychainManager = KeychainManager()
+        let deviceIDManager = DeviceIDManager()
+        let webSocketClient = WebSocketClient()
+        
+        // Inject or create connection service
+        self.connectionService = connectionService ?? ConnectionService(
+            webSocketClient: webSocketClient,
+            keychainManager: keychainManager,
+            deviceIDManager: deviceIDManager
+        )
+        
+        // Observe connection state from service
+        observeConnectionState()
+        
         // Auto-connect on launch if we have saved credentials
         if hasConnectionConfig {
             connect()
         }
+    }
+    
+    // MARK: - Private Methods
+    
+    private func observeConnectionState() {
+        connectionService.connectionStatePublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$connectionState)
     }
     
     // MARK: - Actions
@@ -57,17 +85,18 @@ final class AppState: ObservableObject {
     func connect() {
         guard hasConnectionConfig else { return }
         
-        connectionState = .connecting
-        
-        // Simulate connection delay
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            connectionState = .connected
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            do {
+                try await self.connectionService.connect()
+            } catch {
+                self.connectionState = .error(error.localizedDescription)
+            }
         }
     }
     
     func disconnect() {
-        connectionState = .disconnected
+        connectionService.disconnect()
     }
     
     func selectSession(_ session: Session) {

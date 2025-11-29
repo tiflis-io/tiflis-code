@@ -18,10 +18,11 @@ struct SettingsView: View {
     @AppStorage("ttsEnabled") private var ttsEnabled = true
     @AppStorage("sttLanguage") private var sttLanguage = "en"
     
-    @State private var authKey = ""
     @State private var showQRScanner = false
     @State private var showMagicLinkInput = false
     @State private var magicLink = ""
+    
+    private let keychainManager = KeychainManager()
     
     var body: some View {
         Form {
@@ -210,9 +211,17 @@ struct SettingsView: View {
             return
         }
         
+        // Store credentials
         tunnelId = payload.tunnel_id
         tunnelURL = payload.url
-        authKey = payload.key
+        
+        // Store auth key in Keychain
+        do {
+            try keychainManager.saveAuthKey(payload.key)
+        } catch {
+            print("Failed to save auth key to Keychain: \(error)")
+            return
+        }
         
         // Auto-connect after setting credentials
         appState.connect()
