@@ -1121,6 +1121,73 @@ const requestLogger = logger.child({ requestId, clientId });
 requestLogger.info('Processing request');
 ```
 
+
+### Startup Banner
+
+
+> **⚠️ MANDATORY**: All backend servers and CLI tools must display a startup banner when launched.
+
+The startup banner provides consistent branding and essential information at application startup. It must include:
+
+| Element | Required | Description |
+|---------|----------|-------------|
+| **ASCII Logo** | ✅ | Tiflis Code logo converted to ASCII art with colors |
+| **Component Name** | ✅ | e.g., "Tunnel Server", "Workstation Server" |
+| **Description** | ✅ | Brief one-line description of the component |
+| **Version** | ✅ | Current version from `package.json` or constants |
+| **Copyright** | ✅ | `© 2025 Roman Barinov` |
+| **License** | ✅ | `MIT License` |
+| **Repository URL** | ✅ | `https://github.com/tiflis-io/tiflis-code` |
+
+> **ASCII Art Source**: The original ASCII art logo is stored in `assets/branding/ascii-art.txt`
+
+#### Color Scheme
+
+Use ANSI escape codes for consistent terminal colors:
+
+```typescript
+const colors = {
+  dim: '\x1b[2m',           // Dim text for borders and secondary info
+  blue: '\x1b[38;5;69m',    // Blue for left bracket (matches logo gradient start)
+  purple: '\x1b[38;5;135m', // Purple for right bracket (matches logo gradient end)
+  white: '\x1b[97m',        // White for main text and "t" letter
+  reset: '\x1b[0m',         // Reset all formatting
+};
+```
+
+#### Example Implementation
+
+```typescript
+function printBanner(): void {
+  const dim = '\x1b[2m';
+  const blue = '\x1b[38;5;69m';
+  const purple = '\x1b[38;5;135m';
+  const white = '\x1b[97m';
+  const reset = '\x1b[0m';
+
+  const banner = `
+${'$'}{blue}       -####.${'$'}{reset}           ${'$'}{white}#     #${'$'}{reset}              ${'$'}{purple}-###+.${'$'}{reset}
+${'$'}{blue}     .##    .${'$'}{reset}        ${'$'}{white}.. #     #....${'$'}{reset}          ${'$'}{purple}-   ##-${'$'}{reset}
+     ...ASCII art continues...
+
+       ${'$'}{white}T I F L I S   C O D E${'$'}{reset}  ${'$'}{dim}·${'$'}{reset}  Component Name
+       ${'$'}{dim}Brief description of the component${'$'}{reset}
+
+       ${'$'}{dim}v${'$'}{VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${'$'}{reset}
+       ${'$'}{dim}https://github.com/tiflis-io/tiflis-code${'$'}{reset}
+`;
+  console.log(banner);
+}
+```
+
+#### When to Display
+
+- **Backend servers**: Display immediately on startup, before any log messages
+- **CLI tools**: Display when run without arguments or with `--version` flag
+- **Development mode**: Always display
+- **Production mode**: Display (can be suppressed with `--quiet` flag if needed)
+
+
 ### Connection Resilience (Server-side)
 
 > **⚠️ CRITICAL REQUIREMENT**: Server components must handle client disconnections gracefully and support seamless reconnection with state recovery.

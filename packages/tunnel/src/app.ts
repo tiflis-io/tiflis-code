@@ -18,7 +18,7 @@ export interface AppConfig {
  */
 export function createApp(config: AppConfig): FastifyInstance {
   const app = Fastify({
-    logger: config.logger,
+    loggerInstance: config.logger,
     trustProxy: config.env.TRUST_PROXY,
     // Disable request logging since we use pino directly
     disableRequestLogging: true,

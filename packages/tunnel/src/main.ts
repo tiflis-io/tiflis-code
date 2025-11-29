@@ -12,6 +12,47 @@ import {
   WEBSOCKET_CONFIG,
   SERVER_VERSION,
 } from './config/constants.js';
+
+/**
+ * Prints the startup banner to console.
+ */
+function printBanner(): void {
+  // Colors for terminal output
+  const dim = '\x1b[2m';
+  const blue = '\x1b[38;5;69m';
+  const purple = '\x1b[38;5;135m';
+  const white = '\x1b[97m';
+  const reset = '\x1b[0m';
+
+  const banner = `
+                        ${white}-#####${reset}
+                        ${white}#     #${reset}
+${blue}       -####.${reset}           ${white}#     #${reset}              ${purple}-###+.${reset}
+${blue}     .##    .${reset}        ${white}.. #     #....${reset}          ${purple}-   ##-${reset}
+${blue}    -##    #.${reset}       ${white}#####     #####+${reset}         ${purple}--    #+.${reset}
+${blue}   +#    ##-.${reset}       ${white}#              #${reset}         ${purple}.##    ##.${reset}
+${blue}   #    ##.${reset}         ${white}#              #${reset}          ${purple}.+##   +.${reset}
+${blue}   #   ##${reset}           ${white}#####     #####+${reset}            ${purple}.#   #-${reset}
+${blue}   #   +-${reset}               ${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   +-${reset}               ${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   +-${reset}       ${blue}---.${reset}    ${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   +-${reset}       ${blue}+ ###.${reset}  ${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   +-${reset}       ${blue}+    ##-${reset}${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   +-${reset}       ${blue}-##    #${reset}${white}#     #${reset}                  ${purple}#   #-${reset}
+${blue}   #   ##.${reset}      ${blue}.###    ${reset}${white}#     #.${reset}               ${purple}.+#   #.${reset}
+${blue}   #    ##+${reset}     ${blue}+    ###${reset}${white}#     #####+${reset}          ${purple}.##    #.${reset}
+${blue}   -##    ##.${reset}   ${blue}+  ##+. ${reset}${white}#          #${reset}         ${purple}-#     #+.${reset}
+${blue}    .##     .${reset}   ${blue}-##+.${reset}   ${white}+##        #${reset}         ${purple}-    ##-${reset}
+${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${purple}-+ -#+.${reset}
+
+       ${white}T I F L I S   C O D E${reset}  ${dim}·${reset}  Tunnel Server
+       ${dim}Secure WebSocket Relay for Remote Agents${reset}
+
+       ${dim}v${SERVER_VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
+       ${dim}https://github.com/tiflis-io/tiflis-code${reset}
+`;
+  console.log(banner);
+}
 import { createLogger } from './infrastructure/logging/pino-logger.js';
 import {
   InMemoryWorkstationRegistry,
@@ -33,6 +74,9 @@ import {
  * Bootstraps and starts the tunnel server.
  */
 async function bootstrap(): Promise<void> {
+  // Print startup banner
+  printBanner();
+
   // Load configuration
   const env = getEnv();
 
