@@ -1309,7 +1309,7 @@ ${'$'}{blue}     .##    .${'$'}{reset}        ${'$'}{white}.. #     #....${'$'}{
 |-------------|----------------|
 | **Workstation Health Monitoring** | Heartbeat every 20s, timeout after 30s |
 | **Client Notification** | Broadcast `workstation_offline`/`workstation_online` events |
-| **Tunnel ID Persistence** | Allow workstation to reclaim tunnel_id on reconnect |
+| **Tunnel ID Persistence** | Allow workstation to reclaim tunnel_id on reconnect, even after tunnel server restart |
 | **Graceful Degradation** | Queue messages during brief disconnections |
 
 #### Workstation Server Requirements

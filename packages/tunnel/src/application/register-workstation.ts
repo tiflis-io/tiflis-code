@@ -67,12 +67,11 @@ export class RegisterWorkstationUseCase {
 
     // Handle reconnection with previous tunnel ID
     if (params.reconnect && params.previousTunnelId) {
-      const existing = this.workstationRegistry.get(
-        TunnelId.create(params.previousTunnelId)
-      );
+      const requestedTunnelId = TunnelId.create(params.previousTunnelId);
+      const existing = this.workstationRegistry.get(requestedTunnelId);
 
       if (existing) {
-        // Restore the previous tunnel ID
+        // Restore the previous tunnel ID (workstation already registered)
         tunnelId = existing.tunnelId;
         existing.updateSocket(socket);
         restored = true;
@@ -81,12 +80,30 @@ export class RegisterWorkstationUseCase {
           'Workstation reconnected with restored tunnel ID'
         );
       } else {
-        // Previous tunnel not found, generate new one
-        tunnelId = TunnelId.generate(this.generateTunnelId);
-        this.logger.info(
-          { tunnelId: tunnelId.value, previousTunnelId: params.previousTunnelId },
-          'Previous tunnel not found, generated new tunnel ID'
-        );
+        // Previous tunnel not found in registry (e.g., tunnel server restarted)
+        // Allow workstation to reclaim its tunnel_id if it's not currently in use
+        if (this.workstationRegistry.has(requestedTunnelId)) {
+          // Tunnel ID is in use by another workstation, generate new one
+          tunnelId = TunnelId.generate(this.generateTunnelId);
+          this.logger.warn(
+            {
+              tunnelId: tunnelId.value,
+              previousTunnelId: params.previousTunnelId,
+              name: params.name,
+            },
+            'Previous tunnel ID is in use, generated new tunnel ID'
+          );
+        } else {
+          // Tunnel ID is available, allow workstation to reclaim it
+          tunnelId = requestedTunnelId;
+          this.logger.info(
+            {
+              tunnelId: tunnelId.value,
+              name: params.name,
+            },
+            'Workstation reclaimed tunnel ID after tunnel server restart'
+          );
+        }
       }
     } else {
       // Generate new tunnel ID
@@ -94,7 +111,7 @@ export class RegisterWorkstationUseCase {
     }
 
     if (!restored) {
-      // Create and register new workstation
+      // Create and register new workstation (or reclaim existing tunnel_id)
       const workstation = new Workstation({
         tunnelId,
         name: params.name,

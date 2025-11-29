@@ -26,6 +26,7 @@ The Workstation Server runs on the user's machine and provides:
 - **Terminal Access**: Full PTY terminal sessions via node-pty
 - **Supervisor Agent**: LangGraph-based assistant for workspace discovery and session management
 - **Tunnel Connection**: Connects to the tunnel server for remote mobile access
+- **Tunnel ID Persistence**: Stores tunnel_id in SQLite database, survives restarts and reclaims ID after tunnel server restarts
 - **Message Persistence**: SQLite database for conversation history
 - **Audio Storage**: File system storage for voice recordings (TTS/STT)
 

@@ -225,10 +225,22 @@ The tunnel server implements the Tiflis Code WebSocket Protocol. See [PROTOCOL.m
   "payload": {
     "api_key": "your-api-key",
     "name": "My MacBook Pro",
-    "auth_key": "client-auth-key"
+    "auth_key": "client-auth-key",
+    "reconnect": true,
+    "previous_tunnel_id": "Z6q62aKz-F96"
   }
 }
 ```
+
+**Tunnel ID Persistence:**
+
+The tunnel server supports persistent `tunnel_id` values that survive tunnel server restarts:
+
+- **First registration**: Tunnel server generates a new `tunnel_id`
+- **Reconnection (same tunnel server)**: Workstation provides `previous_tunnel_id`, tunnel server restores it
+- **Reconnection (after tunnel restart)**: Workstation provides `previous_tunnel_id`, tunnel server allows reclaiming it if available
+
+This ensures workstations maintain stable identifiers even when the tunnel server is restarted.
 
 **Mobile Client Connection:**
 ```json
