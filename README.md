@@ -213,6 +213,10 @@ cp .env.example .env.local
 pnpm dev
 ```
 
+<p align="center">
+  <img src="assets/screenshots/tunnel/startup.png" alt="Tunnel Server Startup" width="600">
+</p>
+
 #### 2. Start Workstation Server
 
 ```bash

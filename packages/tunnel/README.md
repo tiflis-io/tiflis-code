@@ -50,6 +50,10 @@ Add to your `.npmrc`:
 
 ## Quick Start
 
+<p align="center">
+  <img src="../../assets/screenshots/tunnel/startup.png" alt="Tunnel Server Startup" width="700">
+</p>
+
 ### 1. Set Environment Variables
 
 ```bash
