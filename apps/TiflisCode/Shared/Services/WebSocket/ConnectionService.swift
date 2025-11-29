@@ -24,6 +24,12 @@ protocol ConnectionServicing {
     
     /// Publisher for connection state changes
     var connectionStatePublisher: Published<ConnectionState>.Publisher { get }
+    
+    /// Whether the workstation is currently online
+    var workstationOnline: Bool { get }
+    
+    /// Publisher for workstation online status changes
+    var workstationOnlinePublisher: Published<Bool>.Publisher { get }
 }
 
 /// Service that manages WebSocket connection lifecycle
@@ -39,9 +45,14 @@ final class ConnectionService: ConnectionServicing {
     // MARK: - Published Properties
     
     @Published private(set) var connectionState: ConnectionState = .disconnected
+    @Published private(set) var workstationOnline: Bool = true // Assume online until we know otherwise
     
     var connectionStatePublisher: Published<ConnectionState>.Publisher {
         $connectionState
+    }
+    
+    var workstationOnlinePublisher: Published<Bool>.Publisher {
+        $workstationOnline
     }
     
     // MARK: - Stored Credentials
@@ -116,6 +127,8 @@ extension ConnectionService: WebSocketClientDelegate {
     
     func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, restoredSubscriptions: [String]?) {
         connectionState = .connected
+        // Assume workstation is online when we successfully authenticate
+        workstationOnline = true
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, didReceiveMessage message: [String: Any]) {
@@ -129,15 +142,18 @@ extension ConnectionService: WebSocketClientDelegate {
         } else {
             connectionState = .disconnected
         }
+        // Reset workstation status when disconnected
+        workstationOnline = true
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, workstationDidGoOffline tunnelId: String) {
         // Workstation is offline, but connection to tunnel remains
-        // State remains connected, but UI can show workstation status separately
+        workstationOnline = false
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, workstationDidComeOnline tunnelId: String) {
         // Workstation is back online
+        workstationOnline = true
     }
 }
 

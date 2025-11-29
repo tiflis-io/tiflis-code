@@ -24,6 +24,22 @@ struct SettingsView: View {
     
     private let keychainManager = KeychainManager()
     
+    /// Computed color based on both tunnel connection and workstation status
+    private var connectionIndicatorColor: Color {
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.indicatorColor
+        }
+        return appState.workstationOnline ? .green : .orange
+    }
+    
+    /// Status text that includes workstation status
+    private var connectionStatusText: String {
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.statusText
+        }
+        return appState.workstationOnline ? "Connected" : "Connected (Workstation Offline)"
+    }
+    
     var body: some View {
         Form {
             // Connection Section
@@ -31,10 +47,10 @@ struct SettingsView: View {
                 // Connection status
                 HStack {
                     Circle()
-                        .fill(appState.connectionState.indicatorColor)
+                        .fill(connectionIndicatorColor)
                         .frame(width: 12, height: 12)
                     
-                    Text(appState.connectionState.statusText)
+                    Text(connectionStatusText)
                     
                     Spacer()
                     

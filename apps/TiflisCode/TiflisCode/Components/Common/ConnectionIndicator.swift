@@ -12,16 +12,32 @@ import SwiftUI
 struct ConnectionIndicator: View {
     @EnvironmentObject private var appState: AppState
     
+    /// Computed color based on both tunnel connection and workstation status
+    private var indicatorColor: Color {
+        // If tunnel is not connected, use connection state color
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.indicatorColor
+        }
+        
+        // If tunnel is connected but workstation is offline, show orange
+        if !appState.workstationOnline {
+            return .orange
+        }
+        
+        // Both tunnel and workstation are online
+        return .green
+    }
+    
     var body: some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(appState.connectionState.indicatorColor)
+                .fill(indicatorColor)
                 .frame(width: 10, height: 10)
                 .overlay {
                     if case .connecting = appState.connectionState {
                         Circle()
                             .stroke(lineWidth: 2)
-                            .foregroundStyle(appState.connectionState.indicatorColor)
+                            .foregroundStyle(indicatorColor)
                             .opacity(0.5)
                             .scaleEffect(1.5)
                             .animation(
@@ -46,15 +62,31 @@ struct ConnectionPopover: View {
     @State private var showMagicLinkInput = false
     @State private var magicLink = ""
     
+    /// Computed color based on both tunnel connection and workstation status
+    private var indicatorColor: Color {
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.indicatorColor
+        }
+        return appState.workstationOnline ? .green : .orange
+    }
+    
+    /// Status text that includes workstation status
+    private var statusText: String {
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.statusText
+        }
+        return appState.workstationOnline ? "Connected" : "Connected (Workstation Offline)"
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // Status
             HStack {
                 Circle()
-                    .fill(appState.connectionState.indicatorColor)
+                    .fill(indicatorColor)
                     .frame(width: 12, height: 12)
                 
-                Text(appState.connectionState.statusText)
+                Text(statusText)
                     .font(.headline)
             }
             
@@ -185,13 +217,25 @@ struct InfoRow: View {
 
 #Preview {
     VStack(spacing: 40) {
+        // Connected with workstation online
         ConnectionIndicator()
             .environmentObject({
                 let state = AppState()
                 state.connectionState = .connected
+                state.workstationOnline = true
                 return state
             }())
         
+        // Connected with workstation offline
+        ConnectionIndicator()
+            .environmentObject({
+                let state = AppState()
+                state.connectionState = .connected
+                state.workstationOnline = false
+                return state
+            }())
+        
+        // Connecting
         ConnectionIndicator()
             .environmentObject({
                 let state = AppState()
@@ -199,6 +243,7 @@ struct InfoRow: View {
                 return state
             }())
         
+        // Disconnected
         ConnectionIndicator()
             .environmentObject({
                 let state = AppState()
@@ -206,6 +251,7 @@ struct InfoRow: View {
                 return state
             }())
         
+        // Error
         ConnectionIndicator()
             .environmentObject({
                 let state = AppState()

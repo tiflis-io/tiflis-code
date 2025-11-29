@@ -256,6 +256,11 @@ private func selectSession(_ id: String) {
 
 ### Connection States
 
+The app tracks two separate connection states:
+
+1. **Tunnel Connection** (`ConnectionState`) - Connection to the tunnel server
+2. **Workstation Status** (`workstationOnline: Bool`) - Whether the workstation is online
+
 ```swift
 enum ConnectionState: Equatable {
     case connected
@@ -263,18 +268,23 @@ enum ConnectionState: Equatable {
     case disconnected
     case error(String)
 }
+
+@Published var workstationOnline: Bool = true
 ```
 
-| State | Indicator | Color | Description |
-|-------|-----------|-------|-------------|
-| `connected` | ● | Green | Successfully connected to workstation |
-| `connecting` | ◐ (animated) | Yellow | Attempting to connect |
-| `disconnected` | ○ | Gray | Not connected |
-| `error` | ● | Red | Connection failed with error |
+| Tunnel State | Workstation Status | Indicator | Color | Description |
+|--------------|-------------------|-----------|-------|-------------|
+| `connected` | Online | ● | Green | Fully functional - tunnel and workstation both online |
+| `connected` | Offline | ● | Orange | Tunnel connected but workstation offline - limited functionality |
+| `connecting` | — | ◐ (animated) | Yellow | Attempting to connect to tunnel |
+| `disconnected` | — | ○ | Gray | Not connected to tunnel |
+| `error` | — | ● | Red | Connection failed with error |
+
+**Important:** The tunnel connection and workstation status are tracked independently. The tunnel server sends `connection.workstation_offline` and `connection.workstation_online` events when the workstation disconnects/reconnects, allowing the app to show the orange indicator even when the tunnel connection remains active.
 
 ### Connection Indicator
 
-The connection indicator is **always visible** in the toolbar:
+The connection indicator is **always visible** in the toolbar and reflects both tunnel connection and workstation status:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -285,8 +295,8 @@ The connection indicator is **always visible** in the toolbar:
                                         │ Tap
                                         ▼
                     ┌─────────────────────────────┐
-                    │  ● Connected                │
-                    │  ─────────────────────      │
+                    │  ● Connected                │  ← Green: both online
+                    │  ─────────────────────      │  Orange: workstation offline
                     │  Workstation: MacBook Pro   │
                     │  Tunnel ID: Z6q62aKz-F96    │
                     │  Version: 0.1.0             │
@@ -294,6 +304,29 @@ The connection indicator is **always visible** in the toolbar:
                     │                             │
                     │  [ Disconnect ]             │
                     └─────────────────────────────┘
+```
+
+**Indicator Colors:**
+- **Green (●)**: Tunnel connected AND workstation online - fully functional
+- **Orange (●)**: Tunnel connected BUT workstation offline - shows "Connected (Workstation Offline)" status text
+- **Yellow (◐)**: Connecting to tunnel (animated pulse)
+- **Gray (○)**: Disconnected from tunnel
+- **Red (●)**: Connection error
+
+The indicator color is computed based on both states:
+
+```swift
+private var indicatorColor: Color {
+    guard appState.connectionState.isConnected else {
+        return appState.connectionState.indicatorColor
+    }
+    // If tunnel is connected but workstation is offline, show orange
+    if !appState.workstationOnline {
+        return .orange
+    }
+    // Both tunnel and workstation are online
+    return .green
+}
 ```
 
 ### Connection Methods
@@ -690,6 +723,7 @@ final class AppState: ObservableObject {
     static let settingsId = "__settings__"
     
     @Published var connectionState: ConnectionState = .disconnected
+    @Published var workstationOnline: Bool = true  // Tracks workstation status separately
     @Published var sessions: [Session] = Session.mockSessions
     @Published var selectedSessionId: String? = "supervisor"
     
@@ -708,6 +742,12 @@ final class AppState: ObservableObject {
     func terminateSession(_ session: Session) { ... }
 }
 ```
+
+**Workstation Status Tracking:**
+- `workstationOnline` is observed from `ConnectionService.workstationOnlinePublisher`
+- Updated automatically when receiving `connection.workstation_offline` or `connection.workstation_online` events from the tunnel server
+- Defaults to `true` (assumes online until notified otherwise)
+- Reset to `true` when tunnel disconnects
 
 ### Settings Navigation
 
@@ -804,15 +844,31 @@ struct SessionRow: View {
 
 ### ConnectionIndicator
 
-Small colored dot with animation for connecting state:
+Small colored dot with animation for connecting state. The indicator color reflects both tunnel connection and workstation status:
 
 ```swift
 struct ConnectionIndicator: View {
     @EnvironmentObject private var appState: AppState
     
+    /// Computed color based on both tunnel connection and workstation status
+    private var indicatorColor: Color {
+        // If tunnel is not connected, use connection state color
+        guard appState.connectionState.isConnected else {
+            return appState.connectionState.indicatorColor
+        }
+        
+        // If tunnel is connected but workstation is offline, show orange
+        if !appState.workstationOnline {
+            return .orange
+        }
+        
+        // Both tunnel and workstation are online
+        return .green
+    }
+    
     var body: some View {
         Circle()
-            .fill(appState.connectionState.indicatorColor)
+            .fill(indicatorColor)
             .frame(width: 10, height: 10)
             .overlay {
                 if case .connecting = appState.connectionState {
@@ -822,6 +878,12 @@ struct ConnectionIndicator: View {
     }
 }
 ```
+
+**Color Logic:**
+- When tunnel is **not connected**: Uses `ConnectionState.indicatorColor` (yellow/gray/red)
+- When tunnel is **connected**:
+  - **Green**: `workstationOnline == true` (fully functional)
+  - **Orange**: `workstationOnline == false` (workstation offline, limited functionality)
 
 ### PromptInputBar
 

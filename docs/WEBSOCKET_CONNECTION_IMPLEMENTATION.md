@@ -16,6 +16,17 @@ January 2025
 
 ## Update History
 
+### January 30, 2025 - Workstation Status Tracking
+
+**New Feature:**
+1. **Workstation Status Tracking:** Added separate tracking for workstation online/offline status
+   - `ConnectionService` now publishes `workstationOnline: Bool` property
+   - Updated via `workstationDidGoOffline` and `workstationDidComeOnline` delegate methods
+   - `AppState` observes and publishes workstation status separately from tunnel connection
+   - UI shows **orange indicator** when tunnel is connected but workstation is offline
+   - Status text shows "Connected (Workstation Offline)" when workstation is offline
+   - Provides clear visual feedback when workstation disconnects from tunnel
+
 ### January 30, 2025 - Heartbeat Refactoring and Architecture Improvements
 
 **Major Improvements:**
@@ -219,9 +230,15 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 - **Features:**
   - Wraps `WebSocketClient` and coordinates connection lifecycle
   - Manages connection state transitions
+  - **Tracks workstation status separately from tunnel connection:**
+    - `@Published var workstationOnline: Bool` - Tracks whether workstation is online
+    - Updated via `workstationDidGoOffline` and `workstationDidComeOnline` delegate methods
+    - Defaults to `true` (assumes online until notified otherwise)
+    - Reset to `true` when tunnel disconnects
   - Handles credential loading from Keychain and UserDefaults
   - Provides `@Published` connection state for ViewModel observation
-  - Implements `WebSocketClientDelegate` to update connection state
+  - Provides `@Published` workstation online status for ViewModel observation
+  - Implements `WebSocketClientDelegate` to update connection state and workstation status
   - **Dependencies (injected):**
     - `WebSocketClient` (concrete type, not protocol, for Sendable safety)
     - `KeychainManaging`
@@ -235,11 +252,13 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 
 **Changes:**
 - Added `@AppStorage("tunnelId")` for tunnel ID persistence
+- Added `@Published var workstationOnline: Bool` to track workstation status separately
 - Injected `ConnectionService` as dependency (with default implementation)
 - Removed stub `connect()` implementation
 - Updated `connect()` to call `connectionService.connect()` asynchronously
 - Updated `disconnect()` to call `connectionService.disconnect()`
 - Added `observeConnectionState()` to subscribe to connection state changes via Combine
+- Added observation of `workstationOnlinePublisher` from `ConnectionService`
 - Updated `hasConnectionConfig` to check both `tunnelURL` and `tunnelId`
 
 **Dependency Injection:**
@@ -610,6 +629,7 @@ Automatic reconnection scheduled (if credentials available)
 - ✅ Heartbeat keeps connection alive
 - ✅ Invalid auth key rejection
 - ✅ Workstation offline/online events
+- ✅ Workstation status tracking in UI (orange indicator when workstation offline)
 - ✅ URL normalization (http→ws, missing ports)
 - ✅ Workstation offline error detection and handling
 - ✅ Multiple simultaneous connection attempt prevention

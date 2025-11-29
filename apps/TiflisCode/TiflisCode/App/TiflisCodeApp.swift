@@ -27,6 +27,7 @@ final class AppState: ObservableObject {
     static let settingsId = "__settings__"
     
     @Published var connectionState: ConnectionState = .disconnected
+    @Published var workstationOnline: Bool = true
     @Published var sessions: [Session] = Session.mockSessions
     @Published var selectedSessionId: String? = "supervisor"
     
@@ -78,6 +79,10 @@ final class AppState: ObservableObject {
         connectionService.connectionStatePublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$connectionState)
+        
+        connectionService.workstationOnlinePublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$workstationOnline)
     }
     
     // MARK: - Actions
