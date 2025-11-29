@@ -8,59 +8,66 @@
 
 import SwiftUI
 
-/// Terminal emulator view
-/// Note: This is a placeholder. The actual implementation will use SwiftTerm library.
+/// Terminal emulator view using SwiftTerm
 struct TerminalView: View {
     let session: Session
     @Binding var columnVisibility: NavigationSplitViewVisibility
     var onMenuTap: (() -> Void)?
     @EnvironmentObject private var appState: AppState
-    @State private var terminalOutput: [TerminalLine] = []
-    @State private var currentInput = ""
+    @StateObject private var viewModel: TerminalViewModel
     @State private var showConnectionPopover = false
-    @FocusState private var isInputFocused: Bool
     @Environment(\.isDrawerOpen) private var isDrawerOpen
+    
+    init(
+        session: Session,
+        columnVisibility: Binding<NavigationSplitViewVisibility>,
+        onMenuTap: (() -> Void)? = nil,
+        connectionService: ConnectionServicing
+    ) {
+        self.session = session
+        self._columnVisibility = columnVisibility
+        self.onMenuTap = onMenuTap
+        
+        // Create view model with dependencies from AppState
+        // Note: The session ID might be updated later by AppState when the backend responds
+        // The view model will observe session changes via the connectionService
+        self._viewModel = StateObject(
+            wrappedValue: TerminalViewModel(
+                session: session,
+                webSocketClient: connectionService.webSocketClient,
+                connectionService: connectionService
+            )
+        )
+    }
     
     var body: some View {
         VStack(spacing: 0) {
-            // Terminal content
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        ForEach(terminalOutput) { line in
-                            TerminalLineView(line: line)
-                                .id(line.id)
-                        }
-                        
-                        // Current input line
-                        HStack(spacing: 0) {
-                            Text("$ ")
-                                .foregroundStyle(.green)
-                            
-                            TextField("", text: $currentInput)
-                                .textFieldStyle(.plain)
-                                .foregroundStyle(.white)
-                                .focused($isInputFocused)
-                                .onSubmit {
-                                    executeCommand()
-                                }
-                        }
-                        .font(.system(.body, design: .monospaced))
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 4)
-                        .id("input")
-                    }
-                }
+            if viewModel.isConnected {
+                TerminalContentView(
+                    terminal: viewModel.terminal,
+                    viewModel: viewModel
+                )
                 .background(Color.black)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    hideKeyboard()
-                }
-                .onChange(of: terminalOutput.count) { _, _ in
-                    withAnimation {
-                        proxy.scrollTo("input", anchor: .bottom)
+            } else {
+                VStack(spacing: 16) {
+                    Image(systemName: "apple.terminal.fill")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.secondary)
+                    
+                    Text("Terminal Disconnected")
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                    
+                    if let error = viewModel.error {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(Color.black)
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -107,12 +114,6 @@ struct TerminalView: View {
             
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button {
-                        terminalOutput.removeAll()
-                    } label: {
-                        Label("Clear Terminal", systemImage: "trash")
-                    }
-                    
                     Button(role: .destructive) {
                         appState.terminateSession(session)
                     } label: {
@@ -125,112 +126,16 @@ struct TerminalView: View {
         }
         .toolbarBackground(.visible, for: .navigationBar)
         .onAppear {
-            loadInitialOutput()
-            isInputFocused = true
-        }
-        .onChange(of: isDrawerOpen) { oldValue, newValue in
-            if !newValue && oldValue {
-                // Drawer just closed - restore focus if this is terminal
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(250)) // Wait for animation
-                    isInputFocused = true
-                }
+            // Subscribe to session when view appears
+            // This will automatically request replay from server to restore terminal history
+            Task { @MainActor in
+                await viewModel.subscribeToSession()
             }
         }
-    }
-    
-    private func loadInitialOutput() {
-        terminalOutput = [
-            TerminalLine(content: "Welcome to Tiflis Code Terminal", type: .system),
-            TerminalLine(content: "Connected to workstation: MacBook Pro", type: .system),
-            TerminalLine(content: "Working directory: tiflis/tiflis-code", type: .system),
-            TerminalLine(content: "", type: .output),
-            TerminalLine(content: "$ ls -la", type: .input),
-            TerminalLine(content: "total 128", type: .output),
-            TerminalLine(content: "drwxr-xr-x  15 user  staff   480 Nov 29 10:30 .", type: .output),
-            TerminalLine(content: "drwxr-xr-x   8 user  staff   256 Nov 28 14:22 ..", type: .output),
-            TerminalLine(content: "-rw-r--r--   1 user  staff  3521 Nov 29 10:30 CLAUDE.md", type: .output),
-            TerminalLine(content: "drwxr-xr-x   4 user  staff   128 Nov 29 10:30 packages", type: .output),
-            TerminalLine(content: "", type: .output)
-        ]
-    }
-    
-    private func executeCommand() {
-        guard !currentInput.isEmpty else { return }
-        
-        // Add command to output
-        terminalOutput.append(TerminalLine(content: "$ \(currentInput)", type: .input))
-        
-        // Simulate command execution
-        let command = currentInput
-        currentInput = ""
-        
-        // Add mock output based on command
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            let output = mockCommandOutput(for: command)
-            for line in output {
-                terminalOutput.append(TerminalLine(content: line, type: .output))
-            }
-        }
-    }
-    
-    private func mockCommandOutput(for command: String) -> [String] {
-        switch command.lowercased() {
-        case "pwd":
-            return ["tiflis/tiflis-code"]
-        case "whoami":
-            return ["user"]
-        case "date":
-            return [Date().formatted()]
-        case let cmd where cmd.hasPrefix("echo "):
-            return [String(cmd.dropFirst(5))]
-        case "clear":
-            terminalOutput.removeAll()
-            return []
-        default:
-            return ["Command executed: \(command)"]
-        }
-    }
-}
-
-/// Represents a line in the terminal output
-struct TerminalLine: Identifiable {
-    let id = UUID()
-    let content: String
-    let type: LineType
-    
-    enum LineType {
-        case input
-        case output
-        case error
-        case system
-    }
-}
-
-/// View for rendering a single terminal line
-struct TerminalLineView: View {
-    let line: TerminalLine
-    
-    var body: some View {
-        Text(line.content)
-            .font(.system(.body, design: .monospaced))
-            .foregroundStyle(textColor)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 1)
-            .textSelection(.enabled)
-    }
-    
-    private var textColor: Color {
-        switch line.type {
-        case .input:
-            return .white
-        case .output:
-            return .white.opacity(0.9)
-        case .error:
-            return .red
-        case .system:
-            return .cyan
+        .onDisappear {
+            // Unsubscribe when view disappears to clean up resources
+            // State will be reloaded from server when view reappears
+            viewModel.unsubscribeFromSession()
         }
     }
 }
@@ -239,7 +144,12 @@ struct TerminalLineView: View {
 
 #Preview {
     NavigationStack {
-        TerminalView(session: .mockTerminalSession, columnVisibility: .constant(.all))
+        let appState = AppState()
+        TerminalView(
+            session: .mockTerminalSession,
+            columnVisibility: .constant(.all),
+            connectionService: appState.connectionService
+        )
     }
     .environmentObject(AppState())
 }

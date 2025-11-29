@@ -8,6 +8,15 @@ import { Session, type BaseSessionProps } from './session.js';
 import type { IPty } from 'node-pty';
 
 /**
+ * Terminal output message stored in buffer.
+ */
+export interface TerminalOutputMessage {
+  content_type: 'terminal';
+  content: string;
+  timestamp: number;
+}
+
+/**
  * Properties for creating a terminal session.
  */
 export interface TerminalSessionProps extends Omit<BaseSessionProps, 'type'> {
@@ -30,12 +39,16 @@ export class TerminalSession extends Session {
   private _cols: number;
   private _rows: number;
   private _outputCallbacks = new Set<TerminalOutputCallback>();
+  private _outputBuffer: TerminalOutputMessage[] = [];
+  private _bufferSize: number;
+  private _bufferIndex = 0; // For circular buffer
 
-  constructor(props: TerminalSessionProps) {
+  constructor(props: TerminalSessionProps & { bufferSize?: number }) {
     super({ ...props, type: 'terminal' });
     this._pty = props.pty;
     this._cols = props.cols;
     this._rows = props.rows;
+    this._bufferSize = props.bufferSize ?? 1000;
     this.setupPtyHandlers();
   }
 
@@ -112,6 +125,50 @@ export class TerminalSession extends Session {
     this._rows = rows;
     this._pty.resize(cols, rows);
     this.recordActivity();
+  }
+
+  /**
+   * Adds output message to in-memory buffer (circular buffer).
+   * When buffer is full, oldest messages are evicted.
+   */
+  addOutputToBuffer(message: TerminalOutputMessage): void {
+    if (this._outputBuffer.length < this._bufferSize) {
+      // Buffer not full yet, append
+      this._outputBuffer.push(message);
+    } else {
+      // Buffer is full, use circular buffer (overwrite oldest)
+      this._outputBuffer[this._bufferIndex] = message;
+      this._bufferIndex = (this._bufferIndex + 1) % this._bufferSize;
+    }
+  }
+
+  /**
+   * Gets output history from buffer.
+   * @param sinceTimestamp Optional timestamp to filter messages (only return messages after this timestamp)
+   * @param limit Optional limit on number of messages to return
+   * @returns Array of terminal output messages, ordered by timestamp (oldest first)
+   */
+  getOutputHistory(sinceTimestamp?: number, limit?: number): TerminalOutputMessage[] {
+    // Always sort by timestamp to ensure correct chronological order
+    // This is critical for circular buffer where order may be disrupted
+    let messages: TerminalOutputMessage[] = [...this._outputBuffer];
+
+    // Sort by timestamp first to ensure chronological order
+    // This is essential because circular buffer may not maintain order
+    messages.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Filter by timestamp if provided
+    // If sinceTimestamp is 0 or undefined, return all messages
+    if (sinceTimestamp !== undefined && sinceTimestamp > 0) {
+      messages = messages.filter((msg) => msg.timestamp >= sinceTimestamp);
+    }
+
+    // Apply limit if provided
+    if (limit !== undefined && limit > 0) {
+      messages = messages.slice(0, limit);
+    }
+
+    return messages;
   }
 
   /**

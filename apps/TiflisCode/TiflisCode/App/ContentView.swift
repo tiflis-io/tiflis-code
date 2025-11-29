@@ -185,6 +185,7 @@ struct SessionDetailView: View {
     let session: Session
     @Binding var columnVisibility: NavigationSplitViewVisibility
     var onMenuTap: (() -> Void)? = nil
+    @EnvironmentObject private var appState: AppState
     
     var body: some View {
         Group {
@@ -199,8 +200,10 @@ struct SessionDetailView: View {
                 TerminalView(
                     session: session,
                     columnVisibility: $columnVisibility,
-                    onMenuTap: onMenuTap
+                    onMenuTap: onMenuTap,
+                    connectionService: appState.connectionService
                 )
+                .id(session.id)  // Force SwiftUI to create new ViewModel for each session
             }
         }
     }

@@ -87,6 +87,12 @@ const EnvSchema = z.object({
   CLAUDE_SESSION_LOCK_WAIT_MS: z.coerce.number().default(1500),
   OPENCODE_DAEMON_URL: z.string().url().optional(),
 
+  // ─────────────────────────────────────────────────────────────
+  // Terminal Configuration
+  // ─────────────────────────────────────────────────────────────
+  /** Terminal output buffer size (number of messages, in-memory only, does not survive restarts) */
+  TERMINAL_OUTPUT_BUFFER_SIZE: z.coerce.number().default(1000),
+
   // Legacy (fallback for STT/TTS if specific keys not set)
   OPENAI_API_KEY: z.string().optional(),
 });

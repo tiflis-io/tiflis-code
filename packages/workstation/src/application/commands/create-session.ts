@@ -22,6 +22,7 @@ export interface CreateSessionDeps {
   sessionManager: SessionManager;
   workspaceDiscovery: WorkspaceDiscovery;
   messageBroadcaster: MessageBroadcaster;
+  workspacesRoot: string;
   logger: Logger;
 }
 
@@ -56,39 +57,75 @@ export class CreateSessionUseCase {
   async execute(params: CreateSessionParams): Promise<CreateSessionResult> {
     const { requestId, sessionType, workspace, project, worktree } = params;
 
-    // Validate workspace exists
-    const workspaceExists = await this.deps.workspaceDiscovery.pathExists(
-      this.deps.workspaceDiscovery.resolvePath(workspace)
-    );
-    if (!workspaceExists) {
-      throw new WorkspaceNotFoundError(workspace);
-    }
+    let workingDir: string;
+    let workspacePath: WorkspacePath | null = null;
 
-    // Validate project exists
-    const projectInfo = await this.deps.workspaceDiscovery.getProject(workspace, project);
-    if (!projectInfo) {
-      throw new ProjectNotFoundError(workspace, project);
+    // Terminal sessions can be created without workspace/project - use workspaces root
+    if (sessionType === 'terminal') {
+      // For terminal sessions, if workspace/project are empty or special values, use workspaces root
+      if (!workspace || workspace === 'home' || !project || project === 'default') {
+        workingDir = this.deps.workspacesRoot;
+        // Terminal sessions don't have workspace/project, set to null for broadcast
+        workspacePath = null;
+      } else {
+        // Terminal session with specific workspace/project - validate and use it
+        const workspaceExists = await this.deps.workspaceDiscovery.pathExists(
+          this.deps.workspaceDiscovery.resolvePath(workspace)
+        );
+        if (!workspaceExists) {
+          throw new WorkspaceNotFoundError(workspace);
+        }
+
+        const projectInfo = await this.deps.workspaceDiscovery.getProject(workspace, project);
+        if (!projectInfo) {
+          throw new ProjectNotFoundError(workspace, project);
+        }
+
+        workingDir = this.deps.workspaceDiscovery.resolvePath(workspace, project, worktree);
+        const workingDirExists = await this.deps.workspaceDiscovery.pathExists(workingDir);
+        if (!workingDirExists) {
+          throw new ProjectNotFoundError(workspace, `${project}${worktree ? `--${worktree}` : ''}`);
+        }
+
+        workspacePath = new WorkspacePath(workspace, project, worktree);
+      }
+    } else {
+      // Agent sessions require workspace and project
+      // Validate workspace exists
+      const workspaceExists = await this.deps.workspaceDiscovery.pathExists(
+        this.deps.workspaceDiscovery.resolvePath(workspace)
+      );
+      if (!workspaceExists) {
+        throw new WorkspaceNotFoundError(workspace);
+      }
+
+      // Validate project exists
+      const projectInfo = await this.deps.workspaceDiscovery.getProject(workspace, project);
+      if (!projectInfo) {
+        throw new ProjectNotFoundError(workspace, project);
+      }
+
+      // Resolve working directory
+      workingDir = this.deps.workspaceDiscovery.resolvePath(workspace, project, worktree);
+
+      // Validate working directory exists
+      const workingDirExists = await this.deps.workspaceDiscovery.pathExists(workingDir);
+      if (!workingDirExists) {
+        throw new ProjectNotFoundError(workspace, `${project}${worktree ? `--${worktree}` : ''}`);
+      }
+
+      // Create workspace path
+      workspacePath = new WorkspacePath(workspace, project, worktree);
     }
 
     // Check session limits
     this.checkSessionLimits(sessionType);
 
-    // Resolve working directory
-    const workingDir = this.deps.workspaceDiscovery.resolvePath(workspace, project, worktree);
-
-    // Validate working directory exists
-    const workingDirExists = await this.deps.workspaceDiscovery.pathExists(workingDir);
-    if (!workingDirExists) {
-      throw new ProjectNotFoundError(workspace, `${project}${worktree ? `--${worktree}` : ''}`);
-    }
-
-    // Create workspace path
-    const workspacePath = new WorkspacePath(workspace, project, worktree);
-
     // Create session
+    // For terminal sessions without workspace/project, workspacePath is null
     const session = await this.deps.sessionManager.createSession({
       sessionType,
-      workspacePath,
+      workspacePath: workspacePath ?? undefined,
       workingDir,
     });
 
@@ -96,7 +133,9 @@ export class CreateSessionUseCase {
       {
         sessionId: session.id.value,
         sessionType,
-        workspacePath: workspacePath.fullPath,
+        workspacePath: workspacePath ? workspacePath.fullPath : undefined,
+        workspace: workspacePath ? workspace : undefined,
+        project: workspacePath ? project : undefined,
         workingDir,
       },
       'Session created'

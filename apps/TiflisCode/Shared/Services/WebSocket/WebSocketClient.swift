@@ -642,6 +642,35 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     
     @MainActor
     private func handleReceivedMessage(_ message: [String: Any]) {
+        // Handle tunnel-wrapped messages (forward.session_output)
+        if let messageType = message["type"] as? String, messageType == "forward.session_output" {
+            WebSocketClient.log("📦 WebSocket: Unwrapping forward.session_output message")
+            
+            // Unwrap tunnel message: extract the actual session.output message from payload
+            // The payload can be either a String (JSON) or already a Dictionary
+            if let payloadString = message["payload"] as? String {
+                // Payload is a JSON string - parse it
+                if let payloadData = payloadString.data(using: .utf8),
+                   let unwrappedMessage = try? JSONSerialization.jsonObject(with: payloadData) as? [String: Any] {
+                    WebSocketClient.log("✅ WebSocket: Unwrapped forward.session_output (from string)")
+                    // Forward the unwrapped message to delegate
+                    delegate?.webSocketClient(self, didReceiveMessage: unwrappedMessage)
+                    return
+                } else {
+                    WebSocketClient.log("⚠️ WebSocket: Failed to parse payload string as JSON")
+                    return
+                }
+            } else if let payloadDict = message["payload"] as? [String: Any] {
+                // Payload is already a dictionary - forward it directly
+                WebSocketClient.log("✅ WebSocket: Unwrapped forward.session_output (from dict)")
+                delegate?.webSocketClient(self, didReceiveMessage: payloadDict)
+                return
+            } else {
+                WebSocketClient.log("⚠️ WebSocket: forward.session_output payload is neither String nor Dictionary: \(type(of: message["payload"]))")
+                return
+            }
+        }
+        
         guard let parsed = WebSocketMessage.parse(message) else {
             // Unknown message, forward to delegate
             delegate?.webSocketClient(self, didReceiveMessage: message)

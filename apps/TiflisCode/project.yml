@@ -14,6 +14,11 @@ options:
   generateEmptyDirectories: true
   groupSortPosition: top
 
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: "1.5.0"
+
 settings:
   base:
     SWIFT_VERSION: "6.0"
@@ -33,6 +38,8 @@ targets:
     resources:
       - path: TiflisCode/Resources/Assets.xcassets
       - path: TiflisCode/Resources/Info.plist
+    dependencies:
+      - package: SwiftTerm
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.tiflis.TiflisCode

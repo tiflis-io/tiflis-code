@@ -28,8 +28,10 @@ import { ListSessionsUseCase } from './application/queries/list-sessions.js';
 import { SubscriptionService } from './application/services/subscription-service.js';
 import { MessageBroadcasterImpl } from './application/services/message-broadcaster-impl.js';
 import { InMemorySessionManager } from './infrastructure/persistence/in-memory-session-manager.js';
+import { DomainError } from './domain/errors/domain-errors.js';
 import { SupervisorAgent } from './infrastructure/agents/supervisor/supervisor-agent.js';
-import { AuthMessageSchema, getMessageType } from './protocol/schemas.js';
+import { AuthMessageSchema, getMessageType, parseClientMessage } from './protocol/schemas.js';
+import type WebSocket from 'ws';
 
 /**
  * Prints the startup banner to console.
@@ -70,6 +72,69 @@ ${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${pu
        ${dim}https://github.com/tiflis-io/tiflis-code${reset}
 `;
   process.stdout.write(banner);
+}
+
+/**
+ * Handles non-auth messages received via tunnel.
+ * Routes messages through message handlers and sends responses via tunnel.
+ */
+function handleTunnelMessage(
+  rawMessage: string,
+  tunnelClient: TunnelClient,
+  messageBroadcaster: MessageBroadcasterImpl | null,
+  createMessageHandlers: () => MessageHandlers,
+  logger: ReturnType<typeof createLogger>
+): void {
+  if (!messageBroadcaster) {
+    logger.warn('Message broadcaster not initialized, cannot route tunnel message');
+    return;
+  }
+
+  try {
+    const data: unknown = JSON.parse(rawMessage);
+    const messageType = getMessageType(data);
+    
+    if (!messageType) {
+      logger.warn({ message: rawMessage.slice(0, 100) }, 'No message type in tunnel message');
+      return;
+    }
+
+    // Create a virtual socket that sends responses through the tunnel
+    // For tunnel messages, we broadcast to all authenticated clients
+    // (The tunnel server will route to the correct client based on device ID)
+    const virtualSocket = {
+      send: (response: string) => {
+        // Send response through tunnel - it will be broadcast to all clients
+        // The tunnel server routes based on message content
+        tunnelClient.send(response);
+        return true;
+      },
+      readyState: 1, // Always ready for tunnel
+    } as unknown as WebSocket;
+
+    // Get the message handlers
+    const handlers = createMessageHandlers();
+    const handler = handlers[messageType as keyof MessageHandlers];
+    
+    if (!handler) {
+      logger.warn({ type: messageType }, 'No handler for tunnel message type');
+      return;
+    }
+
+    // Parse the message
+    const parsedMessage = parseClientMessage(data);
+    if (!parsedMessage) {
+      logger.warn({ type: messageType }, 'Failed to parse tunnel message');
+      return;
+    }
+
+    // Execute the handler
+    handler(virtualSocket, parsedMessage).catch((error) => {
+      logger.error({ error, type: messageType }, 'Handler error for tunnel message');
+    });
+  } catch (error) {
+    logger.error({ error, message: rawMessage.slice(0, 100) }, 'Failed to handle tunnel message');
+  }
 }
 
 /**
@@ -333,39 +398,62 @@ async function bootstrap(): Promise<void> {
           worktree?: string;
         };
       };
-      const result = await createSession.execute({
-        requestId: createMessage.id,
-        sessionType: createMessage.payload.session_type,
-        workspace: createMessage.payload.workspace,
-        project: createMessage.payload.project,
-        worktree: createMessage.payload.worktree,
-      });
-      socket.send(JSON.stringify(result.response));
-      messageBroadcaster.broadcastToAll(JSON.stringify(result.broadcast));
+      
+      try {
+        const result = await createSession.execute({
+          requestId: createMessage.id,
+          sessionType: createMessage.payload.session_type,
+          workspace: createMessage.payload.workspace,
+          project: createMessage.payload.project,
+          worktree: createMessage.payload.worktree,
+        });
+        socket.send(JSON.stringify(result.response));
+        messageBroadcaster.broadcastToAll(JSON.stringify(result.broadcast));
 
-      // Attach terminal output streaming for terminal sessions
-      if (createMessage.payload.session_type === 'terminal') {
-        const sessionId = new SessionId(result.response.payload.session_id as string);
-        const session = sessionManager.getSession(sessionId);
-        // Capture reference for the callback closure (guaranteed non-null from parent check)
-        const bcaster = messageBroadcaster;
-        if (session && isTerminalSession(session)) {
-          session.onOutput((data: string) => {
-            const outputEvent = {
-              type: 'session.output',
-              session_id: sessionId.value,
-              payload: {
+        // Attach terminal output streaming for terminal sessions
+        if (createMessage.payload.session_type === 'terminal') {
+          const sessionId = new SessionId(result.response.payload.session_id as string);
+          const session = sessionManager.getSession(sessionId);
+          // Capture reference for the callback closure (guaranteed non-null from parent check)
+          const bcaster = messageBroadcaster;
+          if (session && isTerminalSession(session)) {
+            session.onOutput((data: string) => {
+              const timestamp = Date.now();
+              const outputEvent = {
+                type: 'session.output',
+                session_id: sessionId.value,
+                payload: {
+                  content_type: 'terminal',
+                  content: data, // ✅ Correct field name per PROTOCOL.md
+                  timestamp, // ✅ Required timestamp per PROTOCOL.md
+                },
+              };
+              
+              // Add to in-memory buffer for replay
+              session.addOutputToBuffer({
                 content_type: 'terminal',
-                data,
-              },
-            };
-            // Send to all subscribers via broadcaster
-            // Note: Direct socket.send() is not used for tunnel connections
-            // All messages go through broadcaster which handles both direct and tunnel connections
-            // Also broadcast through tunnel
-            bcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
-          });
+                content: data,
+                timestamp,
+              });
+              
+              // Send to all subscribers via broadcaster
+              // Note: Direct socket.send() is not used for tunnel connections
+              // All messages go through broadcaster which handles both direct and tunnel connections
+              // Also broadcast through tunnel
+              bcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
+            });
+          }
         }
+      } catch (error) {
+        logger.error({ error, requestId: createMessage.id }, 'Failed to create session');
+        socket.send(JSON.stringify({
+          type: 'error',
+          id: createMessage.id,
+          payload: {
+            code: error instanceof DomainError ? error.code : 'INTERNAL_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to create session',
+          },
+        }));
       }
     },
 
@@ -475,9 +563,100 @@ async function bootstrap(): Promise<void> {
       return Promise.resolve();
     },
 
-    'session.replay': (_socket, _message) => {
-      // TODO: Implement session replay
-      logger.warn('session.replay not yet implemented');
+    'session.replay': (socket, message) => {
+      const replayMessage = message as {
+        session_id: string;
+        payload: {
+          since_timestamp?: number;
+          limit?: number;
+        };
+      };
+      
+      try {
+        const sessionId = new SessionId(replayMessage.session_id);
+        const session = sessionManager.getSession(sessionId);
+        
+        if (!session) {
+          socket.send(JSON.stringify({
+            type: 'error',
+            session_id: replayMessage.session_id,
+            payload: {
+              code: 'SESSION_NOT_FOUND',
+              message: `Session not found: ${replayMessage.session_id}`,
+            },
+          }));
+          return Promise.resolve();
+        }
+        
+        const sinceTimestamp = replayMessage.payload.since_timestamp;
+        const limit = replayMessage.payload.limit ?? 100;
+        
+        // Handle terminal sessions
+        if (isTerminalSession(session)) {
+          const outputHistory = session.getOutputHistory(sinceTimestamp, limit);
+          
+          // Convert to ReplayedMessage format
+          const replayedMessages = outputHistory.map((msg) => ({
+            content_type: 'terminal' as const,
+            content: msg.content,
+            timestamp: msg.timestamp,
+          }));
+          
+          // Check if there are more messages (if we got exactly the limit, there might be more)
+          const hasMore = outputHistory.length === limit;
+          
+          socket.send(JSON.stringify({
+            type: 'session.replay.data',
+            session_id: replayMessage.session_id,
+            payload: {
+              messages: replayedMessages,
+              has_more: hasMore,
+            },
+          }));
+          
+          logger.debug(
+            { 
+              sessionId: replayMessage.session_id, 
+              messageCount: replayedMessages.length, 
+              hasMore,
+              sinceTimestamp,
+              limit,
+              bufferSize: session.getOutputHistory().length
+            },
+            'Terminal session replay sent'
+          );
+        } else {
+          // For agent sessions, use SessionReplayService (if available)
+          // For now, return empty replay for non-terminal sessions
+          socket.send(JSON.stringify({
+            type: 'session.replay.data',
+            session_id: replayMessage.session_id,
+            payload: {
+              messages: [],
+              has_more: false,
+            },
+          }));
+          
+          logger.debug(
+            { sessionId: replayMessage.session_id, sessionType: session.type },
+            'Session replay not implemented for this session type'
+          );
+        }
+      } catch (error) {
+        logger.error(
+          { error, sessionId: replayMessage.session_id },
+          'Failed to replay session'
+        );
+        socket.send(JSON.stringify({
+          type: 'error',
+          session_id: replayMessage.session_id,
+          payload: {
+            code: 'REPLAY_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to replay session',
+          },
+        }));
+      }
+      
       return Promise.resolve();
     },
   });
@@ -554,11 +733,16 @@ async function bootstrap(): Promise<void> {
           if (messageType === 'auth') {
             handleAuthMessageViaTunnel(data, tunnelClient, authenticateClient, logger);
           } else {
-            logger.debug(
-              { type: messageType, message: message.slice(0, 100) },
-              'Received client message via tunnel'
+            // Route other message types through message router
+            // For tunnel messages, we need to send responses via tunnelClient
+            // We'll create a virtual socket that sends through the tunnel
+            handleTunnelMessage(
+              message,
+              tunnelClient,
+              messageBroadcaster,
+              createMessageHandlers,
+              logger
             );
-            // TODO: Route other message types through message router
           }
         } catch (error) {
           logger.warn(
@@ -577,12 +761,13 @@ async function bootstrap(): Promise<void> {
     logger,
   });
 
-  createSession = new CreateSessionUseCase({
-    sessionManager,
-    workspaceDiscovery,
-    messageBroadcaster,
-    logger,
-  });
+    createSession = new CreateSessionUseCase({
+      sessionManager,
+      workspaceDiscovery,
+      messageBroadcaster,
+      workspacesRoot: env.WORKSPACES_ROOT,
+      logger,
+    });
 
   terminateSession = new TerminateSessionUseCase({
     sessionManager,
@@ -669,18 +854,24 @@ async function bootstrap(): Promise<void> {
 
     try {
       // Disconnect from tunnel
+      logger.info('Disconnecting from tunnel...');
       tunnelClient.disconnect();
 
       // Cleanup agent sessions
+      logger.info('Cleaning up agent sessions...');
       agentSessionManager.cleanup();
 
-      // Terminate all sessions
+      // Terminate all sessions (waits for all PTY processes to terminate gracefully)
+      logger.info('Terminating all sessions...');
       await sessionManager.terminateAll();
+      logger.info('All sessions terminated');
 
       // Close HTTP server
+      logger.info('Closing HTTP server...');
       await app.close();
 
       // Close database
+      logger.info('Closing database...');
       closeDatabase();
 
       logger.info('Shutdown complete');

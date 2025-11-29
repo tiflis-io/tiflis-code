@@ -10,6 +10,8 @@ import type { Logger } from 'pino';
 import type { TerminalManager } from '../../domain/ports/session-manager.js';
 import { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
+import { getEnv } from '../../config/env.js';
+import { SESSION_CONFIG } from '../../config/constants.js';
 
 /**
  * Default shell to use for terminal sessions.
@@ -27,9 +29,13 @@ export interface PtyManagerConfig {
  */
 export class PtyManager implements TerminalManager {
   private readonly logger: Logger;
+  private readonly bufferSize: number;
 
   constructor(config: PtyManagerConfig) {
     this.logger = config.logger.child({ component: 'pty-manager' });
+    // Get buffer size from environment, fallback to default
+    const env = getEnv();
+    this.bufferSize = env.TERMINAL_OUTPUT_BUFFER_SIZE ?? SESSION_CONFIG.DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE;
   }
 
   /**
@@ -61,6 +67,7 @@ export class PtyManager implements TerminalManager {
       cols,
       rows,
       workingDir,
+      bufferSize: this.bufferSize,
     });
 
     this.logger.info(

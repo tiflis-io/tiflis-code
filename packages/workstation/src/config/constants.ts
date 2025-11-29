@@ -70,6 +70,9 @@ export const SESSION_CONFIG = {
 
   /** Data retention period for terminated sessions (30 days in ms) */
   DATA_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
+
+  /** Default terminal output buffer size (number of messages) */
+  DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE: 1000,
 } as const;
 
 /**

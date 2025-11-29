@@ -60,6 +60,13 @@ protocol ConnectionServicing {
     
     /// Publisher for workstation protocol version changes
     var workstationProtocolVersionPublisher: Published<String>.Publisher { get }
+    
+    /// WebSocket client for sending messages (read-only access)
+    var webSocketClient: WebSocketClientProtocol { get }
+    
+    /// Publisher for all incoming WebSocket messages
+    /// View models can subscribe and filter by message type or session ID
+    var messagePublisher: PassthroughSubject<[String: Any], Never> { get }
 }
 
 /// Service that manages WebSocket connection lifecycle
@@ -68,7 +75,7 @@ final class ConnectionService: ConnectionServicing {
     // MARK: - Dependencies
     
     // Store as concrete type to avoid Sendable issues when passing across actor boundaries
-    private let webSocketClient: WebSocketClient
+    private let _webSocketClient: WebSocketClient
     private let keychainManager: KeychainManaging
     private let deviceIDManager: DeviceIDManaging
     
@@ -110,6 +117,15 @@ final class ConnectionService: ConnectionServicing {
         $workstationProtocolVersion
     }
     
+    /// Publisher for all incoming WebSocket messages
+    /// View models can subscribe and filter by message type or session ID
+    let messagePublisher = PassthroughSubject<[String: Any], Never>()
+    
+    /// WebSocket client for sending messages (exposed for view models)
+    var webSocketClient: WebSocketClientProtocol {
+        return _webSocketClient
+    }
+    
     // MARK: - Stored Credentials
     
     private let userDefaults: UserDefaults
@@ -130,13 +146,13 @@ final class ConnectionService: ConnectionServicing {
         deviceIDManager: DeviceIDManaging,
         userDefaults: UserDefaults = .standard
     ) {
-        self.webSocketClient = webSocketClient
+        self._webSocketClient = webSocketClient
         self.keychainManager = keychainManager
         self.deviceIDManager = deviceIDManager
         self.userDefaults = userDefaults
         
         // Set delegate
-        webSocketClient.delegate = self
+        _webSocketClient.delegate = self
     }
     
     // MARK: - Connection Methods
@@ -155,7 +171,7 @@ final class ConnectionService: ConnectionServicing {
         connectionState = .connecting
         
         do {
-            try await webSocketClient.connect(
+            try await _webSocketClient.connect(
                 url: tunnelURL,
                 tunnelId: tunnelId,
                 authKey: authKey,
@@ -168,7 +184,7 @@ final class ConnectionService: ConnectionServicing {
     }
     
     func disconnect() {
-        webSocketClient.disconnect()
+        _webSocketClient.disconnect()
         connectionState = .disconnected
     }
 }
@@ -189,11 +205,34 @@ extension ConnectionService: WebSocketClientDelegate {
         self.workstationName = workstationName ?? ""
         self.workstationVersion = workstationVersion ?? ""
         self.workstationProtocolVersion = protocolVersion ?? ""
+        
+        // After authentication, request state sync to restore sessions
+        // This is especially important after app restart
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.requestSync()
+        }
+    }
+    
+    /// Requests state synchronization from workstation server
+    /// This restores active sessions and subscriptions after app restart
+    private func requestSync() async {
+        let requestId = UUID().uuidString
+        let message: [String: Any] = [
+            "type": "sync",
+            "id": requestId
+        ]
+        
+        do {
+            try _webSocketClient.sendMessage(message)
+        } catch {
+            // Sync failure is non-critical, sessions will be discovered via broadcasts
+        }
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, didReceiveMessage message: [String: Any]) {
-        // Messages are handled by specific view models
-        // This service just manages connection state
+        // Publish message to subscribers (view models can filter by session ID or message type)
+        messagePublisher.send(message)
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, didDisconnect error: Error?) {

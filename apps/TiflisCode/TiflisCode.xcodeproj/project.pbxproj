@@ -25,13 +25,17 @@
 		536A7FE56FE78B6C906137F9 /* WebSocketClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */; };
 		536CA474A3C8861D6711EB8A /* TiflisCodeApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = EEFB352247A4D4566C00A9EB /* TiflisCodeApp.swift */; };
 		630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */; };
+		6A038B6789808CF20CD61768 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 5A15037F4628204D7C405F29 /* SwiftTerm */; };
 		6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */; };
 		7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45A48D49667369980A068E8 /* TerminalView.swift */; };
 		82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */; };
 		A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
 		A61CAD060921D84F841049E2 /* WebSocketClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */; };
+		A835864D0D6231AB02C5A71B /* TerminalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20190820F4474054253D38F /* TerminalContentView.swift */; };
+		AA84AC61B7F9EEEC81ED5329 /* TerminalViewUIKit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */; };
 		AFB090762A9E910954C3C516 /* DeviceIDManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */; };
 		B18C1791D264CDF1C57F9260 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB369A0324105A5DCC91A1C /* KeychainManager.swift */; };
+		B3904A366C4C66BF93C76DBA /* TerminalViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */; };
 		BCEE2A65F40484630E2A94A5 /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */; };
 		BD7ABAF416CEFB24433634FC /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */; };
 		C431D4E024DC3D9EB732D86D /* AgentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5E70F9FE87A722D9D13259 /* AgentType.swift */; };
@@ -74,12 +78,14 @@
 
 /* Begin PBXFileReference section */
 		0B4CC7A25F1ECFCBEA3CAD66 /* TiflisCodeWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeWatchApp.swift; sourceTree = "<group>"; };
+		1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewModel.swift; sourceTree = "<group>"; };
 		1EB369A0324105A5DCC91A1C /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		2D35A999999055053D03394B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2FD23EFAA7CD1C122DF89A3E /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
 		308C9D6BE0BF345A41C8A1E5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3E96900D8413F72E4B064E10 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
 		545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketMessage.swift; sourceTree = "<group>"; };
+		5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewUIKit.swift; sourceTree = "<group>"; };
 		68528358025709970E234FF0 /* TiflisCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeUITests.swift; sourceTree = "<group>"; };
 		6A5E7DEF52A06D185EC483DC /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIDManager.swift; sourceTree = "<group>"; };
@@ -87,25 +93,37 @@
 		7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
 		861C8E9521B9F35E6255C252 /* PromptInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInputBar.swift; sourceTree = "<group>"; };
 		8C5E70F9FE87A722D9D13259 /* AgentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentType.swift; sourceTree = "<group>"; };
-		96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = TiflisCodeWatch.app; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
-		B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TiflisCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TiflisCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5473A38F6C188E71D88D9AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClientProtocol.swift; sourceTree = "<group>"; };
 		CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
+		D20190820F4474054253D38F /* TerminalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalContentView.swift; sourceTree = "<group>"; };
 		D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionIndicator.swift; sourceTree = "<group>"; };
 		DD369F38E321907820448CEA /* ConnectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionService.swift; sourceTree = "<group>"; };
 		E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
 		E45A48D49667369980A068E8 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		E8886AE584CDB64D5088E0F3 /* TiflisCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeTests.swift; sourceTree = "<group>"; };
-		EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TiflisCodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TiflisCodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		EEFB352247A4D4566C00A9EB /* TiflisCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeApp.swift; sourceTree = "<group>"; };
 		F1075CEFB65E42C5562E167F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F742B2C565A5712825647601 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		054A1F3CD484DA9DB028218D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6A038B6789808CF20CD61768 /* SwiftTerm in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0802C6B470B53083E42CC301 /* Chat */ = {
@@ -189,7 +207,10 @@
 		47B9610030BC0EA6B32CEC71 /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				D20190820F4474054253D38F /* TerminalContentView.swift */,
 				E45A48D49667369980A068E8 /* TerminalView.swift */,
+				1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */,
+				5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */,
 			);
 			path = Terminal;
 			sourceTree = "<group>";
@@ -210,7 +231,7 @@
 				723A2D053CB58A252A985D76 /* Tiflis Code.app */,
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
-				96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */,
+				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -423,6 +444,7 @@
 			buildPhases = (
 				91D2533F4F7AD0DC2D994E24 /* Sources */,
 				CDCAE4CEA8C8F63DAC40AEED /* Resources */,
+				054A1F3CD484DA9DB028218D /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -430,6 +452,7 @@
 			);
 			name = TiflisCode;
 			packageProductDependencies = (
+				5A15037F4628204D7C405F29 /* SwiftTerm */,
 			);
 			productName = TiflisCode;
 			productReference = 723A2D053CB58A252A985D76 /* Tiflis Code.app */;
@@ -450,7 +473,7 @@
 			packageProductDependencies = (
 			);
 			productName = TiflisCodeWatch;
-			productReference = 96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */;
+			productReference = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -460,7 +483,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 2610;
+				LastUpgradeCheck = 1600;
 				TargetAttributes = {
 					4293F37DA3BD351CBB50BF55 = {
 						DevelopmentTeam = "";
@@ -484,6 +507,9 @@
 			);
 			mainGroup = 77466C69E8BC1B2C382C4BAF;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */,
+			);
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -556,7 +582,10 @@
 				1C47FE55685B1E3B62D07552 /* Session.swift in Sources */,
 				2D8A29E5869A02DD2963955D /* SettingsView.swift in Sources */,
 				BCEE2A65F40484630E2A94A5 /* SidebarView.swift in Sources */,
+				A835864D0D6231AB02C5A71B /* TerminalContentView.swift in Sources */,
 				7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */,
+				B3904A366C4C66BF93C76DBA /* TerminalViewModel.swift in Sources */,
+				AA84AC61B7F9EEEC81ED5329 /* TerminalViewUIKit.swift in Sources */,
 				536CA474A3C8861D6711EB8A /* TiflisCodeApp.swift in Sources */,
 				BD7ABAF416CEFB24433634FC /* View+Extensions.swift in Sources */,
 				D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */,
@@ -628,7 +657,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -653,7 +681,6 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -743,7 +770,6 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -761,7 +787,6 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
@@ -900,6 +925,25 @@
 			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/migueldeicaza/SwiftTerm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5A15037F4628204D7C405F29 /* SwiftTerm */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */;
+			productName = SwiftTerm;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
 }
