@@ -15,6 +15,9 @@ import type { AuthSuccessMessage } from '../../protocol/messages.js';
 export interface AuthenticateClientDeps {
   clientRegistry: ClientRegistry;
   expectedAuthKey: AuthKey;
+  workstationName: string;
+  workstationVersion: string;
+  protocolVersion: string;
   logger: Logger;
 }
 
@@ -71,6 +74,9 @@ export class AuthenticateClientUseCase {
       type: 'auth.success',
       payload: {
         device_id: deviceId.value,
+        workstation_name: this.deps.workstationName,
+        workstation_version: this.deps.workstationVersion,
+        protocol_version: this.deps.protocolVersion,
         restored_subscriptions: restoredSubscriptions.length > 0 ? restoredSubscriptions : undefined,
       },
     };

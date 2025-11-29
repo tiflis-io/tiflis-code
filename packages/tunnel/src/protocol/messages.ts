@@ -58,6 +58,8 @@ export interface ConnectedMessage {
   type: 'connected';
   payload: {
     tunnel_id: string;
+    tunnel_version?: string; // Tunnel server version (semver)
+    protocol_version?: string; // Protocol version (semver)
     restored?: boolean;
   };
 }

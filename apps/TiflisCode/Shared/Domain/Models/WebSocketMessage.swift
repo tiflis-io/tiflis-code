@@ -42,10 +42,14 @@ struct ConnectedMessage: Codable {
     
     struct ConnectedPayload: Codable {
         let tunnelId: String
+        let tunnelVersion: String?
+        let protocolVersion: String?
         let restored: Bool?
         
         enum CodingKeys: String, CodingKey {
             case tunnelId = "tunnel_id"
+            case tunnelVersion = "tunnel_version"
+            case protocolVersion = "protocol_version"
             case restored
         }
     }
@@ -81,10 +85,16 @@ struct AuthSuccessMessage: Codable {
     
     struct AuthSuccessPayload: Codable {
         let deviceId: String
+        let workstationName: String?
+        let workstationVersion: String?
+        let protocolVersion: String?
         let restoredSubscriptions: [String]?
         
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
+            case workstationName = "workstation_name"
+            case workstationVersion = "workstation_version"
+            case protocolVersion = "protocol_version"
             case restoredSubscriptions = "restored_subscriptions"
         }
     }

@@ -477,6 +477,9 @@ If failed:
   "type": "auth.success",
   "payload": {
     "device_id": "device-uuid",
+    "workstation_name": "My MacBook",
+    "workstation_version": "0.1.0",
+    "protocol_version": "1.0",
     "restored_subscriptions": ["session-1", "session-2"]
   }
 }

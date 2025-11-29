@@ -21,8 +21,27 @@ struct SettingsView: View {
     @State private var showQRScanner = false
     @State private var showMagicLinkInput = false
     @State private var magicLink = ""
+    @State private var showDisconnectConfirmation = false
     
     private let keychainManager = KeychainManager()
+    
+    /// App version from Bundle
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
+    }
+    
+    /// Formats version with protocol version inline (e.g., "0.1.0 (1.0.0)")
+    private func formatVersionWithProtocol(version: String, protocolVersion: String) -> String {
+        if version.isEmpty {
+            return "—"
+        }
+        if protocolVersion.isEmpty {
+            return version
+        }
+        return "\(version) (\(protocolVersion))"
+    }
     
     /// Computed color based on both tunnel connection and workstation status
     private var connectionIndicatorColor: Color {
@@ -44,7 +63,7 @@ struct SettingsView: View {
         Form {
             // Connection Section
             Section {
-                // Connection status
+                // 1. Connection status
                 HStack {
                     Circle()
                         .fill(connectionIndicatorColor)
@@ -56,7 +75,7 @@ struct SettingsView: View {
                     
                     if appState.connectionState.isConnected {
                         Button("Disconnect") {
-                            appState.disconnect()
+                            showDisconnectConfirmation = true
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
@@ -64,14 +83,24 @@ struct SettingsView: View {
                 }
                 
                 if appState.connectionState.isConnected {
-                    // Show connection info when connected
+                    // 2. Workstation name
                     HStack {
                         Text("Workstation")
                         Spacer()
-                        Text("MacBook Pro")
+                        Text(appState.workstationName.isEmpty ? "—" : appState.workstationName)
                             .foregroundStyle(.secondary)
                     }
                     
+                    // 3. Tunnel
+                    HStack {
+                        Text("Tunnel")
+                        Spacer()
+                        Text(tunnelURL)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    
+                    // 4. Tunnel ID
                     HStack {
                         Text("Tunnel ID")
                         Spacer()
@@ -80,19 +109,26 @@ struct SettingsView: View {
                             .font(.system(.body, design: .monospaced))
                     }
                     
+                    // 5. Tunnel version (with protocol version inline)
                     HStack {
-                        Text("Version")
+                        Text("Tunnel Version")
                         Spacer()
-                        Text("0.1.0")
-                            .foregroundStyle(.secondary)
+                        Text(formatVersionWithProtocol(
+                            version: appState.tunnelVersion,
+                            protocolVersion: appState.tunnelProtocolVersion
+                        ))
+                        .foregroundStyle(.secondary)
                     }
                     
+                    // 6. Workstation version (with protocol version inline)
                     HStack {
-                        Text("Tunnel")
+                        Text("Workstation Version")
                         Spacer()
-                        Text(tunnelURL)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                        Text(formatVersionWithProtocol(
+                            version: appState.workstationVersion,
+                            protocolVersion: appState.workstationProtocolVersion
+                        ))
+                        .foregroundStyle(.secondary)
                     }
                 } else {
                     // Show connection options when disconnected
@@ -127,7 +163,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Version")
                     Spacer()
-                    Text("1.0.0 (1)")
+                    Text(appVersion)
                         .foregroundStyle(.secondary)
                 }
                 
@@ -210,6 +246,14 @@ struct SettingsView: View {
             }
         } message: {
             Text("Paste the connection link from your workstation")
+        }
+        .alert("Disconnect", isPresented: $showDisconnectConfirmation) {
+            Button("Disconnect", role: .destructive) {
+                appState.disconnect()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to disconnect from the workstation?")
         }
     }
     
@@ -321,3 +365,4 @@ struct QRScannerView: View {
         return state
     }())
 }
+

@@ -42,14 +42,19 @@ protocol WebSocketClientDelegate: AnyObject {
     /// - Parameters:
     ///   - client: The WebSocket client
     ///   - tunnelId: The tunnel identifier
-    func webSocketClient(_ client: WebSocketClientProtocol, didConnect tunnelId: String)
+    ///   - tunnelVersion: The tunnel server version (semver)
+    ///   - protocolVersion: The protocol version (semver)
+    func webSocketClient(_ client: WebSocketClientProtocol, didConnect tunnelId: String, tunnelVersion: String?, protocolVersion: String?)
     
     /// Called when authentication with workstation succeeds
     /// - Parameters:
     ///   - client: The WebSocket client
     ///   - deviceId: The device identifier
+    ///   - workstationName: The workstation display name (optional)
+    ///   - workstationVersion: The workstation server version (optional)
+    ///   - protocolVersion: The protocol version (optional, may come from tunnel or workstation)
     ///   - restoredSubscriptions: Optional array of restored session subscription IDs
-    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, restoredSubscriptions: [String]?)
+    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, restoredSubscriptions: [String]?)
     
     /// Called when a message is received from the server
     /// - Parameters:

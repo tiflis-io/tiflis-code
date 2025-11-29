@@ -246,8 +246,15 @@ A colored dot indicator is **always visible** in the header on all screens:
 | **Disconnected** | ○ | Gray |
 | **Error** | ● | Red |
 
-Tapping the indicator shows a popover with:
-- **Connected state**: Workstation name, tunnel ID, version, tunnel URL, and Disconnect button
+Tapping the indicator shows a popover (320pt wide) with:
+- **Connected state**: Information displayed in order:
+  1. Connection status (circle indicator + text)
+  2. Workstation name (from server via `auth.success`)
+  3. Tunnel URL (full URL with protocol)
+  4. Tunnel ID
+  5. Tunnel Version (tunnel server version with tunnel's protocol version inline, e.g., "0.1.0 (1.0.0)")
+  6. Workstation Version (workstation server version with workstation's protocol version inline, e.g., "0.1.0 (1.0.0)")
+  7. Disconnect button (with confirmation dialog)
 - **Disconnected state**: "Scan QR Code" and "Paste Magic Link" buttons for quick connection
 
 #### Adaptive Navigation
@@ -435,7 +442,7 @@ Settings opens as a **separate page** (not within the sidebar menu) and includes
 
 | State | Content |
 |-------|---------|
-| **Connected** | Workstation name, tunnel ID, version, tunnel URL (read-only), Disconnect button |
+| **Connected** | Information displayed in order: 1) Connection status, 2) Workstation name (from server), 3) Tunnel URL (full URL with protocol), 4) Tunnel ID, 5) Tunnel Version (tunnel server version with tunnel's protocol version inline, e.g., "0.1.0 (1.0.0)"), 6) Workstation Version (workstation server version with workstation's protocol version inline, e.g., "0.1.0 (1.0.0)"), 7) Disconnect button (with confirmation) |
 | **Disconnected** | "Scan QR Code" button, "Paste Magic Link" button |
 
 #### Voice & Speech Section

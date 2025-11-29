@@ -61,6 +61,25 @@ struct ConnectionPopover: View {
     @State private var showQRScanner = false
     @State private var showMagicLinkInput = false
     @State private var magicLink = ""
+    @State private var showDisconnectConfirmation = false
+    
+    /// App version from Bundle
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"
+        return "\(version) (\(build))"
+    }
+    
+    /// Formats version with protocol version inline (e.g., "0.1.0 (1.0.0)")
+    private func formatVersionWithProtocol(version: String, protocolVersion: String) -> String {
+        if version.isEmpty {
+            return "—"
+        }
+        if protocolVersion.isEmpty {
+            return version
+        }
+        return "\(version) (\(protocolVersion))"
+    }
     
     /// Computed color based on both tunnel connection and workstation status
     private var indicatorColor: Color {
@@ -80,7 +99,7 @@ struct ConnectionPopover: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // Status
+            // 1. Status
             HStack {
                 Circle()
                     .fill(indicatorColor)
@@ -95,15 +114,37 @@ struct ConnectionPopover: View {
             if appState.connectionState.isConnected {
                 // Connected: show info and disconnect
                 VStack(alignment: .leading, spacing: 8) {
-                    InfoRow(label: "Workstation", value: "MacBook Pro")
+                    // 2. Workstation name
+                    InfoRow(label: "Workstation", value: appState.workstationName.isEmpty ? "—" : appState.workstationName)
+                    
+                    // 3. Tunnel
+                    InfoRow(label: "Tunnel", value: tunnelURL.isEmpty ? "tunnel.tiflis.io" : tunnelURL)
+                    
+                    // 4. Tunnel ID
                     InfoRow(label: "Tunnel ID", value: tunnelId.isEmpty ? "—" : tunnelId, useMonospaced: true)
-                    InfoRow(label: "Version", value: "0.1.0")
-                    InfoRow(label: "Tunnel", value: tunnelURL.isEmpty ? "tunnel.tiflis.io" : shortenURL(tunnelURL))
+                    
+                    // 5. Tunnel version (with protocol version inline)
+                    InfoRow(
+                        label: "Tunnel Version",
+                        value: formatVersionWithProtocol(
+                            version: appState.tunnelVersion,
+                            protocolVersion: appState.tunnelProtocolVersion
+                        )
+                    )
+                    
+                    // 6. Workstation version (with protocol version inline)
+                    InfoRow(
+                        label: "Workstation Version",
+                        value: formatVersionWithProtocol(
+                            version: appState.workstationVersion,
+                            protocolVersion: appState.workstationProtocolVersion
+                        )
+                    )
                 }
                 
+                // 7. Disconnect button with confirmation
                 Button {
-                    appState.disconnect()
-                    dismiss()
+                    showDisconnectConfirmation = true
                 } label: {
                     Text("Disconnect")
                         .frame(maxWidth: .infinity)
@@ -132,7 +173,16 @@ struct ConnectionPopover: View {
             }
         }
         .padding()
-        .frame(width: 260)
+        .frame(width: 320)
+        .alert("Disconnect", isPresented: $showDisconnectConfirmation) {
+            Button("Disconnect", role: .destructive) {
+                appState.disconnect()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Are you sure you want to disconnect from the workstation?")
+        }
         .sheet(isPresented: $showQRScanner) {
             QRScannerView { result in
                 handleMagicLink(result)
@@ -156,12 +206,6 @@ struct ConnectionPopover: View {
         } message: {
             Text("Paste the connection link from your workstation")
         }
-    }
-    
-    private func shortenURL(_ url: String) -> String {
-        url.replacingOccurrences(of: "wss://", with: "")
-           .replacingOccurrences(of: "ws://", with: "")
-           .replacingOccurrences(of: "/ws", with: "")
     }
     
     private func handleMagicLink(_ link: String) {
@@ -206,10 +250,9 @@ struct InfoRow: View {
                 .foregroundStyle(.secondary)
             Spacer()
             Text(value)
-                .fontWeight(.medium)
-                .font(useMonospaced ? .system(.subheadline, design: .monospaced) : nil)
+                .foregroundStyle(.secondary)
+                .font(useMonospaced ? .system(.body, design: .monospaced) : .body)
         }
-        .font(.subheadline)
     }
 }
 

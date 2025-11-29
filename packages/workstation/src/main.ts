@@ -6,7 +6,7 @@
 
 import { createApp } from './app.js';
 import { getEnv } from './config/env.js';
-import { SERVER_VERSION } from './config/constants.js';
+import { getWorkstationVersion, getProtocolVersion } from './config/constants.js';
 import { createLogger } from './infrastructure/logging/pino-logger.js';
 import { registerHealthRoute } from './infrastructure/http/health-route.js';
 import { initDatabase, closeDatabase } from './infrastructure/persistence/database/client.js';
@@ -34,7 +34,7 @@ import { AuthMessageSchema, getMessageType } from './protocol/schemas.js';
 /**
  * Prints the startup banner to console.
  */
-function printBanner(): void {
+function printBanner(version: string): void {
   // Colors for terminal output
   const dim = '\x1b[2m';
   const blue = '\x1b[38;5;69m';
@@ -66,7 +66,7 @@ ${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${pu
        ${white}T I F L I S   C O D E${reset}  ${dim}·${reset}  Workstation Server
        ${dim}Agent Sessions & Terminal Access Manager${reset}
 
-       ${dim}v${SERVER_VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
+       ${dim}v${version}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
        ${dim}https://github.com/tiflis-io/tiflis-code${reset}
 `;
   process.stdout.write(banner);
@@ -138,8 +138,12 @@ function handleAuthMessageViaTunnel(
  * Bootstraps and starts the workstation server.
  */
 async function bootstrap(): Promise<void> {
+  // Get versions from package.json
+  const workstationVersion = getWorkstationVersion();
+  const protocolVersion = getProtocolVersion();
+  
   // Print startup banner
-  printBanner();
+  printBanner(workstationVersion);
 
   // Load configuration
   const env = getEnv();
@@ -153,7 +157,7 @@ async function bootstrap(): Promise<void> {
 
   logger.info(
     {
-      version: SERVER_VERSION,
+      version: workstationVersion,
       nodeEnv: env.NODE_ENV,
       port: env.PORT,
       tunnelUrl: env.TUNNEL_URL,
@@ -199,10 +203,13 @@ async function bootstrap(): Promise<void> {
 
   // Tunnel client will be initialized below
 
-  // Create use cases
+  // Create use cases (using versions loaded at bootstrap start)
   const authenticateClient = new AuthenticateClientUseCase({
     clientRegistry,
     expectedAuthKey,
+    workstationName: env.WORKSTATION_NAME,
+    workstationVersion,
+    protocolVersion,
     logger,
   });
 
@@ -628,7 +635,7 @@ async function bootstrap(): Promise<void> {
   // Register health routes
   registerHealthRoute(
     app,
-    { version: SERVER_VERSION },
+    { version: workstationVersion },
     {
       sessionManager,
       clientRegistry,

@@ -294,16 +294,17 @@ The connection indicator is **always visible** in the toolbar and reflects both 
                                         │
                                         │ Tap
                                         ▼
-                    ┌─────────────────────────────┐
-                    │  ● Connected                │  ← Green: both online
-                    │  ─────────────────────      │  Orange: workstation offline
-                    │  Workstation: MacBook Pro   │
-                    │  Tunnel ID: Z6q62aKz-F96    │
-                    │  Version: 0.1.0             │
-                    │  Tunnel: tunnel.tiflis.io   │
-                    │                             │
-                    │  [ Disconnect ]             │
-                    └─────────────────────────────┘
+                    ┌─────────────────────────────────────┐
+                    │  ● Connected                        │  ← 1. Status (Green/Orange)
+                    │  ───────────────────────────────    │
+                    │  Workstation: My MacBook             │  ← 2. Workstation name
+                    │  Tunnel: wss://tunnel.tiflis.io/ws   │  ← 3. Tunnel URL
+                    │  Tunnel ID: Z6q62aKz-F96             │  ← 4. Tunnel ID
+                    │  Tunnel Version: 0.1.0 (1.0.0)      │  ← 5. Tunnel version (protocol version inline)
+                    │  Workstation Version: 0.1.0 (1.0.0)│  ← 6. Workstation version (protocol version inline)
+                    │                                     │
+                    │  [ Disconnect ]                     │  ← 7. Disconnect (with confirmation)
+                    └─────────────────────────────────────┘
 ```
 
 **Indicator Colors:**
@@ -657,12 +658,14 @@ TTS responses include an audio attachment:
 │                                                                 │
 │  CONNECTION                                                     │
 │  ┌─────────────────────────────────────────────────────────┐   │
-│  │ ● Connected                      [Disconnect]           │   │
-│  │ Workstation: MacBook Pro                                │   │
-│  │ Tunnel ID: Z6q62aKz-F96                                 │   │
-│  │ Version: 0.1.0                                          │   │
-│  │ Tunnel: tunnel.tiflis.io                                │   │
+│  │ ● Connected                      [Disconnect]           │   │ ← 1. Status
+│  │ Workstation: My MacBook                                 │   │ ← 2. Workstation name
+│  │ Tunnel: wss://tunnel.tiflis.io/ws                       │   │ ← 3. Tunnel URL
+│  │ Tunnel ID: Z6q62aKz-F96                                 │   │ ← 4. Tunnel ID
+│  │ Tunnel Version: 0.1.0 (1.0.0)                           │   │ ← 5. Tunnel version (protocol version inline)
+│  │ Workstation Version: 0.1.0 (1.0.0)                     │   │ ← 6. Workstation version (protocol version inline)
 │  └─────────────────────────────────────────────────────────┘   │
+│  (Disconnect button shows confirmation dialog)                  │
 │                                                                 │
 │  VOICE & SPEECH                                                 │
 │  ┌─────────────────────────────────────────────────────────┐   │
@@ -689,8 +692,14 @@ TTS responses include an audio attachment:
 ### Connection Section States
 
 **Connected:**
-- Shows workstation info (name, tunnel ID, version, tunnel URL)
-- Disconnect button available
+- Shows connection information in this order:
+  1. Connection status (circle indicator + text)
+  2. Workstation name (from server via `auth.success`)
+  3. Tunnel URL (full URL with protocol)
+  4. Tunnel ID
+  5. Tunnel Version (tunnel server version with tunnel's protocol version inline, e.g., "0.1.0 (1.0.0)")
+  6. Workstation Version (workstation server version with workstation's protocol version inline, e.g., "0.1.0 (1.0.0)")
+- Disconnect button with confirmation dialog
 
 **Disconnected:**
 - Scan QR Code button

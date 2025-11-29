@@ -6,11 +6,20 @@
 
 /**
  * Protocol version for compatibility checking.
+ * Format: major.minor.patch (semver)
  */
 export const PROTOCOL_VERSION = {
   major: 1,
   minor: 0,
+  patch: 0,
 } as const;
+
+/**
+ * Gets protocol version as semver string (e.g., "1.0.0")
+ */
+export function getProtocolVersion(): string {
+  return `${PROTOCOL_VERSION.major}.${PROTOCOL_VERSION.minor}.${PROTOCOL_VERSION.patch}`;
+}
 
 /**
  * Connection timing constants (in milliseconds).
@@ -126,8 +135,29 @@ export const AGENT_EXECUTION_CONFIG = {
   COMPLETION_TYPES: ['result', 'session_end'] as const,
 } as const;
 
+import { readFileSync } from 'fs';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
 /**
- * Server version (will be replaced during build).
+ * Gets workstation server version from package.json
  */
-export const SERVER_VERSION = '0.1.0';
+export function getWorkstationVersion(): string {
+  try {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const packageJsonPath = join(__dirname, '../../package.json');
+    const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+    const packageJson = JSON.parse(packageJsonContent) as { version?: string };
+    const version = packageJson.version;
+    if (typeof version === 'string' && version.length > 0) {
+      return version;
+    }
+    return '0.0.0';
+  } catch {
+    // Fallback if package.json cannot be read
+    return '0.0.0';
+  }
+}
 

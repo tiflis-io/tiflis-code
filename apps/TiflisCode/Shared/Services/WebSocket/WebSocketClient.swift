@@ -308,7 +308,12 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
         
         WebSocketClient.log("✅ WebSocket: Received connected response (tunnel_id: \(connectedMsg.payload.tunnelId))")
         await MainActor.run {
-            delegate?.webSocketClient(self, didConnect: connectedMsg.payload.tunnelId)
+            delegate?.webSocketClient(
+                self,
+                didConnect: connectedMsg.payload.tunnelId,
+                tunnelVersion: connectedMsg.payload.tunnelVersion,
+                protocolVersion: connectedMsg.payload.protocolVersion
+            )
         }
     }
     
@@ -350,6 +355,9 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
                 delegate?.webSocketClient(
                     self,
                     didAuthenticate: authSuccessMsg.payload.deviceId,
+                    workstationName: authSuccessMsg.payload.workstationName,
+                    workstationVersion: authSuccessMsg.payload.workstationVersion,
+                    protocolVersion: authSuccessMsg.payload.protocolVersion,
                     restoredSubscriptions: authSuccessMsg.payload.restoredSubscriptions
                 )
             }

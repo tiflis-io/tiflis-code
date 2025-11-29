@@ -79,6 +79,9 @@ export interface AuthSuccessMessage {
   type: 'auth.success';
   payload: {
     device_id: string;
+    workstation_name?: string;
+    workstation_version?: string;
+    protocol_version?: string;
     restored_subscriptions?: string[];
   };
 }

@@ -30,6 +30,36 @@ protocol ConnectionServicing {
     
     /// Publisher for workstation online status changes
     var workstationOnlinePublisher: Published<Bool>.Publisher { get }
+    
+    /// Current workstation name
+    var workstationName: String { get }
+    
+    /// Publisher for workstation name changes
+    var workstationNamePublisher: Published<String>.Publisher { get }
+    
+    /// Current workstation version
+    var workstationVersion: String { get }
+    
+    /// Publisher for workstation version changes
+    var workstationVersionPublisher: Published<String>.Publisher { get }
+    
+    /// Current tunnel server version
+    var tunnelVersion: String { get }
+    
+    /// Publisher for tunnel version changes
+    var tunnelVersionPublisher: Published<String>.Publisher { get }
+    
+    /// Current tunnel protocol version
+    var tunnelProtocolVersion: String { get }
+    
+    /// Publisher for tunnel protocol version changes
+    var tunnelProtocolVersionPublisher: Published<String>.Publisher { get }
+    
+    /// Current workstation protocol version
+    var workstationProtocolVersion: String { get }
+    
+    /// Publisher for workstation protocol version changes
+    var workstationProtocolVersionPublisher: Published<String>.Publisher { get }
 }
 
 /// Service that manages WebSocket connection lifecycle
@@ -46,6 +76,11 @@ final class ConnectionService: ConnectionServicing {
     
     @Published private(set) var connectionState: ConnectionState = .disconnected
     @Published private(set) var workstationOnline: Bool = true // Assume online until we know otherwise
+    @Published private(set) var workstationName: String = ""
+    @Published private(set) var workstationVersion: String = ""
+    @Published private(set) var workstationProtocolVersion: String = ""
+    @Published private(set) var tunnelVersion: String = ""
+    @Published private(set) var tunnelProtocolVersion: String = ""
     
     var connectionStatePublisher: Published<ConnectionState>.Publisher {
         $connectionState
@@ -53,6 +88,26 @@ final class ConnectionService: ConnectionServicing {
     
     var workstationOnlinePublisher: Published<Bool>.Publisher {
         $workstationOnline
+    }
+    
+    var workstationNamePublisher: Published<String>.Publisher {
+        $workstationName
+    }
+    
+    var workstationVersionPublisher: Published<String>.Publisher {
+        $workstationVersion
+    }
+    
+    var tunnelVersionPublisher: Published<String>.Publisher {
+        $tunnelVersion
+    }
+    
+    var tunnelProtocolVersionPublisher: Published<String>.Publisher {
+        $tunnelProtocolVersion
+    }
+    
+    var workstationProtocolVersionPublisher: Published<String>.Publisher {
+        $workstationProtocolVersion
     }
     
     // MARK: - Stored Credentials
@@ -121,14 +176,19 @@ final class ConnectionService: ConnectionServicing {
 // MARK: - WebSocketClientDelegate
 
 extension ConnectionService: WebSocketClientDelegate {
-    func webSocketClient(_ client: WebSocketClientProtocol, didConnect tunnelId: String) {
-        // Connection to tunnel established, waiting for auth
+    func webSocketClient(_ client: WebSocketClientProtocol, didConnect tunnelId: String, tunnelVersion: String?, protocolVersion: String?) {
+        // Connection to tunnel established, store tunnel and protocol versions
+        self.tunnelVersion = tunnelVersion ?? ""
+        self.tunnelProtocolVersion = protocolVersion ?? ""
     }
     
-    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, restoredSubscriptions: [String]?) {
+    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, restoredSubscriptions: [String]?) {
         connectionState = .connected
         // Assume workstation is online when we successfully authenticate
         workstationOnline = true
+        self.workstationName = workstationName ?? ""
+        self.workstationVersion = workstationVersion ?? ""
+        self.workstationProtocolVersion = protocolVersion ?? ""
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, didReceiveMessage message: [String: Any]) {
@@ -144,6 +204,11 @@ extension ConnectionService: WebSocketClientDelegate {
         }
         // Reset workstation status when disconnected
         workstationOnline = true
+        workstationName = ""
+        workstationVersion = ""
+        workstationProtocolVersion = ""
+        tunnelVersion = ""
+        tunnelProtocolVersion = ""
     }
     
     func webSocketClient(_ client: WebSocketClientProtocol, workstationDidGoOffline tunnelId: String) {

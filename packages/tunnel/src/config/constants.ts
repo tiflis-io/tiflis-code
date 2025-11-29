@@ -6,11 +6,20 @@
 
 /**
  * Protocol version for compatibility checking.
+ * Format: major.minor.patch (semver)
  */
 export const PROTOCOL_VERSION = {
   major: 1,
   minor: 0,
+  patch: 0,
 } as const;
+
+/**
+ * Gets protocol version as semver string (e.g., "1.0.0")
+ */
+export function getProtocolVersion(): string {
+  return `${PROTOCOL_VERSION.major}.${PROTOCOL_VERSION.minor}.${PROTOCOL_VERSION.patch}`;
+}
 
 /**
  * Connection timing constants (in milliseconds).
@@ -40,8 +49,4 @@ export const WEBSOCKET_CONFIG = {
   PATH: '/ws',
 } as const;
 
-/**
- * Server version (will be replaced during build).
- */
-export const SERVER_VERSION = '0.1.0';
 

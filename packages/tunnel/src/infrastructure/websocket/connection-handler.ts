@@ -49,6 +49,8 @@ export interface ConnectionHandlerDeps {
   connectClient: ConnectClientUseCase;
   forwardMessage: ForwardMessageUseCase;
   handleDisconnection: HandleDisconnectionUseCase;
+  tunnelVersion: string; // Tunnel server version (semver)
+  protocolVersion: string; // Protocol version (semver)
   logger: Logger;
 }
 
@@ -247,6 +249,8 @@ export class ConnectionHandler {
       type: 'connected',
       payload: {
         tunnel_id: result.tunnelId,
+        tunnel_version: this.deps.tunnelVersion,
+        protocol_version: this.deps.protocolVersion,
         restored: result.restored || undefined,
       },
     };

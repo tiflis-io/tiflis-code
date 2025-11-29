@@ -28,6 +28,11 @@ final class AppState: ObservableObject {
     
     @Published var connectionState: ConnectionState = .disconnected
     @Published var workstationOnline: Bool = true
+    @Published var workstationName: String = ""
+    @Published var workstationVersion: String = ""
+    @Published var workstationProtocolVersion: String = ""
+    @Published var tunnelVersion: String = ""
+    @Published var tunnelProtocolVersion: String = ""
     @Published var sessions: [Session] = Session.mockSessions
     @Published var selectedSessionId: String? = "supervisor"
     
@@ -83,6 +88,26 @@ final class AppState: ObservableObject {
         connectionService.workstationOnlinePublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$workstationOnline)
+        
+        connectionService.workstationNamePublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$workstationName)
+        
+        connectionService.workstationVersionPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$workstationVersion)
+        
+        connectionService.tunnelVersionPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$tunnelVersion)
+        
+        connectionService.tunnelProtocolVersionPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$tunnelProtocolVersion)
+        
+        connectionService.workstationProtocolVersionPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$workstationProtocolVersion)
     }
     
     // MARK: - Actions

@@ -131,6 +131,8 @@ The `tunnel_id` is a **persistent workstation identifier** that survives:
   type: "connected",
   payload: {
     tunnel_id: string,
+    tunnel_version?: string,   // Tunnel server version (semver, e.g., "0.1.0")
+    protocol_version?: string, // Protocol version (semver, e.g., "1.0.0")
     restored?: boolean         // Was connection restored?
   }
 }
@@ -204,6 +206,9 @@ Tunnel Server monitors connections from both Workstations and Mobile clients.
   type: "auth.success",
   payload: {
     device_id: string,
+    workstation_name?: string,        // Display name of the workstation
+    workstation_version?: string,     // Workstation server version (semver, e.g., "0.1.0")
+    protocol_version?: string,        // Protocol version (semver, e.g., "1.0.0")
     restored_subscriptions?: string[]  // Session IDs (on reconnect)
   }
 }

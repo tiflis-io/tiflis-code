@@ -10,13 +10,14 @@ import { getEnv, generatePublicUrl } from './config/env.js';
 import {
   CONNECTION_TIMING,
   WEBSOCKET_CONFIG,
-  SERVER_VERSION,
+  getProtocolVersion,
 } from './config/constants.js';
+import { getTunnelVersion } from './utils/version.js';
 
 /**
  * Prints the startup banner to console.
  */
-function printBanner(): void {
+function printBanner(tunnelVersion: string): void {
   // Colors for terminal output
   const dim = '\x1b[2m';
   const blue = '\x1b[38;5;69m';
@@ -48,7 +49,7 @@ ${blue}     .-##  #.${reset}            ${white}-#########+${reset}         ${pu
        ${white}T I F L I S   C O D E${reset}  ${dim}·${reset}  Tunnel Server
        ${dim}Secure WebSocket Relay for Remote Agents${reset}
 
-       ${dim}v${SERVER_VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
+       ${dim}v${tunnelVersion}  ·  © 2025 Roman Barinov  ·  MIT License${reset}
        ${dim}https://github.com/tiflis-io/tiflis-code${reset}
 `;
   process.stdout.write(banner);
@@ -74,8 +75,12 @@ import {
  * Bootstraps and starts the tunnel server.
  */
 async function bootstrap(): Promise<void> {
+  // Get versions
+  const tunnelVersion = getTunnelVersion();
+  const protocolVersion = getProtocolVersion();
+
   // Print startup banner
-  printBanner();
+  printBanner(tunnelVersion);
 
   // Load configuration
   const env = getEnv();
@@ -89,7 +94,7 @@ async function bootstrap(): Promise<void> {
 
   logger.info(
     {
-      version: SERVER_VERSION,
+      version: tunnelVersion,
       nodeEnv: env.NODE_ENV,
       port: env.PORT,
       trustProxy: env.TRUST_PROXY,
@@ -138,6 +143,8 @@ async function bootstrap(): Promise<void> {
     connectClient,
     forwardMessage,
     handleDisconnection,
+    tunnelVersion,
+    protocolVersion,
     logger,
   });
 
@@ -147,7 +154,7 @@ async function bootstrap(): Promise<void> {
   // Register health routes
   registerHealthRoute(
     app,
-    { version: SERVER_VERSION },
+    { version: tunnelVersion },
     { workstationRegistry, clientRegistry }
   );
 
