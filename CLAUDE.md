@@ -156,6 +156,8 @@ The mobile application UI is inspired by modern minimalist design principles:
 
 The app supports **both light and dark themes**, automatically following the system preference.
 
+> 📖 **Detailed Implementation**: See [docs/MOBILE_APP_LOGIC.md](docs/MOBILE_APP_LOGIC.md) for complete documentation of navigation patterns, state management, and UI component behavior.
+
 ### App Structure Overview
 
 ```
@@ -244,15 +246,46 @@ A colored dot indicator is **always visible** in the header on all screens:
 | **Disconnected** | ○ | Gray |
 | **Error** | ● | Red |
 
-Tapping the indicator shows a popover with connection details and quick reconnect option.
+Tapping the indicator shows a popover with:
+- **Connected state**: Workstation name, version, tunnel URL, and Disconnect button
+- **Disconnected state**: "Scan QR Code" and "Paste Magic Link" buttons for quick connection
 
-#### Adaptive Sidebar Toggle
+#### Adaptive Navigation
 
-| Device / Orientation | Sidebar State | Toggle Visibility |
-|---------------------|---------------|-------------------|
-| iPhone (any) | Overlay sheet | `☰` visible |
-| iPad Portrait | Overlay sheet | `☰` visible |
-| iPad Landscape | Persistent sidebar | `☰` hidden |
+The app uses **different navigation patterns** based on device:
+
+| Device / Orientation | Navigation Pattern | Sidebar Behavior |
+|---------------------|-------------------|------------------|
+| **iPhone (any)** | Custom full-screen drawer | Swipe from left edge to open, covers entire screen |
+| **iPad Portrait** | `NavigationSplitView` | Overlay sidebar |
+| **iPad Landscape** | `NavigationSplitView` | Persistent sidebar |
+
+##### iPhone Drawer Navigation
+
+On iPhone, the sidebar opens as a **full-screen drawer** with gesture support:
+
+| Gesture | Action |
+|---------|--------|
+| Swipe right from left edge (20pt) | Open drawer (strict check - only from left edge) |
+| Swipe left anywhere when open | Close drawer |
+| Tap `☰` button in toolbar | Open drawer |
+| Tap already-selected item | Close drawer |
+
+**Important:** The drawer **only opens** when swiping from the left edge (20pt). Swipes from other areas are ignored to prevent accidental opening.
+
+**Hit Testing:** The drawer uses `allowsHitTesting` to ensure buttons work correctly:
+- Main content is disabled when drawer is open
+- Drawer buttons are enabled when drawer is open or opening
+
+The drawer automatically closes when:
+- User selects a different session
+- User taps on the already-selected session (acts as "close")
+
+##### iPad Split View Navigation
+
+On iPad, standard `NavigationSplitView` is used with balanced layout:
+- Sidebar can be toggled via `☰` button or swipe
+- In landscape, sidebar is persistent
 
 ### Sidebar Navigation
 
@@ -260,15 +293,29 @@ The sidebar serves as the primary navigation hub:
 
 | Element | Behavior |
 |---------|----------|
-| **Header** | App logo + `[+]` button for creating new sessions |
+| **Header** | "Tiflis Code" title + `[+]` button for creating new sessions |
 | **Supervisor** | Always visible at top; single persistent session per workstation |
 | **Sessions List** | All active sessions from the workstation (grouped by type) |
-| **Settings** | Fixed at bottom of sidebar |
+| **Settings** | Fixed at bottom of sidebar; opens as separate page (not within sidebar) |
+
+#### Selection Indicator
+
+The currently active item in the sidebar displays a **checkmark** (✓) next to it. Tapping on an already-selected item closes the sidebar menu (on iPhone).
 
 **Session Subscription Logic:**
 - Entering a session → automatically subscribes to session events
 - Leaving a session → automatically unsubscribes from session events
 - All sessions remain visible in sidebar regardless of subscription state
+
+**Session Icons:**
+
+| Session Type | Icon Source | Description |
+|--------------|-------------|-------------|
+| Supervisor | Custom Image | Tiflis Code logo (`TiflisLogo`) |
+| Cursor | Custom Image | Cursor app logo (`CursorLogo`) |
+| Claude | Custom Image | Claude/Anthropic logo (`ClaudeLogo`) |
+| OpenCode | Custom Image (theme-aware) | OpenCode logo, switches between light/dark variants |
+| Terminal | SF Symbol | `apple.terminal.fill` |
 
 ### Session Creation
 
@@ -276,12 +323,17 @@ Sessions can be created in two ways:
 
 #### 1. Via UI (Quick Action)
 
-Tapping `[+]` in sidebar header opens a creation sheet:
+Tapping `[+]` in sidebar header opens a creation sheet with:
+
+1. **Session Type Selection** — Radio-style selection with icons for each type
+2. **Project Selection** (for agents only) — Two cascading pickers:
+   - **Workspace** dropdown — Select from available workspaces
+   - **Project** dropdown — Populated based on selected workspace
 
 | Session Type | Required Selection |
 |--------------|-------------------|
-| **Terminal** | Working directory (defaults to workspace root) |
-| **Cursor / Claude / OpenCode** | Workspace → Project → Worktree (optional) |
+| **Terminal** | None (working directory defaults to workspace root) |
+| **Cursor / Claude / OpenCode** | Workspace (required) → Project (required) → Worktree (optional) |
 
 #### 2. Via Supervisor (Natural Language)
 
@@ -304,6 +356,7 @@ Inspired by [shadcn/ai components](https://www.shadcn.io/ai):
 
 | Component | Description |
 |-----------|-------------|
+| **ChatEmptyState** | Displayed when no messages exist — shows agent icon, name, working directory, and invitation message |
 | **MessageBubble** | Role-based styling (user/assistant), markdown rendering, streaming support |
 | **VoiceMessageBubble** | Audio waveform display for voice input before transcription |
 | **TranscriptionMessage** | Displayed after voice input is transcribed |
@@ -311,6 +364,16 @@ Inspired by [shadcn/ai components](https://www.shadcn.io/ai):
 | **PromptInputBar** | Text input + voice button + send button |
 | **TypingIndicator** | Visual feedback while agent is processing |
 | **ToolCallDisplay** | Collapsible display for agent tool invocations (optional) |
+
+#### Empty State Messages
+
+When no messages exist in a chat session, an empty state is displayed with context-specific invitation:
+
+| Session Type | Invitation Message |
+|-------------|-------------------|
+| **Supervisor** | "Ask me to create sessions, manage projects, or explore your workspaces" |
+| **Claude/Cursor/OpenCode** | "Send a message to start coding with AI assistance" |
+| **Terminal** | (no message — terminal uses different UI) |
 
 ### Voice Interaction Flow
 
@@ -366,13 +429,39 @@ Full terminal emulation using [SwiftTerm](https://github.com/migueldeicaza/Swift
 
 ### SettingsView
 
-| Section | Options |
-|---------|---------|
-| **Connection** | Tunnel URL, Auth Key, Connection status indicator, Connect/Disconnect button |
-| **Voice & Speech** | Language selection, TTS on/off toggle, Speech playback speed |
-| **About** | App version, Workstation info when connected |
+Settings opens as a **separate page** (not within the sidebar menu) and includes:
 
-**Connection Setup**: Initial configuration via QR code scan or manual entry (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)).
+#### Connection Section
+
+| State | Content |
+|-------|---------|
+| **Connected** | Workstation name, version, tunnel URL (read-only), Disconnect button |
+| **Disconnected** | "Scan QR Code" button, "Paste Magic Link" button |
+
+#### Voice & Speech Section
+
+| Option | Description |
+|--------|-------------|
+| **Text-to-Speech** | Toggle for TTS audio responses |
+| **Speech Language** | Picker with English and Russian options |
+
+#### About Section
+
+| Item | Value |
+|------|-------|
+| Version | App version and build number |
+| Author | Roman Barinov |
+| GitHub Repository | Link to `github.com/tiflis-io/tiflis-code` |
+| License | MIT |
+
+#### Legal Section
+
+| Link | Destination |
+|------|-------------|
+| Privacy Policy | `PRIVACY.md` in repository |
+| Terms of Service | `TERMS.md` in repository |
+
+**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?url=<tunnel_url>&key=<auth_key>` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)).
 
 ---
 
