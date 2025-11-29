@@ -444,13 +444,27 @@ async function bootstrap(): Promise<void> {
       onConnected: (tunnelId, publicUrl) => {
         logger.info({ tunnelId, publicUrl }, '🚀 Connected to tunnel');
         
+        // Strip tunnel_id query parameter from URL if present (for backward compatibility)
+        // URL should only contain the base address
+        const urlObj = new URL(publicUrl);
+        urlObj.searchParams.delete('tunnel_id');
+        const cleanUrl = urlObj.toString();
+        
         // Generate and display magic link for mobile clients
-        const magicLink = `tiflis://connect?tunnel_id=${encodeURIComponent(tunnelId)}&url=${encodeURIComponent(publicUrl)}&key=${encodeURIComponent(env.WORKSTATION_AUTH_KEY)}`;
+        // Magic link uses base64-encoded JSON payload
+        const payload = {
+          tunnel_id: tunnelId,
+          url: cleanUrl,
+          key: env.WORKSTATION_AUTH_KEY,
+        };
+        const jsonPayload = JSON.stringify(payload);
+        const base64Payload = Buffer.from(jsonPayload, 'utf-8').toString('base64');
+        const magicLink = `tiflis://connect?data=${encodeURIComponent(base64Payload)}`;
         
         logger.info(
           {
             tunnelId,
-            publicUrl,
+            publicUrl: cleanUrl,
             magicLink,
           },
           '📱 Magic link for mobile clients'

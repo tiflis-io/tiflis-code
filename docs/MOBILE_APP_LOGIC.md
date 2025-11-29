@@ -311,30 +311,47 @@ The connection indicator is **always visible** in the toolbar:
 
 #### 2. Magic Link
 
-Format: `tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>`
+Format: `tiflis://connect?data=<base64_encoded_json>`
 
-The `tunnel_id` parameter is required for proper routing to the correct workstation. It is a persistent identifier that survives workstation restarts.
+The magic link uses a single base64-encoded query parameter containing a JSON payload with connection information. The `tunnel_id` parameter is required for proper routing to the correct workstation. It is a persistent identifier that survives workstation restarts.
+
+**JSON payload structure:**
+```json
+{
+  "tunnel_id": "Z6q62aKz-F96",
+  "url": "wss://tunnel.example.com/ws",
+  "key": "my-workstation-auth-key"
+}
+```
+
+**Important:** The `url` field contains only the base WebSocket address without query parameters. The `tunnel_id` is provided separately in the payload and should not be included in the URL.
 
 ```swift
 private func handleMagicLink(_ link: String) {
+    // Parse magic link in format: tiflis://connect?data=<base64_encoded_json>
     guard let url = URL(string: link),
           url.scheme == "tiflis",
           url.host == "connect",
           let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-          let queryItems = components.queryItems else {
+          let queryItems = components.queryItems,
+          let dataItem = queryItems.first(where: { $0.name == "data" }),
+          let base64Data = dataItem.value,
+          let jsonData = Data(base64Encoded: base64Data),
+          let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
         return
     }
     
-    for item in queryItems {
-        switch item.name {
-        case "tunnel_id": tunnelId = item.value ?? ""
-        case "url": tunnelURL = item.value ?? ""
-        case "key": authKey = item.value ?? ""
-        default: break
-        }
-    }
+    tunnelId = payload.tunnel_id
+    tunnelURL = payload.url
+    authKey = payload.key
     
     appState.connect()
+}
+
+private struct MagicLinkPayload: Codable {
+    let tunnel_id: String
+    let url: String
+    let key: String
 }
 ```
 

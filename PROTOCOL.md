@@ -713,30 +713,46 @@ All events are sent only to clients subscribed to the session.
 
 ## 11. QR Code / Magic Link Payload
 
-For initial mobile client setup, the magic link format is:
+For initial mobile client setup, the magic link format uses a single base64-encoded query parameter:
 
 ```
-tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>
+tiflis://connect?data=<base64_encoded_json>
 ```
 
-**URL-encoded parameters:**
-- `tunnel_id` (required) - Workstation tunnel ID (persistent identifier)
-- `url` (required) - Tunnel server WebSocket URL (e.g., `wss://tunnel.example.com/ws`)
-- `key` (required) - Workstation auth key for client authentication
+**Query parameter:**
+- `data` (required) - Base64-encoded JSON payload containing connection information
 
-**Example:**
-```
-tiflis://connect?tunnel_id=Z6q62aKz-F96&url=wss://tunnel.example.com/ws&key=my-workstation-auth-key
-```
-
-**JSON representation (for reference):**
+**JSON payload structure:**
 ```json
 {
   "tunnel_id": "Z6q62aKz-F96",
-  "tunnel_url": "wss://tunnel.example.com/ws",
-  "auth_key": "my-workstation-auth-key"
+  "url": "wss://tunnel.example.com/ws",
+  "key": "my-workstation-auth-key"
 }
 ```
+
+**Fields:**
+- `tunnel_id` (required) - Workstation tunnel ID (persistent identifier)
+- `url` (required) - Tunnel server base WebSocket URL without query parameters (e.g., `wss://tunnel.example.com/ws`)
+- `key` (required) - Workstation auth key for client authentication
+
+**Important:** The `url` field must contain only the base WebSocket address without any query parameters. The `tunnel_id` is provided separately in the payload and should not be included in the URL.
+
+**Example:**
+```
+tiflis://connect?data=eyJ0dW5uZWxfaWQiOiJaNnE2MmFLei1GOTYiLCJ1cmwiOiJ3c3M6Ly90dW5uZWwuZXhhbXBsZS5jb20vd3MiLCJrZXkiOiJteS13b3Jrc3RhdGlvbi1hdXRoLWtleSJ9
+```
+
+**Decoded payload (for reference):**
+```json
+{
+  "tunnel_id": "Z6q62aKz-F96",
+  "url": "wss://tunnel.example.com/ws",
+  "key": "my-workstation-auth-key"
+}
+```
+
+**Note:** The URL must be the base WebSocket address only. Do not include `tunnel_id` as a query parameter in the URL, as it is already provided in the JSON payload.
 
 **Note:** The `tunnel_id` is the persistent workstation identifier that must be included in the magic link so mobile clients can route to the correct workstation. The `tunnel_id` persists across both workstation and tunnel server restarts, ensuring stable routing.
 

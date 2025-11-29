@@ -133,31 +133,33 @@ struct ConnectionPopover: View {
     }
     
     private func handleMagicLink(_ link: String) {
+        // Parse magic link in format: tiflis://connect?data=<base64_encoded_json>
         guard let url = URL(string: link),
               url.scheme == "tiflis",
               url.host == "connect",
               let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let queryItems = components.queryItems else {
+              let queryItems = components.queryItems,
+              let dataItem = queryItems.first(where: { $0.name == "data" }),
+              let base64Data = dataItem.value,
+              let jsonData = Data(base64Encoded: base64Data),
+              let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
             return
         }
         
-        for item in queryItems {
-            switch item.name {
-            case "tunnel_id":
-                // Store tunnel_id (workstation ID) for routing
-                tunnelId = item.value ?? ""
-            case "url":
-                tunnelURL = item.value ?? ""
-            case "key":
-                // Store auth key securely (would use Keychain in production)
-                break
-            default:
-                break
-            }
-        }
+        // Store tunnel_id (workstation ID) for routing
+        tunnelId = payload.tunnel_id
+        tunnelURL = payload.url
+        // Store auth key securely (would use Keychain in production)
+        // Note: authKey is not stored in this component, it's handled by AppState
         
         // Auto-connect after setting credentials
         appState.connect()
+    }
+    
+    private struct MagicLinkPayload: Codable {
+        let tunnel_id: String
+        let url: String
+        let key: String
     }
 }
 

@@ -461,7 +461,7 @@ Settings opens as a **separate page** (not within the sidebar menu) and includes
 | Privacy Policy | `PRIVACY.md` in repository |
 | Terms of Service | `TERMS.md` in repository |
 
-**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)). The `tunnel_id` is the persistent workstation identifier that enables proper routing.
+**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?data=<base64_encoded_json>` where the JSON payload contains `tunnel_id`, `url`, and `key` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)). The `tunnel_id` is the persistent workstation identifier that enables proper routing.
 
 ---
 

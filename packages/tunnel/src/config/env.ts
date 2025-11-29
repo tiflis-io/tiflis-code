@@ -63,19 +63,20 @@ export function loadEnv(): Env {
 }
 
 /**
- * Generates the public URL for a tunnel ID.
+ * Generates the public URL for the tunnel server.
+ * Returns only the base WebSocket URL without any query parameters.
  */
-export function generatePublicUrl(env: Env, tunnelId: string): string {
+export function generatePublicUrl(env: Env): string {
   if (env.PUBLIC_BASE_URL) {
     // Use configured public URL
     const baseUrl = env.PUBLIC_BASE_URL.replace(/\/$/, '');
-    return `${baseUrl}${env.WS_PATH}?tunnel_id=${tunnelId}`;
+    return `${baseUrl}${env.WS_PATH}`;
   }
 
   // Auto-generate based on host and port
   const protocol = env.NODE_ENV === 'production' ? 'wss' : 'ws';
   const host = env.HOST === '0.0.0.0' ? 'localhost' : env.HOST;
-  return `${protocol}://${host}:${env.PORT}${env.WS_PATH}?tunnel_id=${tunnelId}`;
+  return `${protocol}://${host}:${env.PORT}${env.WS_PATH}`;
 }
 
 // Singleton env instance

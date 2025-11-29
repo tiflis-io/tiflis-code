@@ -29,7 +29,7 @@ export interface RegisterWorkstationResult {
 export interface RegisterWorkstationDeps {
   workstationRegistry: WorkstationRegistry;
   generateTunnelId: () => string;
-  getPublicUrl: (tunnelId: string) => string;
+  getPublicUrl: () => string;
   expectedApiKey: string;
   logger: Logger;
 }
@@ -117,7 +117,7 @@ export class RegisterWorkstationUseCase {
         name: params.name,
         authKey: AuthKey.create(params.authKey),
         socket,
-        publicUrl: this.getPublicUrl(tunnelId.value),
+        publicUrl: this.getPublicUrl(),
       });
 
       this.workstationRegistry.register(workstation);
@@ -129,7 +129,7 @@ export class RegisterWorkstationUseCase {
 
     return {
       tunnelId: tunnelId.value,
-      publicUrl: this.getPublicUrl(tunnelId.value),
+      publicUrl: this.getPublicUrl(),
       restored,
     };
   }

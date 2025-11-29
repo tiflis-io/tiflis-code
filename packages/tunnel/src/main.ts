@@ -106,7 +106,7 @@ async function bootstrap(): Promise<void> {
   const registerWorkstation = new RegisterWorkstationUseCase({
     workstationRegistry,
     generateTunnelId: () => nanoid(12),
-    getPublicUrl: (tunnelId) => generatePublicUrl(env, tunnelId),
+    getPublicUrl: () => generatePublicUrl(env),
     expectedApiKey: env.TUNNEL_REGISTRATION_API_KEY,
     logger,
   });
