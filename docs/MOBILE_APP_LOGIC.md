@@ -288,6 +288,7 @@ The connection indicator is **always visible** in the toolbar:
                     │  ● Connected                │
                     │  ─────────────────────      │
                     │  Workstation: MacBook Pro   │
+                    │  Tunnel ID: Z6q62aKz-F96    │
                     │  Version: 0.1.0             │
                     │  Tunnel: tunnel.tiflis.io   │
                     │                             │
@@ -310,7 +311,9 @@ The connection indicator is **always visible** in the toolbar:
 
 #### 2. Magic Link
 
-Format: `tiflis://connect?url=<tunnel_url>&key=<auth_key>`
+Format: `tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>`
+
+The `tunnel_id` parameter is required for proper routing to the correct workstation. It is a persistent identifier that survives workstation restarts.
 
 ```swift
 private func handleMagicLink(_ link: String) {
@@ -324,6 +327,7 @@ private func handleMagicLink(_ link: String) {
     
     for item in queryItems {
         switch item.name {
+        case "tunnel_id": tunnelId = item.value ?? ""
         case "url": tunnelURL = item.value ?? ""
         case "key": authKey = item.value ?? ""
         default: break
@@ -605,6 +609,7 @@ TTS responses include an audio attachment:
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ ● Connected                      [Disconnect]           │   │
 │  │ Workstation: MacBook Pro                                │   │
+│  │ Tunnel ID: Z6q62aKz-F96                                 │   │
 │  │ Version: 0.1.0                                          │   │
 │  │ Tunnel: tunnel.tiflis.io                                │   │
 │  └─────────────────────────────────────────────────────────┘   │
@@ -634,7 +639,7 @@ TTS responses include an audio attachment:
 ### Connection Section States
 
 **Connected:**
-- Shows workstation info (name, version, tunnel URL)
+- Shows workstation info (name, tunnel ID, version, tunnel URL)
 - Disconnect button available
 
 **Disconnected:**

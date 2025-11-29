@@ -11,6 +11,7 @@ import { createLogger } from './infrastructure/logging/pino-logger.js';
 import { registerHealthRoute } from './infrastructure/http/health-route.js';
 import { initDatabase, closeDatabase } from './infrastructure/persistence/database/client.js';
 import { InMemoryClientRegistry } from './infrastructure/persistence/in-memory-registry.js';
+import { WorkstationMetadataRepository } from './infrastructure/persistence/repositories/workstation-metadata-repository.js';
 import { TunnelClient } from './infrastructure/websocket/tunnel-client.js';
 import { MessageRouter, type MessageHandlers } from './infrastructure/websocket/message-router.js';
 import { FileSystemWorkspaceDiscovery } from './infrastructure/workspace/workspace-discovery.js';
@@ -103,6 +104,9 @@ async function bootstrap(): Promise<void> {
   const dataDir = env.DATA_DIR;
   initDatabase(dataDir);
   logger.info({ dataDir }, 'Database initialized');
+
+  // Create repositories
+  const workstationMetadataRepository = new WorkstationMetadataRepository();
 
   // Create infrastructure components
   const clientRegistry = new InMemoryClientRegistry();
@@ -434,10 +438,28 @@ async function bootstrap(): Promise<void> {
       workstationName: env.WORKSTATION_NAME,
       authKey: env.WORKSTATION_AUTH_KEY,
       logger,
+      metadataRepository: workstationMetadataRepository,
     },
     {
       onConnected: (tunnelId, publicUrl) => {
         logger.info({ tunnelId, publicUrl }, '🚀 Connected to tunnel');
+        
+        // Generate and display magic link for mobile clients
+        const magicLink = `tiflis://connect?tunnel_id=${encodeURIComponent(tunnelId)}&url=${encodeURIComponent(publicUrl)}&key=${encodeURIComponent(env.WORKSTATION_AUTH_KEY)}`;
+        
+        logger.info(
+          {
+            tunnelId,
+            publicUrl,
+            magicLink,
+          },
+          '📱 Magic link for mobile clients'
+        );
+        
+        // Also print to console for easy copy-paste
+        console.log('\n📱 Magic Link for Mobile App:');
+        console.log(magicLink);
+        console.log('\n');
       },
       onDisconnected: () => {
         logger.warn('Disconnected from tunnel');

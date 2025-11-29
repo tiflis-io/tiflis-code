@@ -693,15 +693,32 @@ All events are sent only to clients subscribed to the session.
 
 ## 11. QR Code / Magic Link Payload
 
-For initial mobile client setup:
+For initial mobile client setup, the magic link format is:
 
+```
+tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>
+```
+
+**URL-encoded parameters:**
+- `tunnel_id` (required) - Workstation tunnel ID (persistent identifier)
+- `url` (required) - Tunnel server WebSocket URL (e.g., `wss://tunnel.example.com/ws`)
+- `key` (required) - Workstation auth key for client authentication
+
+**Example:**
+```
+tiflis://connect?tunnel_id=Z6q62aKz-F96&url=wss://tunnel.example.com/ws&key=my-workstation-auth-key
+```
+
+**JSON representation (for reference):**
 ```json
 {
-  "tunnel_id": "abc123",
-  "tunnel_url": "wss://tunnel.example.com",
-  "auth_key": "workstation-auth-key"
+  "tunnel_id": "Z6q62aKz-F96",
+  "tunnel_url": "wss://tunnel.example.com/ws",
+  "auth_key": "my-workstation-auth-key"
 }
 ```
+
+**Note:** The `tunnel_id` is the persistent workstation identifier that must be included in the magic link so mobile clients can route to the correct workstation.
 
 ---
 

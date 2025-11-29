@@ -65,6 +65,13 @@ export function initDatabase(dataDir: string): DrizzleDatabase {
       subscribed_at INTEGER NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS workstation_metadata (
+      id TEXT PRIMARY KEY DEFAULT 'workstation',
+      tunnel_id TEXT,
+      public_url TEXT,
+      updated_at INTEGER NOT NULL
+    );
+
     CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
     CREATE INDEX IF NOT EXISTS idx_subscriptions_device_id ON subscriptions(device_id);

@@ -247,7 +247,7 @@ A colored dot indicator is **always visible** in the header on all screens:
 | **Error** | ● | Red |
 
 Tapping the indicator shows a popover with:
-- **Connected state**: Workstation name, version, tunnel URL, and Disconnect button
+- **Connected state**: Workstation name, tunnel ID, version, tunnel URL, and Disconnect button
 - **Disconnected state**: "Scan QR Code" and "Paste Magic Link" buttons for quick connection
 
 #### Adaptive Navigation
@@ -435,7 +435,7 @@ Settings opens as a **separate page** (not within the sidebar menu) and includes
 
 | State | Content |
 |-------|---------|
-| **Connected** | Workstation name, version, tunnel URL (read-only), Disconnect button |
+| **Connected** | Workstation name, tunnel ID, version, tunnel URL (read-only), Disconnect button |
 | **Disconnected** | "Scan QR Code" button, "Paste Magic Link" button |
 
 #### Voice & Speech Section
@@ -461,7 +461,7 @@ Settings opens as a **separate page** (not within the sidebar menu) and includes
 | Privacy Policy | `PRIVACY.md` in repository |
 | Terms of Service | `TERMS.md` in repository |
 
-**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?url=<tunnel_url>&key=<auth_key>` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)).
+**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?tunnel_id=<tunnel_id>&url=<tunnel_url>&key=<auth_key>` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)). The `tunnel_id` is the persistent workstation identifier that enables proper routing.
 
 ---
 

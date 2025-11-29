@@ -14,6 +14,7 @@ import type {
   OutgoingTunnelMessage,
 } from '../../protocol/messages.js';
 import { parseTunnelMessage } from '../../protocol/schemas.js';
+import type { WorkstationMetadataRepository } from '../persistence/repositories/workstation-metadata-repository.js';
 
 export interface TunnelClientConfig {
   tunnelUrl: string;
@@ -21,6 +22,7 @@ export interface TunnelClientConfig {
   workstationName: string;
   authKey: string;
   logger: Logger;
+  metadataRepository: WorkstationMetadataRepository;
 }
 
 export interface TunnelClientCallbacks {
@@ -39,6 +41,7 @@ export class TunnelClient {
   private readonly config: TunnelClientConfig;
   private readonly callbacks: TunnelClientCallbacks;
   private readonly logger: Logger;
+  private readonly metadataRepository: WorkstationMetadataRepository;
 
   private ws: WebSocket | null = null;
   private state: TunnelState = 'disconnected';
@@ -53,6 +56,19 @@ export class TunnelClient {
     this.config = config;
     this.callbacks = callbacks;
     this.logger = config.logger.child({ component: 'tunnel-client' });
+    this.metadataRepository = config.metadataRepository;
+
+    // Load persisted tunnel ID from database
+    const persistedTunnelId = this.metadataRepository.getTunnelId();
+    const persistedPublicUrl = this.metadataRepository.getPublicUrl();
+    if (persistedTunnelId) {
+      this.tunnelId = persistedTunnelId;
+      this.publicUrl = persistedPublicUrl;
+      this.logger.info(
+        { tunnelId: persistedTunnelId },
+        'Loaded persisted tunnel ID from database'
+      );
+    }
   }
 
   /**
@@ -135,6 +151,8 @@ export class TunnelClient {
 
   /**
    * Disconnects from the tunnel server.
+   * Note: We don't clear tunnel_id from database on disconnect,
+   * as it should persist for reconnection.
    */
   disconnect(): void {
     this.clearTimers();
@@ -145,8 +163,8 @@ export class TunnelClient {
     }
 
     this.state = 'disconnected';
-    this.tunnelId = null;
-    this.publicUrl = null;
+    // Keep tunnelId and publicUrl in memory for reconnection
+    // They remain in database for persistence
     this.messageBuffer = [];
   }
 
@@ -252,6 +270,9 @@ export class TunnelClient {
     this.tunnelId = message.payload.tunnel_id;
     this.publicUrl = message.payload.public_url;
     this.state = 'registered';
+
+    // Persist tunnel ID and public URL to database
+    this.metadataRepository.updateTunnelInfo(this.tunnelId, this.publicUrl);
 
     this.logger.info(
       {

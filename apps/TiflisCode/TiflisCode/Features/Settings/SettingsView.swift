@@ -14,6 +14,7 @@ struct SettingsView: View {
     
     @EnvironmentObject private var appState: AppState
     @AppStorage("tunnelURL") private var tunnelURL = ""
+    @AppStorage("tunnelId") private var tunnelId = ""
     @AppStorage("ttsEnabled") private var ttsEnabled = true
     @AppStorage("sttLanguage") private var sttLanguage = "en"
     
@@ -52,6 +53,14 @@ struct SettingsView: View {
                         Spacer()
                         Text("MacBook Pro")
                             .foregroundStyle(.secondary)
+                    }
+                    
+                    HStack {
+                        Text("Tunnel ID")
+                        Spacer()
+                        Text(tunnelId.isEmpty ? "—" : tunnelId)
+                            .foregroundStyle(.secondary)
+                            .font(.system(.body, design: .monospaced))
                     }
                     
                     HStack {
@@ -188,7 +197,7 @@ struct SettingsView: View {
     }
     
     private func handleMagicLink(_ link: String) {
-        // Parse magic link in format: tiflis://connect?url=...&key=...
+        // Parse magic link in format: tiflis://connect?tunnel_id=...&url=...&key=...
         guard let url = URL(string: link),
               url.scheme == "tiflis",
               url.host == "connect",
@@ -199,6 +208,8 @@ struct SettingsView: View {
         
         for item in queryItems {
             switch item.name {
+            case "tunnel_id":
+                tunnelId = item.value ?? ""
             case "url":
                 tunnelURL = item.value ?? ""
             case "key":
@@ -207,6 +218,9 @@ struct SettingsView: View {
                 break
             }
         }
+        
+        // Auto-connect after setting credentials
+        appState.connect()
     }
 }
 
@@ -234,7 +248,7 @@ struct QRScannerView: View {
                 
                 // Mock scan button for preview
                 Button("Simulate Scan") {
-                    onScan("tiflis://connect?url=wss://tunnel.tiflis.io/ws&key=demo-key")
+                    onScan("tiflis://connect?tunnel_id=Z6q62aKz-F96&url=wss://tunnel.tiflis.io/ws&key=demo-key")
                 }
                 .buttonStyle(.borderedProminent)
             }

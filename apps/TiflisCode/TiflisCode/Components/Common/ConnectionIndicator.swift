@@ -40,6 +40,7 @@ struct ConnectionPopover: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @AppStorage("tunnelURL") private var tunnelURL = ""
+    @AppStorage("tunnelId") private var tunnelId = ""
     
     @State private var showQRScanner = false
     @State private var showMagicLinkInput = false
@@ -63,6 +64,7 @@ struct ConnectionPopover: View {
                 // Connected: show info and disconnect
                 VStack(alignment: .leading, spacing: 8) {
                     InfoRow(label: "Workstation", value: "MacBook Pro")
+                    InfoRow(label: "Tunnel ID", value: tunnelId.isEmpty ? "—" : tunnelId, useMonospaced: true)
                     InfoRow(label: "Version", value: "0.1.0")
                     InfoRow(label: "Tunnel", value: tunnelURL.isEmpty ? "tunnel.tiflis.io" : shortenURL(tunnelURL))
                 }
@@ -141,6 +143,9 @@ struct ConnectionPopover: View {
         
         for item in queryItems {
             switch item.name {
+            case "tunnel_id":
+                // Store tunnel_id (workstation ID) for routing
+                tunnelId = item.value ?? ""
             case "url":
                 tunnelURL = item.value ?? ""
             case "key":
@@ -159,6 +164,7 @@ struct ConnectionPopover: View {
 struct InfoRow: View {
     let label: String
     let value: String
+    var useMonospaced: Bool = false
     
     var body: some View {
         HStack {
@@ -167,6 +173,7 @@ struct InfoRow: View {
             Spacer()
             Text(value)
                 .fontWeight(.medium)
+                .font(useMonospaced ? .system(.subheadline, design: .monospaced) : nil)
         }
         .font(.subheadline)
     }

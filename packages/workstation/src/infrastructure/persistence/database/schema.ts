@@ -51,6 +51,17 @@ export const subscriptions = sqliteTable('subscriptions', {
 });
 
 /**
+ * Workstation metadata table - stores persistent workstation configuration.
+ * Singleton table (only one row with id='workstation').
+ */
+export const workstationMetadata = sqliteTable('workstation_metadata', {
+  id: text('id').primaryKey().default('workstation'), // Singleton row
+  tunnelId: text('tunnel_id'), // Persistent tunnel ID (workstation ID)
+  publicUrl: text('public_url'), // Public WebSocket URL
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).notNull(),
+});
+
+/**
  * Type definitions for database rows.
  */
 export type SessionRow = typeof sessions.$inferSelect;
@@ -61,4 +72,7 @@ export type NewMessageRow = typeof messages.$inferInsert;
 
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 export type NewSubscriptionRow = typeof subscriptions.$inferInsert;
+
+export type WorkstationMetadataRow = typeof workstationMetadata.$inferSelect;
+export type NewWorkstationMetadataRow = typeof workstationMetadata.$inferInsert;
 
