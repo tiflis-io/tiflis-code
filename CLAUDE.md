@@ -2552,6 +2552,10 @@ pnpm dev
 
 The workstation server will connect to the local tunnel and register.
 
+<p align="center">
+  <img src="assets/screenshots/workstation/startup.png" alt="Workstation Server Startup" width="600">
+</p>
+
 #### Running Both with Turborepo
 
 ```bash

@@ -92,6 +92,10 @@ pnpm dev
 curl http://localhost:3002/health
 ```
 
+<p align="center">
+  <img src="../../assets/screenshots/workstation/startup.png" alt="Workstation Server Startup" width="600">
+</p>
+
 ## Configuration
 
 All configuration is done via environment variables:

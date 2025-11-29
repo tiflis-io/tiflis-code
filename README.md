@@ -228,6 +228,10 @@ cp .env.example .env.local
 pnpm dev
 ```
 
+<p align="center">
+  <img src="assets/screenshots/workstation/startup.png" alt="Workstation Server Startup" width="600">
+</p>
+
 #### 3. Run iOS App
 
 ```bash
