@@ -40,7 +40,7 @@ export interface RegisterWorkstationDeps {
 export class RegisterWorkstationUseCase {
   private readonly workstationRegistry: WorkstationRegistry;
   private readonly generateTunnelId: () => string;
-  private readonly getPublicUrl: (tunnelId: string) => string;
+  private readonly getPublicUrl: () => string;
   private readonly expectedApiKey: string;
   private readonly logger: Logger;
 

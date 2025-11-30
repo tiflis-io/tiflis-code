@@ -22,7 +22,7 @@ export function createApp(config: AppConfig): FastifyInstance {
     trustProxy: config.env.TRUST_PROXY,
     // Disable request logging since we use pino directly
     disableRequestLogging: true,
-  });
+  }) as FastifyInstance;
 
   // Request logging middleware
   app.addHook('onRequest', async (request, _reply) => {
