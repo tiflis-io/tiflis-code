@@ -1,0 +1,91 @@
+# Tunnel Server Deployment
+#
+# Deploys the tunnel server to a VPS after Docker image is built
+# Requires SSH access to the VPS and Docker installed
+#
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the MIT License.
+
+name: Deploy Tunnel Server
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'production'
+        type: choice
+        options:
+          - production
+          - staging
+      tunnel_domain:
+        description: 'Tunnel domain (e.g., tunnel.example.com)'
+        required: true
+        type: string
+      letsencrypt_email:
+        description: 'Email for Let''s Encrypt certificates'
+        required: true
+        type: string
+      tunnel_api_key:
+        description: 'Tunnel registration API key (32+ chars)'
+        required: true
+        type: string
+
+  # Optional: Trigger after release workflow completes
+  workflow_run:
+    workflows: ["Release"]
+    types:
+      - completed
+
+jobs:
+  deploy:
+    name: Deploy to VPS
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    environment: ${{ github.event.inputs.environment || 'production' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            # Set environment variables
+            export TUNNEL_DOMAIN="${{ github.event.inputs.tunnel_domain }}"
+            export LETSENCRYPT_EMAIL="${{ github.event.inputs.letsencrypt_email }}"
+            export TUNNEL_REGISTRATION_API_KEY="${{ github.event.inputs.tunnel_api_key }}"
+
+            # Navigate to deployment directory
+            cd /opt/tiflis-code-tunnel
+
+            # Pull latest changes if needed
+            if [ -d ".git" ]; then
+              git pull origin main
+            fi
+
+            # Stop existing containers
+            docker compose -f docker-compose.traefik.yml down || true
+
+            # Start services
+            docker compose -f docker-compose.traefik.yml up -d
+
+            # Wait for services to be healthy
+            echo "Waiting for services to start..."
+            sleep 30
+
+            # Check health
+            if curl -f http://localhost/healthz; then
+              echo "✅ Tunnel server deployed successfully"
+              echo "🌐 WebSocket endpoint: wss://$TUNNEL_DOMAIN/ws"
+              echo "🔍 Health check: https://$TUNNEL_DOMAIN/healthz"
+            else
+              echo "❌ Health check failed"
+              exit 1
+            fi
