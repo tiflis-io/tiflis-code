@@ -4,7 +4,7 @@
  * @license MIT
  */
 
-import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import type { FastifyRequest, FastifyReply } from 'fastify';
 import type { WorkstationRegistry } from '../../domain/ports/workstation-registry.js';
 import type { ClientRegistry } from '../../domain/ports/client-registry.js';
 
@@ -28,11 +28,15 @@ interface HealthResponse {
   timestamp: string;
 }
 
+interface AppWithGet {
+  get: (path: string, handler: (request: FastifyRequest, reply: FastifyReply) => Promise<unknown>) => unknown;
+}
+
 /**
  * Registers the health check route on the Fastify server.
  */
 export function registerHealthRoute(
-  app: FastifyInstance,
+  app: AppWithGet,
   config: HealthRouteConfig,
   deps: HealthRouteDeps
 ): void {

@@ -4,7 +4,7 @@
  * @license MIT
  */
 
-import Fastify, { type FastifyInstance, type FastifyError } from 'fastify';
+import Fastify, { type FastifyError } from 'fastify';
 import type { Logger } from 'pino';
 import type { Env } from './config/env.js';
 
