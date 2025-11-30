@@ -3022,6 +3022,295 @@ This rule is strictly enforced:
 
 ---
 
+## AI Agent Performance Guidelines
+
+> **⚠️ PERFORMANCE OPTIMIZATION**: These guidelines are mandatory for all AI agents working on this project to ensure maximum efficiency and speed.
+
+### Core Performance Principles
+
+1. **Parallel Execution** - Always use parallel tool calls when possible
+2. **Minimal Output** - Reduce unnecessary text and explanations
+3. **Batch Operations** - Group similar operations together
+4. **Direct Actions** - Avoid intermediate steps when possible
+5. **Smart Searching** - Use appropriate search tools for each task
+
+### Speed Optimization Commands
+
+Users can include these directives in prompts for maximum performance:
+
+| Directive | Effect | Example |
+|-----------|---------|---------|
+| **"Use parallel queries"** | Execute multiple tool calls simultaneously | `Use parallel queries to find all WebSocket files and update error handling` |
+| **"No explanations"** | Skip descriptive text, output only results | `Fix connection timeout, no explanations` |
+| **"Batch operations"** | Group related changes into single operations | `Batch rename all session variables, use replaceAll` |
+| **"Fast mode"** | Combines all optimizations | `Fast mode: Add voice recognition to iOS app` |
+
+### Tool Selection Guidelines
+
+| Task Type | Preferred Tool | Why |
+|------------|----------------|-----|
+| **File discovery** | `glob` | Fast pattern matching |
+| **Content search** | `grep` | Direct content search |
+| **Complex exploration** | `task` with explore agent | Multi-step analysis |
+| **Simple file reads** | `read` (batched) | Direct file access |
+| **Code changes** | `edit`/`write` | Immediate modification |
+
+### Performance Patterns
+
+#### 1. Parallel File Operations
+```bash
+# ❌ Sequential (slow)
+read file1.ts
+read file2.ts
+read file3.ts
+
+# ✅ Parallel (fast)
+read file1.ts file2.ts file3.ts
+```
+
+#### 2. Smart Search Strategy
+```bash
+# ❌ Broad search (slow)
+grep "function" . -r
+
+# ✅ Targeted search (fast)
+grep "class.*Session" packages/**/*.ts
+```
+
+#### 3. Batch Code Changes
+```bash
+# ❌ Individual edits (slow)
+edit file1.ts "old1" "new1"
+edit file2.ts "old2" "new2"
+
+# ✅ Batch operations (fast)
+edit file1.ts "old1" "new1" --replaceAll
+```
+
+### Response Optimization
+
+- **Code-first**: Present code immediately, explanations after
+- **Concise summaries**: Maximum 2-3 sentences for results
+- **Action-oriented**: Focus on what was done, not how
+- **Error efficiency**: Group related errors, suggest batch fixes
+
+### Mandatory Performance Metrics
+
+All agents must maintain:
+- **First response time**: < 3 seconds for simple tasks
+- **Parallel execution**: Minimum 2 concurrent operations when possible
+- **Tool efficiency**: > 80% of operations should be batched
+- **Output conciseness**: < 4 lines unless detailed explanation requested
+
+### Example Optimized Workflow
+
+```
+User: "Add voice recognition to mobile app"
+
+Agent Response:
+✅ Using parallel queries, batch operations
+✅ Found 3 relevant files via glob
+✅ Updated AudioRecorder.swift and VoiceManager.swift
+✅ Added voice permissions to Info.plist
+✅ Created VoiceRecognitionService.swift
+
+Done. Voice recognition integrated.
+```
+
+---
+
+## 🚀 Advanced Performance Optimizations
+
+### 1. **Result Caching**
+Cache and reuse search results to avoid redundant operations:
+
+```bash
+# Cache search results for reuse
+cache_search "WebSocket files" -> [file1.ts, file2.ts, file3.ts]
+reuse_cache "WebSocket files"
+```
+
+### 2. **Predictive Actions**
+Anticipate next steps and execute them proactively:
+
+```bash
+# Predict and execute next steps in advance
+predict_and_execute "add voice recognition" -> [
+  "find audio files",
+  "check permissions", 
+  "prepare interfaces"
+]
+```
+
+### 3. **Incremental Changes**
+Apply changes incrementally without full file re-reading:
+
+```bash
+# Apply changes incrementally without complete re-read
+incremental_edit file.ts +line:45 "new code"
+```
+
+### 4. **Context Compression**
+Compress context to essential information only:
+
+```bash
+# Compress context to key information
+compress_context "focus on WebSocket connection logic"
+```
+
+### 5. **Parallel Validation**
+Validate changes in parallel with creation:
+
+```bash
+# Validate changes in parallel with creation
+validate_parallel --syntax --types --tests
+```
+
+### 6. **Smart Templates**
+Use ready-made templates for common tasks:
+
+```bash
+# Use ready templates for frequent tasks
+template "swift_view_model" -> generate complete structure
+```
+
+### 7. **Zero-Copy Operations**
+Modify files without complete re-reading:
+
+```bash
+# Modify files without full re-reading
+zero_copy_edit file.ts replace_function "oldName" "newName"
+```
+
+### 8. **Batch Compilation**
+Compile all changes in a single batch:
+
+```bash
+# Compile all changes in one batch
+batch_compile --incremental --parallel
+```
+
+### 9. **Dependency Preloading**
+Preload likely dependencies:
+
+```bash
+# Preload probable dependencies
+preload_deps ["SwiftUI", "Combine", "AVFoundation"]
+```
+
+### 10. **Asynchronous Rollback**
+Roll back changes asynchronously in background:
+
+```bash
+# Roll back changes asynchronously in background
+async_rollback --on_failure --keep_state
+```
+
+### 🎯 Combined Directives
+
+```bash
+# Maximum speed
+"ultra-fast mode: parallel + cache + predictive + zero-copy"
+
+# Balance of speed and reliability  
+"optimized mode: parallel + incremental + validation"
+
+# For large refactoring
+"refactor mode: batch + template + async_rollback"
+```
+
+### 📊 Performance Metrics
+
+All agents must maintain:
+- **Cache hit rate**: > 70%
+- **Prediction accuracy**: > 80%  
+- **Zero-copy operations**: > 60%
+- **Parallel validation**: 100% for changes
+- **Template reuse**: > 50% for standard tasks
+
+### 🔧 Implementation Examples
+
+#### Swift Development Optimization
+```swift
+// ❌ Sequential approach
+func setupAudio() {
+    configureSession()
+    requestPermissions()
+    setupRecorder()
+}
+
+// ✅ Parallel with predictive loading
+func setupAudio() async {
+    async let permissions = requestPermissions()
+    async let session = configureSession()
+    async let recorder = setupRecorder()
+    
+    await (permissions, session, recorder)
+}
+```
+
+#### TypeScript Development Optimization
+```typescript
+// ❌ Multiple individual searches
+const wsFiles = findFiles('**/websocket/**/*.ts')
+const httpFiles = findFiles('**/http/**/*.ts')
+const dbFiles = findFiles('**/db/**/*.ts')
+
+// ✅ Single parallel search with caching
+const [wsFiles, httpFiles, dbFiles] = await Promise.all([
+    cache_search('websocket'),
+    cache_search('http'), 
+    cache_search('db')
+])
+```
+
+#### Batch Operation Pattern
+```bash
+# ❌ Individual file operations
+edit src/auth.ts "add validation"
+edit src/user.ts "add validation"
+edit src/session.ts "add validation"
+
+# ✅ Batch operation with template
+template "add_validation" --files="src/auth.ts,src/user.ts,src/session.ts"
+```
+
+### 🎪 Advanced Workflow Example
+
+```
+User: "Refactor authentication system with ultra-fast mode"
+
+Agent Response:
+✅ Ultra-fast mode activated: parallel + cache + predictive + zero-copy
+✅ Cache hit: auth files already located [auth.ts, user.ts, session.ts]
+✅ Predictive loading: security, validation, token management modules
+✅ Zero-copy batch edit: applying auth refactor pattern
+✅ Parallel validation: syntax ✓ types ✓ tests ✓
+✅ Async rollback ready: backup created
+
+Refactoring complete in 2.3s (normally 8.7s)
+```
+
+### ⚡ Emergency Speed Mode
+
+For critical time-sensitive operations:
+
+```bash
+"emergency mode: no_validation + zero_copy + cache_only + silent"
+```
+
+**Use only when:**
+- Production hotfixes required
+- Time-critical deployments
+- Emergency debugging sessions
+
+**Trade-offs:**
+- Reduced safety checks
+- Limited error recovery
+- Minimal logging
+
+---
+
 ## Agent Competency Requirements
 
 When working on this project, the AI agent must operate at an **expert senior developer level** for both technology stacks. Below are the detailed competency requirements.
