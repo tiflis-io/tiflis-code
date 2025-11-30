@@ -667,6 +667,190 @@ NavigationStack { ... }
 
 ---
 
+## Terminal Interface
+
+### TerminalView Architecture
+
+The terminal uses **SwiftTerm** library for terminal emulation. The implementation follows a simplified architecture:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    TerminalView (SwiftUI)                        │
+│  • Wraps TerminalContentView (UIViewRepresentable)               │
+│  • Manages TerminalViewModel state                               │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              TerminalContentView (UIViewRepresentable)          │
+│  • Bridges SwiftUI to UIKit                                      │
+│  • Manages TerminalViewUIKit lifecycle                           │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              TerminalViewUIKit (UIView Wrapper)                  │
+│  • Wraps SwiftTerm.TerminalView                                   │
+│  • Configures fonts, colors, accessibility                      │
+│  • Handles system theme changes (iOS 17+ API)                    │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│            SwiftTerm.TerminalView (UIKit)                        │
+│  • Creates and manages its own Terminal instance internally      │
+│  • Handles rendering, input, and terminal state                  │
+│  • Forwards input events via TerminalViewDelegate                │
+└──────────────────────────────┬──────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              TerminalViewModel (@MainActor)                     │
+│  • Receives input via TerminalViewDelegate.send()               │
+│  • Sends output via TerminalView.feed()                          │
+│  • Manages WebSocket communication                              │
+│  • Handles session subscription and replay                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Key Implementation Details
+
+#### Simplified Architecture
+
+**Important:** The implementation uses **only one Terminal instance** - the one created internally by `SwiftTerm.TerminalView`. This eliminates the need for a duplicate Terminal instance.
+
+**Data Flow:**
+- **Output (Server → Terminal)**: WebSocket → `TerminalViewModel.handleOutputMessage()` → `TerminalView.feed(byteArray:)` → SwiftTerm's internal Terminal → Rendering
+- **Input (User → Server)**: User types → SwiftTerm's Terminal → `TerminalViewDelegate.send()` → `TerminalViewModel.sendInput()` → WebSocket
+
+**Access to Terminal:**
+- Use `TerminalView.getTerminal()` to access the internal Terminal instance for resize operations
+- Set `TerminalView.terminalDelegate` to receive input events
+
+#### System Theme Support
+
+The terminal automatically adapts to system dark/light mode:
+
+```swift
+// iOS 17+ API
+if #available(iOS 17.0, *) {
+    registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (changedView: Self, _: UITraitCollection) in
+        changedView.updateTheme()
+    }
+}
+
+// iOS 16 and below
+@available(iOS, deprecated: 17.0)
+override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+    // Handle theme changes
+}
+```
+
+**Theme Colors:**
+- **Dark Theme**: `systemGray6` foreground, `systemBackground` background
+- **Light Theme**: `label` foreground, `systemBackground` background
+
+#### Advanced Features
+
+**Sixel Graphics Support:**
+- Enabled via `terminal.options.enableSixelReported = true`
+- SwiftTerm automatically renders Sixel images inline
+- No custom handlers needed
+
+**Hyperlink Support:**
+- Automatic detection of OSC 8 hyperlinks
+- Implement `TerminalViewDelegate.requestOpenLink` to handle taps
+- Opens URLs via `UIApplication.shared.open()`
+
+#### Font Configuration
+
+Uses dynamic font metrics for accurate terminal sizing:
+
+```swift
+let font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+let testChar = "M"
+let charSize = testChar.size(withAttributes: [.font: font])
+let fontWidth = charSize.width
+let fontHeight = charSize.height
+```
+
+**Italic Fonts:**
+Created using `UIFontDescriptor` (not `withSymbolicTraits` directly):
+
+```swift
+var fontDescriptor = normalFont.fontDescriptor
+let italicTraits = fontDescriptor.symbolicTraits.union(.traitItalic)
+fontDescriptor = fontDescriptor.withSymbolicTraits(italicTraits) ?? fontDescriptor
+let italicFont = UIFont(descriptor: fontDescriptor, size: fontSize)
+```
+
+#### Performance Optimizations
+
+**Data Conversion:**
+- Uses `String.utf8Bytes` and `String.utf8BytesSlice` extensions for efficient conversion
+- Avoids intermediate `Data` allocations
+
+**Batch Operations:**
+- Replay messages are batched into a single `feed()` call
+- Reduces render passes and improves performance
+
+**Size Calculation:**
+- Only recalculates terminal size when view bounds actually change
+- Uses `Coordinator` pattern to track previous size
+
+#### Keyboard Management
+
+The terminal integrates with the drawer navigation system:
+
+```swift
+@Environment(\.isDrawerOpen) private var isDrawerOpen
+@FocusState private var isInputFocused: Bool
+
+.onChange(of: isDrawerOpen) { oldValue, newValue in
+    if !newValue && oldValue {
+        // Drawer just closed - restore focus
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(250))
+            isInputFocused = true
+        }
+    }
+}
+```
+
+**Text Input Configuration:**
+- `keyboardType` is read-only - TerminalView handles it internally
+- Disabled features: autocapitalization, autocorrection, spell checking, smart quotes/dashes
+- Keyboard appearance: `.dark`
+
+#### Accessibility
+
+```swift
+terminalView.isAccessibilityElement = true
+terminalView.accessibilityLabel = "Terminal"
+terminalView.accessibilityHint = "Double tap to interact with terminal"
+terminalView.accessibilityTraits = [.staticText]  // Note: .keyboardInterface does not exist
+```
+
+**Important:** `terminal.buffer.lines` is internal and cannot be accessed directly for accessibility values.
+
+### Terminal Session Lifecycle
+
+1. **Session Creation**: Terminal session created via `[+]` button or Supervisor command
+2. **View Initialization**: `TerminalView` creates `TerminalViewModel` with session
+3. **Terminal Setup**: `TerminalViewUIKit` configures SwiftTerm.TerminalView
+4. **Subscription**: ViewModel subscribes to session events via WebSocket
+5. **Replay Loading**: Historical output loaded and batched into terminal
+6. **Live Updates**: New output fed to terminal in real-time
+7. **Termination**: Session terminated via swipe-to-delete or menu action
+
+### Terminal Menu Actions
+
+| Action | Description |
+|--------|-------------|
+| **Terminate Session** | Closes terminal session and removes from sidebar |
+
+---
+
 ## Voice Interaction
 
 ### Voice Input Modes
@@ -1067,6 +1251,24 @@ case .error(let message):
 
 - Text scales with system settings
 - Minimum touch targets: 44x44pt
+
+---
+
+---
+
+## Additional Resources
+
+### Related Documentation
+
+- **[PROTOCOL.md](../PROTOCOL.md)** - Complete WebSocket protocol specification
+- **[SWIFT-TERM-IPHONE-BEST-PRACTICE.md](../SWIFT-TERM-IPHONE-BEST-PRACTICE.md)** - Comprehensive guide for SwiftTerm integration on iOS, including:
+  - Terminal view configuration and setup
+  - System theme support (dark/light mode)
+  - Sixel graphics and hyperlink support
+  - Performance optimizations
+  - Common pitfalls and API corrections
+  - Modern Swift concurrency patterns
+  - Accessibility best practices
 
 ---
 

@@ -9,6 +9,7 @@
 import Foundation
 @preconcurrency import Combine
 import SwiftTerm
+import UIKit
 
 /// View model for terminal session management
 @MainActor
@@ -21,20 +22,25 @@ final class TerminalViewModel: ObservableObject {
     
     // MARK: - Terminal
     
-    // Use lazy property to allow using 'self' in Terminal initializer
-    // This avoids the need for a temporary delegate wrapper
-    // Note: Terminal is recreated when we need to clear state (before loading replay)
-    private var _terminal: Terminal?
-    var terminal: Terminal {
-        if let existing = _terminal {
-            return existing
-        }
-        let term = Terminal(delegate: self)
-        term.resize(cols: 80, rows: 24)
-        _terminal = term
-        return term
-    }
+    // Simplified Architecture: Use only TerminalView's internal Terminal
+    // 
+    // TerminalView creates its own Terminal instance and implements TerminalDelegate internally.
+    // When user types, TerminalView's internal Terminal calls send() which TerminalView forwards
+    // to its terminalDelegate (which we set to self).
+    //
+    // We use:
+    // - TerminalViewDelegate to receive input events (send method)
+    // - TerminalView.getTerminal() to access the internal terminal for resize operations
+    // - TerminalView.feed() to send output data for rendering
+    //
+    // This eliminates the duplicate Terminal instance that was previously needed.
     private var swiftTermView: SwiftTerm.TerminalView?
+    
+    /// Access to TerminalView's internal terminal via getTerminal()
+    /// Returns nil if TerminalView is not yet available
+    private var terminal: Terminal? {
+        return swiftTermView?.getTerminal()
+    }
     
     // MARK: - Dependencies
     
@@ -55,6 +61,13 @@ final class TerminalViewModel: ObservableObject {
     // Updated from main actor, read from nonisolated context
     nonisolated(unsafe) private var threadSafeTerminalSize: (cols: Int, rows: Int) = (80, 24)
     
+    // Performance monitoring (development only)
+    #if DEBUG
+    private var feedOperationCount: Int = 0
+    private var feedOperationStartTime: Date?
+    private var lastSizeCalculationTime: Date?
+    #endif
+    
     // MARK: - Initialization
     
     init(
@@ -72,11 +85,7 @@ final class TerminalViewModel: ObservableObject {
         // Initialize thread-safe terminal size
         threadSafeTerminalSize = (cols: 80, rows: 24)
         
-        // Terminal will be created on first access via computed property
-        // It will be reset before loading replay to ensure clean state
-        
-        // Initialize terminal immediately to ensure it's ready
-        _ = terminal
+        // Terminal will be accessed via TerminalView.getTerminal() when view is available
         
         // Observe connection state
         observeConnectionState()
@@ -225,12 +234,13 @@ final class TerminalViewModel: ObservableObject {
         }
     }
     
-    /// Resets terminal by creating a new instance
-    /// This clears the terminal state before loading replay
+    /// Resets terminal state before loading replay
+    /// Note: SwiftTerm doesn't provide a clear() method, so we reset the TerminalView reference
+    /// This ensures clean state when returning to terminal or reloading history
     private func resetTerminal() {
-        // Create a new terminal instance to clear state
-        // This is needed because SwiftTerm doesn't have a clear method
-        _terminal = nil
+        // SwiftTerm TerminalView doesn't expose clear/reset methods
+        // Resetting the TerminalView reference will cause it to be recreated
+        // This ensures TerminalView's internal terminal is fresh when we load replay
         
         // Reset the TerminalView reference
         // The view will be recreated when TerminalContentView.makeUIView is called
@@ -282,13 +292,25 @@ final class TerminalViewModel: ObservableObject {
     }
     
     func resizeTerminal(cols: Int, rows: Int) {
+        // Only resize if size actually changed
+        guard terminalSize.cols != cols || terminalSize.rows != rows else {
+            return
+        }
+        
+        #if DEBUG
+        let resizeStartTime = Date()
+        #endif
+        
         // Update Published property (direct assignment to wrapped value)
         terminalSize = (cols: cols, rows: rows)
         // Update thread-safe copy for nonisolated delegate access
         threadSafeTerminalSize = (cols: cols, rows: rows)
         
-        // Update terminal size
-        terminal.resize(cols: cols, rows: rows)
+        // Update TerminalView's internal terminal size
+        // Use TerminalView's resize method which handles both terminal and view updates
+        if let terminalView = swiftTermView {
+            terminalView.resize(cols: cols, rows: rows)
+        }
         
         // Send resize message to server
         let message: [String: Any] = [
@@ -305,6 +327,12 @@ final class TerminalViewModel: ObservableObject {
         } catch {
             self.error = "Failed to resize terminal: \(error.localizedDescription)"
         }
+        
+        #if DEBUG
+        let resizeDuration = Date().timeIntervalSince(resizeStartTime)
+        lastSizeCalculationTime = Date()
+        print("[TerminalViewModel] Terminal resize: \(cols)×\(rows), \(String(format: "%.3f", resizeDuration * 1000))ms")
+        #endif
     }
     
     // MARK: - Message Handling
@@ -376,21 +404,31 @@ final class TerminalViewModel: ObservableObject {
         
         // Feed output to TerminalView for rendering
         // TerminalView manages its own Terminal instance for display
-        if let terminalView = swiftTermView {
-            // Feed directly to TerminalView's terminal (proper SwiftTerm pattern)
-            if let data = content.data(using: .utf8) {
-                let bytes = Array(data)
-                terminalView.feed(byteArray: bytes[...])
-            }
-        } else {
-            // TerminalView not yet available, feed to our Terminal
-            // This maintains state until TerminalView is connected
-            // Note: Terminal.feed(byteArray:) expects [UInt8], not ArraySlice
-            if let data = content.data(using: .utf8) {
-                let bytes = Array(data)
-                terminal.feed(byteArray: bytes)
-            }
+        #if DEBUG
+        let feedStartTime = Date()
+        feedOperationCount += 1
+        #endif
+        
+        guard let terminalView = swiftTermView else {
+            // TerminalView not yet available - output will be lost
+            // This is acceptable as we'll load replay when view appears
+            #if DEBUG
+            print("[TerminalViewModel] Warning: Output received but TerminalView not available")
+            #endif
+            return
         }
+        
+        // Feed directly to TerminalView (proper SwiftTerm pattern)
+        // Use optimized conversion to avoid intermediate Data allocation
+        let bytes = content.utf8BytesSlice
+        terminalView.feed(byteArray: bytes)
+        
+        #if DEBUG
+        let feedDuration = Date().timeIntervalSince(feedStartTime)
+        if feedOperationCount % 100 == 0 {
+            print("[TerminalViewModel] Feed operation #\(feedOperationCount): \(String(format: "%.3f", feedDuration * 1000))ms, content size: \(content.utf8.count) bytes")
+        }
+        #endif
     }
     
     private func handleReplayMessage(_ message: [String: Any]) {
@@ -413,27 +451,42 @@ final class TerminalViewModel: ObservableObject {
             return
         }
         
-        // Feed replayed messages to terminal in order
-        // Send them sequentially to preserve terminal state and cursor position
+        // Batch replay messages for better performance
+        // Collect all content and feed in a single operation to reduce render passes
+        #if DEBUG
+        let replayStartTime = Date()
+        #endif
+        
+        var batchedBytes: [UInt8] = []
         for msg in messages {
             guard let content = msg["content"] as? String else {
                 continue
             }
-            
-            // Feed to terminal view if available (for display), otherwise to terminal (for state)
-            if let terminalView = swiftTermView {
-                // Feed directly to TerminalView for immediate display
-                if let data = content.data(using: .utf8) {
-                    let bytes = Array(data)
-                    terminalView.feed(byteArray: bytes[...])
-                }
-            } else {
-                // TerminalView not yet available, feed to our Terminal to maintain state
-                if let data = content.data(using: .utf8) {
-                    terminal.feed(byteArray: [UInt8](data))
-                }
-            }
+            // Use optimized conversion and append to batch
+            batchedBytes.append(contentsOf: content.utf8Bytes)
         }
+        
+        #if DEBUG
+        let batchSize = batchedBytes.count
+        #endif
+        
+        // Feed batched content to terminal in single operation
+        guard let terminalView = swiftTermView else {
+            // TerminalView not yet available - replay will be lost
+            // This is acceptable as we'll request replay again when view appears
+            #if DEBUG
+            print("[TerminalViewModel] Warning: Replay received but TerminalView not available")
+            #endif
+            return
+        }
+        
+        // Feed directly to TerminalView for immediate display
+        terminalView.feed(byteArray: batchedBytes[...])
+        
+        #if DEBUG
+        let replayDuration = Date().timeIntervalSince(replayStartTime)
+        print("[TerminalViewModel] Replay batch: \(messages.count) messages, \(batchSize) bytes, \(String(format: "%.3f", replayDuration * 1000))ms")
+        #endif
     }
     
     // MARK: - State Recovery
@@ -475,12 +528,16 @@ final class TerminalViewModel: ObservableObject {
     
     // MARK: - Terminal View Management
     
-    /// Sets the SwiftTerm TerminalView instance for direct output feeding
-    /// This allows us to feed output directly to the view's terminal for rendering
+    /// Sets the SwiftTerm TerminalView instance and configures it
+    /// This sets up the terminalDelegate to receive input events
     /// When a new view is set, we reset the replay flag to allow loading history again
     func setTerminalView(_ view: SwiftTerm.TerminalView) {
         let isNewView = self.swiftTermView == nil || self.swiftTermView !== view
         self.swiftTermView = view
+        
+        // Set terminalDelegate to receive input events from TerminalView
+        // TerminalView's internal Terminal calls send() which is forwarded to terminalDelegate
+        view.terminalDelegate = self
         
         // If this is a new view (e.g., after navigation), reset replay flag
         // This ensures we can load history when view reappears
@@ -490,28 +547,116 @@ final class TerminalViewModel: ObservableObject {
     }
 }
 
-// MARK: - TerminalDelegate
+// MARK: - TerminalViewDelegate
 
-extension TerminalViewModel: TerminalDelegate {
-    /// Handles terminal input from SwiftTerm
-    /// Called from non-main-actor context, so we bridge to main actor
-    nonisolated func send(source: Terminal, data: ArraySlice<UInt8>) {
-        // Convert bytes to Data
+extension TerminalViewModel: TerminalViewDelegate {
+    /// Handles terminal input from SwiftTerm TerminalView
+    /// TerminalView calls this when user types in the terminal
+    /// Note: This is called from nonisolated context, so we use Task to access MainActor
+    nonisolated func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
+        // Convert bytes to Data (nonisolated operation)
         let dataArray = Array(data)
         let dataToSend = Data(dataArray)
         
-        // Bridge to main actor to access main-actor isolated properties and methods
+        // Access MainActor-isolated properties via Task
         Task { @MainActor [weak self] in
-            guard let self = self else { return }
-            self.sendInput(dataToSend)
+            self?.sendInput(dataToSend)
         }
     }
     
-    /// Returns terminal size
-    /// Called from non-main-actor context, reads from thread-safe property
-    nonisolated func requestTerminalSize(source: Terminal) -> (cols: Int, rows: Int) {
-        // Read from thread-safe property (updated from main actor)
-        return threadSafeTerminalSize
+    /// Called when terminal size changes
+    /// Note: This is called from nonisolated context, so we use Task to access MainActor
+    nonisolated func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
+        // Capture self weakly to avoid retain cycles
+        // Access MainActor-isolated properties via Task
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            // Update our size tracking
+            self.terminalSize = (cols: newCols, rows: newRows)
+            // Update thread-safe copy (nonisolated(unsafe) property can be accessed from MainActor)
+            self.threadSafeTerminalSize = (cols: newCols, rows: newRows)
+            
+            // Send resize message to server
+            let message: [String: Any] = [
+                "type": "session.resize",
+                "session_id": self.session.id,
+                "payload": [
+                    "cols": newCols,
+                    "rows": newRows
+                ]
+            ]
+            
+            do {
+                try self.webSocketClient.sendMessage(message)
+            } catch {
+                self.error = "Failed to resize terminal: \(error.localizedDescription)"
+            }
+        }
+    }
+    
+    /// Called when terminal title changes
+    nonisolated func setTerminalTitle(source: SwiftTerm.TerminalView, title: String) {
+        // Terminal title changes - can be used for UI updates if needed
+        // Currently not used, but available for future enhancements
+    }
+    
+    /// Called when terminal is scrolled
+    nonisolated func scrolled(source: SwiftTerm.TerminalView, position: Double) {
+        // Terminal scroll position changed - can be used for UI updates if needed
+        // Currently not used, but available for future enhancements
+    }
+    
+    /// Called when terminal bell is triggered
+    nonisolated func bell(source: SwiftTerm.TerminalView) {
+        // Terminal bell - can trigger haptic feedback or sound
+        // Currently not used, but available for future enhancements
+    }
+    
+    /// Called when host current directory is updated
+    nonisolated func hostCurrentDirectoryUpdate(source: SwiftTerm.TerminalView, directory: String?) {
+        // Host directory changed - can be used for UI updates if needed
+        // Currently not used, but available for future enhancements
+    }
+    
+    /// Called when clipboard copy is requested
+    nonisolated func clipboardCopy(source: SwiftTerm.TerminalView, content: Data) {
+        // Clipboard copy requested - handled by TerminalView internally
+        // No action needed
+    }
+    
+    /// Called for iTerm content
+    nonisolated func iTermContent(source: SwiftTerm.TerminalView, content: ArraySlice<UInt8>) {
+        // iTerm-specific content - can be ignored for our use case
+    }
+    
+    /// Called when terminal range changes (if notifyUpdateChanges is enabled)
+    nonisolated func rangeChanged(source: SwiftTerm.TerminalView, startY: Int, endY: Int) {
+        // Terminal display range changed - can be used for optimization if needed
+        // Currently not used, but available for future enhancements
+    }
+    
+    /// Called when link is requested to be opened
+    /// This is called when user taps on a hyperlink in the terminal
+    nonisolated func requestOpenLink(source: SwiftTerm.TerminalView, link: String, params: [String: String]) {
+        // Open link in Safari or default browser
+        Task { @MainActor in
+            guard let url = URL(string: link) else {
+                #if DEBUG
+                print("[TerminalViewModel] Invalid URL: \(link)")
+                #endif
+                return
+            }
+            
+            // Open URL using system URL handler
+            if UIApplication.shared.canOpenURL(url) {
+                UIApplication.shared.open(url, options: [:], completionHandler: nil)
+            } else {
+                #if DEBUG
+                print("[TerminalViewModel] Cannot open URL: \(link)")
+                #endif
+            }
+        }
     }
 }
 

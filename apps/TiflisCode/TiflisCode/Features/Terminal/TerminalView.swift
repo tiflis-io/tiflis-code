@@ -44,10 +44,9 @@ struct TerminalView: View {
         VStack(spacing: 0) {
             if viewModel.isConnected {
                 TerminalContentView(
-                    terminal: viewModel.terminal,
                     viewModel: viewModel
                 )
-                .background(Color.black)
+                .background(Color(uiColor: .systemBackground))
             } else {
                 VStack(spacing: 16) {
                     Image(systemName: "apple.terminal.fill")
@@ -67,7 +66,7 @@ struct TerminalView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
+                .background(Color(uiColor: .systemBackground))
             }
         }
         .navigationBarTitleDisplayMode(.inline)

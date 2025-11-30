@@ -3,10 +3,11 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01D00FB07A302D87795CA3D8 /* TerminalViewModel.swift.bak in Resources */ = {isa = PBXBuildFile; fileRef = 83CC219239587988388AE220 /* TerminalViewModel.swift.bak */; };
 		050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		0D93AD3E6B27DD6926A57C43 /* AgentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5E70F9FE87A722D9D13259 /* AgentType.swift */; };
@@ -17,6 +18,8 @@
 		2D8A29E5869A02DD2963955D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D35A999999055053D03394B /* SettingsView.swift */; };
 		30B7BCCF3A6701E4F24563ED /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E39FD3E80285CE5E52310 /* ChatView.swift */; };
 		374794E6BAE6E62146274000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5473A38F6C188E71D88D9AE /* Assets.xcassets */; };
+		3C4E352D636682EF9ABCE02C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C2904D9A71D4757DFF1D2095 /* Assets.xcassets */; };
+		3D6F27B4FA9E75DCB2DC6B10 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
 		42E21E65DB16B73D5DB25781 /* TiflisCodeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 68528358025709970E234FF0 /* TiflisCodeUITests.swift */; };
 		47D6326E2EF6BF3C758A0916 /* Color+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */; };
 		49396BA501B1AC214D531E63 /* TiflisCodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8886AE584CDB64D5088E0F3 /* TiflisCodeTests.swift */; };
@@ -27,6 +30,7 @@
 		630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */; };
 		6A038B6789808CF20CD61768 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 5A15037F4628204D7C405F29 /* SwiftTerm */; };
 		6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */; };
+		7B167969FE14DD38AD0387B4 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
 		7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45A48D49667369980A068E8 /* TerminalView.swift */; };
 		82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */; };
 		A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
@@ -86,19 +90,22 @@
 		3E96900D8413F72E4B064E10 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
 		545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketMessage.swift; sourceTree = "<group>"; };
 		5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewUIKit.swift; sourceTree = "<group>"; };
+		65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
 		68528358025709970E234FF0 /* TiflisCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeUITests.swift; sourceTree = "<group>"; };
 		6A5E7DEF52A06D185EC483DC /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIDManager.swift; sourceTree = "<group>"; };
-		723A2D053CB58A252A985D76 /* Tiflis Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		723A2D053CB58A252A985D76 /* TiflisCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TiflisCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
+		83CC219239587988388AE220 /* TerminalViewModel.swift.bak */ = {isa = PBXFileReference; path = TerminalViewModel.swift.bak; sourceTree = "<group>"; };
 		861C8E9521B9F35E6255C252 /* PromptInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInputBar.swift; sourceTree = "<group>"; };
 		8C5E70F9FE87A722D9D13259 /* AgentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentType.swift; sourceTree = "<group>"; };
-		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = TiflisCodeWatch.app; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TiflisCodeWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
 		B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TiflisCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5473A38F6C188E71D88D9AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClientProtocol.swift; sourceTree = "<group>"; };
+		C2904D9A71D4757DFF1D2095 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
 		D20190820F4474054253D38F /* TerminalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalContentView.swift; sourceTree = "<group>"; };
 		D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
@@ -148,6 +155,7 @@
 			isa = PBXGroup;
 			children = (
 				E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */,
+				65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */,
 				7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */,
 			);
 			path = Extensions;
@@ -189,13 +197,6 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
-		3C20FDE47546F733BFD54432 /* Helpers */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Helpers;
-			sourceTree = "<group>";
-		};
 		3FA5DD62C7A5A7F67523BEC1 /* Common */ = {
 			isa = PBXGroup;
 			children = (
@@ -210,6 +211,7 @@
 				D20190820F4474054253D38F /* TerminalContentView.swift */,
 				E45A48D49667369980A068E8 /* TerminalView.swift */,
 				1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */,
+				83CC219239587988388AE220 /* TerminalViewModel.swift.bak */,
 				5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */,
 			);
 			path = Terminal;
@@ -218,7 +220,6 @@
 		5265FF4E8B672E33707124D5 /* Services */ = {
 			isa = PBXGroup;
 			children = (
-				9340BF3F111EE51B5AC14FBD /* Audio */,
 				F43D691165B5D91804A4E461 /* Storage */,
 				A01EF65F15C0494100BD754D /* WebSocket */,
 			);
@@ -228,7 +229,7 @@
 		646CCDD1563EEEC96ACC3776 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				723A2D053CB58A252A985D76 /* Tiflis Code.app */,
+				723A2D053CB58A252A985D76 /* TiflisCode.app */,
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
 				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
@@ -260,6 +261,7 @@
 			isa = PBXGroup;
 			children = (
 				6DFA71ED32062488270B7A6E /* App */,
+				D0B5FBD01207DD27A09FC66A /* Resources */,
 			);
 			path = TiflisCodeWatch;
 			sourceTree = "<group>";
@@ -278,7 +280,6 @@
 			isa = PBXGroup;
 			children = (
 				17955C8D99E186FC295CE317 /* Extensions */,
-				3C20FDE47546F733BFD54432 /* Helpers */,
 			);
 			path = Utilities;
 			sourceTree = "<group>";
@@ -291,13 +292,6 @@
 				2E31BD81EF2242027D1C6397 /* Voice */,
 			);
 			path = Components;
-			sourceTree = "<group>";
-		};
-		9340BF3F111EE51B5AC14FBD /* Audio */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Audio;
 			sourceTree = "<group>";
 		};
 		9D7A977FFD15DB517D77DB48 /* TiflisCodeUITests */ = {
@@ -318,20 +312,12 @@
 			path = WebSocket;
 			sourceTree = "<group>";
 		};
-		A37CC70C3DE06BAD7BCD4941 /* Protocols */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Protocols;
-			sourceTree = "<group>";
-		};
 		A7720EC662F1215E250E0D32 /* Features */ = {
 			isa = PBXGroup;
 			children = (
 				B81897029C3100B7B359C0C3 /* Agent */,
 				320908D6F72242F4943ECF03 /* Navigation */,
 				EC5071502C357389EF2548F4 /* Settings */,
-				FCA3AAEA8CF5B73BBD5C0CD1 /* Supervisor */,
 				47B9610030BC0EA6B32CEC71 /* Terminal */,
 			);
 			path = Features;
@@ -350,7 +336,6 @@
 			isa = PBXGroup;
 			children = (
 				339E88F4A771837E1D7CB66F /* Models */,
-				A37CC70C3DE06BAD7BCD4941 /* Protocols */,
 			);
 			path = Domain;
 			sourceTree = "<group>";
@@ -364,6 +349,14 @@
 				12C717F46CB43B2D99C515B7 /* Resources */,
 			);
 			path = TiflisCode;
+			sourceTree = "<group>";
+		};
+		D0B5FBD01207DD27A09FC66A /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C2904D9A71D4757DFF1D2095 /* Assets.xcassets */,
+			);
+			path = Resources;
 			sourceTree = "<group>";
 		};
 		EC5071502C357389EF2548F4 /* Settings */ = {
@@ -390,13 +383,6 @@
 				1EB369A0324105A5DCC91A1C /* KeychainManager.swift */,
 			);
 			path = Storage;
-			sourceTree = "<group>";
-		};
-		FCA3AAEA8CF5B73BBD5C0CD1 /* Supervisor */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = Supervisor;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -455,7 +441,7 @@
 				5A15037F4628204D7C405F29 /* SwiftTerm */,
 			);
 			productName = TiflisCode;
-			productReference = 723A2D053CB58A252A985D76 /* Tiflis Code.app */;
+			productReference = 723A2D053CB58A252A985D76 /* TiflisCode.app */;
 			productType = "com.apple.product-type.application";
 		};
 		CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */ = {
@@ -463,6 +449,7 @@
 			buildConfigurationList = 32EA1665DB71452FCA8E9D7F /* Build configuration list for PBXNativeTarget "TiflisCodeWatch" */;
 			buildPhases = (
 				092B9E888C3C520AADAE12C9 /* Sources */,
+				CEA878FFAF8E6FACD5CA6E3A /* Resources */,
 			);
 			buildRules = (
 			);
@@ -492,6 +479,9 @@
 					44349C86ACAAA7C5BEDB2B6A = {
 						DevelopmentTeam = "";
 					};
+					53E2D679081C5CF973E01199 = {
+						DevelopmentTeam = "";
+					};
 					CA542FD336ED9AFE20E6AA41 = {
 						DevelopmentTeam = "";
 					};
@@ -510,6 +500,7 @@
 			packageReferences = (
 				A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -527,6 +518,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				374794E6BAE6E62146274000 /* Assets.xcassets in Resources */,
+				01D00FB07A302D87795CA3D8 /* TerminalViewModel.swift.bak in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CEA878FFAF8E6FACD5CA6E3A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				3C4E352D636682EF9ABCE02C /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -545,6 +545,7 @@
 				B18C1791D264CDF1C57F9260 /* KeychainManager.swift in Sources */,
 				E60B06424DC620D350F58C86 /* Message.swift in Sources */,
 				D1AD39526D5B100BD5089976 /* Session.swift in Sources */,
+				3D6F27B4FA9E75DCB2DC6B10 /* String+Extensions.swift in Sources */,
 				4ECF9198A26A8B2EE60F36E7 /* TiflisCodeWatchApp.swift in Sources */,
 				248CF7C36370193C1B02FD8D /* View+Extensions.swift in Sources */,
 				A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */,
@@ -582,6 +583,7 @@
 				1C47FE55685B1E3B62D07552 /* Session.swift in Sources */,
 				2D8A29E5869A02DD2963955D /* SettingsView.swift in Sources */,
 				BCEE2A65F40484630E2A94A5 /* SidebarView.swift in Sources */,
+				7B167969FE14DD38AD0387B4 /* String+Extensions.swift in Sources */,
 				A835864D0D6231AB02C5A71B /* TerminalContentView.swift in Sources */,
 				7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */,
 				B3904A366C4C66BF93C76DBA /* TerminalViewModel.swift in Sources */,
@@ -800,7 +802,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -836,7 +837,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
