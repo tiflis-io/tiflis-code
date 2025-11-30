@@ -16,7 +16,9 @@ struct TerminalView: View {
     @EnvironmentObject private var appState: AppState
     @StateObject private var viewModel: TerminalViewModel
     @State private var showConnectionPopover = false
+    @State private var showTerminateConfirmation = false
     @Environment(\.isDrawerOpen) private var isDrawerOpen
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
     init(
         session: Session,
@@ -114,7 +116,7 @@ struct TerminalView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Button(role: .destructive) {
-                        appState.terminateSession(session)
+                        showTerminateConfirmation = true
                     } label: {
                         Label("Terminate Session", systemImage: "xmark.circle")
                     }
@@ -124,6 +126,18 @@ struct TerminalView: View {
             }
         }
         .toolbarBackground(.visible, for: .navigationBar)
+        .confirmationDialog(
+            "Terminate Terminal Session?",
+            isPresented: $showTerminateConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("Terminate", role: .destructive) {
+                handleTerminateSession()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will end the terminal session. You can start a new one later.")
+        }
         .onAppear {
             // Subscribe to session when view appears
             // This will automatically request replay from server to restore terminal history
@@ -145,6 +159,27 @@ struct TerminalView: View {
                 viewModel.becomeFirstResponder()
             }
         }
+    }
+    
+    // MARK: - Actions
+    
+    private func handleTerminateSession() {
+        // Terminate the session
+        appState.terminateSession(session)
+        
+        // Select supervisor (already done in terminateSession)
+        // Now handle UI navigation based on device
+        if horizontalSizeClass == .compact {
+            // iPhone: Open drawer to show supervisor selection
+            // Delay to ensure session change and auto-close animation complete before opening drawer
+            // The auto-close animation is 0.25s, so we wait 0.3s to ensure it finishes
+            if let onMenuTap = onMenuTap {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    onMenuTap()
+                }
+            }
+        }
+        // iPad: Supervisor is already selected in terminateSession, sidebar is always visible
     }
 }
 

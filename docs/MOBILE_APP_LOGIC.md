@@ -498,8 +498,8 @@ Sessions are created via the `[+]` button in sidebar:
 ### Session Termination
 
 Sessions can be terminated via:
-1. Swipe-to-delete in sidebar
-2. Menu action in session detail view
+1. **Swipe-to-delete** in sidebar (all session types)
+2. **Menu action** in session detail view (with confirmation for terminal sessions)
 
 ```swift
 func terminateSession(_ session: Session) {
@@ -509,6 +509,13 @@ func terminateSession(_ session: Session) {
     }
 }
 ```
+
+**Termination Behavior:**
+- **Agent sessions** (Claude, Cursor, OpenCode): Menu action terminates immediately
+- **Terminal sessions**: Menu action shows confirmation dialog, then navigates to supervisor
+- **All sessions**: After termination, supervisor is automatically selected
+- **iPhone**: Sidebar drawer opens to show supervisor selection (for terminal only)
+- **iPad**: View switches to supervisor immediately
 
 ---
 
@@ -584,7 +591,7 @@ Assistant Message (left-aligned):
 |-------------|--------------|
 | Supervisor | Clear Context |
 | Claude/Cursor/OpenCode | Session Info, Terminate Session |
-| Terminal | Terminate Session |
+| Terminal | Terminate Session (with confirmation dialog) |
 
 ### Keyboard Handling
 
@@ -847,7 +854,78 @@ terminalView.accessibilityTraits = [.staticText]  // Note: .keyboardInterface do
 
 | Action | Description |
 |--------|-------------|
-| **Terminate Session** | Closes terminal session and removes from sidebar |
+| **Terminate Session** | Shows confirmation dialog, then closes terminal and opens sidebar with supervisor selected |
+
+#### Terminal Session Termination Flow
+
+When user terminates a terminal session, the app provides confirmation and smooth navigation:
+
+**User Flow:**
+1. User taps burger menu (⋯) in terminal toolbar
+2. User selects "Terminate Session" (destructive/red option)
+3. **Confirmation dialog appears:**
+   - Title: "Terminate Terminal Session?"
+   - Message: "This will end the terminal session. You can start a new one later."
+   - Actions: "Terminate" (destructive) | "Cancel"
+4. User taps "Terminate":
+   - Session is terminated and removed from sessions list
+   - Supervisor is automatically selected
+   - **iPhone**: Sidebar drawer opens after 0.3s delay and stays open
+   - **iPad**: View switches to supervisor (sidebar always visible)
+
+**Implementation Details:**
+
+```swift
+@State private var showTerminateConfirmation = false
+
+// Menu button shows confirmation dialog
+Button(role: .destructive) {
+    showTerminateConfirmation = true
+} label: {
+    Label("Terminate Session", systemImage: "xmark.circle")
+}
+
+// Confirmation dialog
+.confirmationDialog(
+    "Terminate Terminal Session?",
+    isPresented: $showTerminateConfirmation,
+    titleVisibility: .visible
+) {
+    Button("Terminate", role: .destructive) {
+        handleTerminateSession()
+    }
+    Button("Cancel", role: .cancel) {}
+} message: {
+    Text("This will end the terminal session. You can start a new one later.")
+}
+
+// Termination handler
+private func handleTerminateSession() {
+    appState.terminateSession(session)
+    
+    if horizontalSizeClass == .compact {
+        // iPhone: Open drawer after delay to ensure it stays open
+        // The delay (0.3s) ensures the auto-close animation (0.25s) completes first
+        if let onMenuTap = onMenuTap {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                onMenuTap()
+            }
+        }
+    }
+    // iPad: Supervisor already selected, sidebar always visible
+}
+```
+
+**Why the Delay?**
+
+On iPhone, the drawer auto-closes when `selectedSessionId` changes (via `onChange` observer in `ContentView`). The termination flow triggers this:
+
+1. `terminateSession()` runs → supervisor selected
+2. `selectedSessionId` changes from terminal to supervisor
+3. `onChange` triggers → drawer auto-closes (0.25s animation)
+4. After 0.3s delay → drawer opens and stays open
+
+The 0.3-second delay ensures the auto-close animation finishes before opening the drawer, preventing it from closing immediately.
 
 ---
 
