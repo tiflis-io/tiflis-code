@@ -2028,7 +2028,7 @@ git push origin main
 
 ### GitHub Actions Workflows
 
-#### CI Pipeline (Pull Requests)
+#### CI Pipeline
 
 ```yaml
 # .github/workflows/ci.yml
