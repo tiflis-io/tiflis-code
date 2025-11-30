@@ -49,7 +49,7 @@
 | Swift App (iOS/watchOS) | PascalCase | `TiflisCode`, `TiflisCodeWatch` |
 | TypeScript Project Folder | kebab-case | `tiflis-code-tunnel`, `tiflis-code-workstation` |
 | Bundle Identifier (Apple) | Reverse DNS + PascalCase | `com.tiflis.TiflisCode` |
-| npm Package | scoped kebab-case | `@tiflis/tiflis-code-tunnel`, `@tiflis/tiflis-code-workstation` |
+| npm Package | scoped kebab-case | `@tiflis-io/tiflis-code-tunnel`, `@tiflis-io/tiflis-code-workstation` |
 
 ### Key Features
 
@@ -2781,8 +2781,8 @@ pnpm test
 pnpm test:watch
 
 # Run tests for specific package
-pnpm --filter @tiflis/tiflis-code-tunnel test
-pnpm --filter @tiflis/tiflis-code-workstation test
+pnpm --filter @tiflis-io/tiflis-code-tunnel test
+pnpm --filter @tiflis-io/tiflis-code-workstation test
 ```
 
 #### iOS/watchOS Tests
@@ -2853,7 +2853,7 @@ TTS_API_KEY=sk-xxx
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tiflis/tiflis-code-tunnel", "dev"],
+      "runtimeArgs": ["--filter", "@tiflis-io/tiflis-code-tunnel", "dev"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     },
@@ -2862,7 +2862,7 @@ TTS_API_KEY=sk-xxx
       "type": "node",
       "request": "launch",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "@tiflis/tiflis-code-workstation", "dev"],
+      "runtimeArgs": ["--filter", "@tiflis-io/tiflis-code-workstation", "dev"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     }
