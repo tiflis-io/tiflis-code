@@ -1,6 +1,6 @@
-# CI Pipeline - Pull Request Checks
+# CI Pipeline
 #
-# Runs on every pull request and push to main.
+# Runs on every push to main.
 # Performs linting, type checking, testing, and building.
 #
 # Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
@@ -9,8 +9,6 @@
 name: CI
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
 
