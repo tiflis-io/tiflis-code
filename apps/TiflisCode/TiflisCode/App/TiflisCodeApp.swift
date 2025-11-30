@@ -42,6 +42,9 @@ final class AppState: ObservableObject {
     let connectionService: ConnectionServicing
     private var cancellables = Set<AnyCancellable>()
     
+    // Flag to indicate if session change should not trigger UI transitions
+    var isSilentSessionChange = false
+    
     // Map request IDs to temporary session IDs for session creation
     private var pendingSessionCreations: [String: String] = [:]
     
@@ -460,10 +463,18 @@ final class AppState: ObservableObject {
         }
     }
     
-    func terminateSession(_ session: Session) {
+    func terminateSession(_ session: Session, silent: Bool = false) {
         sessions.removeAll { $0.id == session.id }
         if selectedSessionId == session.id {
+            // Set flag before changing selection
+            isSilentSessionChange = silent
             selectedSessionId = "supervisor"
+            // Reset flag after a brief delay
+            if silent {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                    self?.isSilentSessionChange = false
+                }
+            }
         }
     }
 }

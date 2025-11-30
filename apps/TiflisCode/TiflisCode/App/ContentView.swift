@@ -107,8 +107,11 @@ struct DrawerNavigationView: View {
                         }
                     )
                     .onChange(of: appState.selectedSessionId) { _, _ in
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            isDrawerOpen = false
+                        // Don't close drawer on silent session changes (e.g., terminating from sidebar)
+                        if !appState.isSilentSessionChange {
+                            withAnimation(.easeOut(duration: 0.25)) {
+                                isDrawerOpen = false
+                            }
                         }
                     }
                 }

@@ -54,7 +54,7 @@ struct SidebarView: View {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                appState.terminateSession(session)
+                                appState.terminateSession(session, silent: true)
                             } label: {
                                 Label("Terminate", systemImage: "xmark.circle")
                             }
@@ -76,7 +76,7 @@ struct SidebarView: View {
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                appState.terminateSession(session)
+                                appState.terminateSession(session, silent: true)
                             } label: {
                                 Label("Terminate", systemImage: "xmark.circle")
                             }
