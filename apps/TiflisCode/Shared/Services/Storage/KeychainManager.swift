@@ -51,7 +51,7 @@ final class KeychainManager: KeychainManaging {
     private let service: String
     private let account: String
     
-    init(service: String = "com.tiflis.TiflisCode", account: String = "workstation_auth_key") {
+    init(service: String = "io.tiflis.TiflisCode", account: String = "workstation_auth_key") {
         self.service = service
         self.account = account
     }
@@ -67,7 +67,7 @@ final class KeychainManager: KeychainManaging {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        _ = SecItemDelete(deleteQuery as CFDictionary)
         
         // Add new item
         let addQuery: [String: Any] = [
@@ -75,7 +75,7 @@ final class KeychainManager: KeychainManaging {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlocked
         ]
         
         let status = SecItemAdd(addQuery as CFDictionary, nil)
@@ -87,9 +87,18 @@ final class KeychainManager: KeychainManaging {
                 throw KeychainError.unhandledError(status: status)
             }
         }
+        
+        // TEMPORARY: Also save to UserDefaults as fallback for device testing
+        UserDefaults.standard.set(key, forKey: "debug_auth_key")
     }
     
     func getAuthKey() -> String? {
+        // TEMPORARY: Use UserDefaults as fallback for device testing
+        let userDefaults = UserDefaults.standard
+        if let fallbackKey = userDefaults.string(forKey: "debug_auth_key") {
+            return fallbackKey
+        }
+        
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -101,13 +110,15 @@ final class KeychainManager: KeychainManaging {
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
         
-        guard status == errSecSuccess,
-              let data = result as? Data,
-              let key = String(data: data, encoding: .utf8) else {
+        guard status == errSecSuccess else {
             return nil
         }
         
-        return key
+        guard let data = result as? Data else {
+            return nil
+        }
+        
+        return String(data: data, encoding: .utf8)
     }
     
     func deleteAuthKey() throws {

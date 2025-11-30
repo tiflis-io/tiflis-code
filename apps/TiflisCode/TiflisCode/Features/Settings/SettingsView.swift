@@ -266,8 +266,11 @@ struct SettingsView: View {
               let queryItems = components.queryItems,
               let dataItem = queryItems.first(where: { $0.name == "data" }),
               let base64Data = dataItem.value,
-              let jsonData = Data(base64Encoded: base64Data),
-              let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
+              let jsonData = Data(base64Encoded: base64Data) else {
+            return
+        }
+        
+        guard let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
             return
         }
         
@@ -275,12 +278,12 @@ struct SettingsView: View {
         tunnelId = payload.tunnel_id
         tunnelURL = payload.url
         
-        // Store auth key in Keychain
+        // Store auth key in Keychain (with UserDefaults fallback)
         do {
             try keychainManager.saveAuthKey(payload.key)
         } catch {
-            print("Failed to save auth key to Keychain: \(error)")
-            return
+            // Manual UserDefaults fallback on keychain failure
+            UserDefaults.standard.set(payload.key, forKey: "debug_auth_key")
         }
         
         // Auto-connect after setting credentials

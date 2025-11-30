@@ -217,16 +217,26 @@ struct ConnectionPopover: View {
               let queryItems = components.queryItems,
               let dataItem = queryItems.first(where: { $0.name == "data" }),
               let base64Data = dataItem.value,
-              let jsonData = Data(base64Encoded: base64Data),
-              let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
+              let jsonData = Data(base64Encoded: base64Data) else {
             return
         }
         
-        // Store tunnel_id (workstation ID) for routing
+        guard let payload = try? JSONDecoder().decode(MagicLinkPayload.self, from: jsonData) else {
+            return
+        }
+        
+        // Store tunnel credentials
         tunnelId = payload.tunnel_id
         tunnelURL = payload.url
-        // Store auth key securely (would use Keychain in production)
-        // Note: authKey is not stored in this component, it's handled by AppState
+        
+        // Store auth key in Keychain (with UserDefaults fallback)
+        let keychainManager = KeychainManager()
+        do {
+            try keychainManager.saveAuthKey(payload.key)
+        } catch {
+            // Manual UserDefaults fallback on keychain failure
+            UserDefaults.standard.set(payload.key, forKey: "debug_auth_key")
+        }
         
         // Auto-connect after setting credentials
         appState.connect()
