@@ -68,7 +68,7 @@ Tunnel Server acts as a reverse proxy between Mobile clients and Workstations.
     name: string,              // Display name (e.g., "My MacBook Pro")
     auth_key: string,          // Key for mobile client authorization
     reconnect?: boolean,       // Is this a reconnection?
-    previous_tunnel_id?: string // Previous tunnel ID (for reconnect)
+    previous_tunnel_id?: string // Previous tunnel ID (for reconnect/reclaim)
   }
 }
 
@@ -78,9 +78,29 @@ Tunnel Server acts as a reverse proxy between Mobile clients and Workstations.
   payload: {
     tunnel_id: string,         // Unique tunnel identifier
     public_url: string,        // Public WebSocket URL
-    restored?: boolean         // Was previous tunnel_id restored?
+    restored?: boolean         // Was previous tunnel_id restored/reclaimed?
   }
 }
+```
+
+#### Tunnel ID Persistence
+
+The `tunnel_id` is a **persistent workstation identifier** that survives:
+- Workstation server restarts (stored in SQLite database)
+- Tunnel server restarts (workstation can reclaim its `tunnel_id`)
+
+**Reconnection Behavior:**
+
+1. **Workstation reconnects to same tunnel server** (tunnel server didn't restart):
+   - If `previous_tunnel_id` exists in tunnel registry → socket is updated, `restored: true`
+   - If `previous_tunnel_id` not found → new `tunnel_id` generated
+
+2. **Workstation reconnects after tunnel server restart**:
+   - If `previous_tunnel_id` is available (not in use) → workstation reclaims it, `restored: false`
+   - If `previous_tunnel_id` is in use by another workstation → new `tunnel_id` generated
+   - This ensures `tunnel_id` persistence across tunnel server restarts
+
+**Important:** The workstation stores its `tunnel_id` in its local database. On reconnection, it always sends `previous_tunnel_id` to attempt reclaiming the same identifier.
 
 // Tunnel → Workstation (error)
 {
@@ -111,6 +131,8 @@ Tunnel Server acts as a reverse proxy between Mobile clients and Workstations.
   type: "connected",
   payload: {
     tunnel_id: string,
+    tunnel_version?: string,   // Tunnel server version (semver, e.g., "0.1.0")
+    protocol_version?: string, // Protocol version (semver, e.g., "1.0.0")
     restored?: boolean         // Was connection restored?
   }
 }
@@ -184,6 +206,9 @@ Tunnel Server monitors connections from both Workstations and Mobile clients.
   type: "auth.success",
   payload: {
     device_id: string,
+    workstation_name?: string,        // Display name of the workstation
+    workstation_version?: string,     // Workstation server version (semver, e.g., "0.1.0")
+    protocol_version?: string,        // Protocol version (semver, e.g., "1.0.0")
     restored_subscriptions?: string[]  // Session IDs (on reconnect)
   }
 }
@@ -693,15 +718,48 @@ All events are sent only to clients subscribed to the session.
 
 ## 11. QR Code / Magic Link Payload
 
-For initial mobile client setup:
+For initial mobile client setup, the magic link format uses a single base64-encoded query parameter:
 
+```
+tiflis://connect?data=<base64_encoded_json>
+```
+
+**Query parameter:**
+- `data` (required) - Base64-encoded JSON payload containing connection information
+
+**JSON payload structure:**
 ```json
 {
-  "tunnel_id": "abc123",
-  "tunnel_url": "wss://tunnel.example.com",
-  "auth_key": "workstation-auth-key"
+  "tunnel_id": "Z6q62aKz-F96",
+  "url": "wss://tunnel.example.com/ws",
+  "key": "my-workstation-auth-key"
 }
 ```
+
+**Fields:**
+- `tunnel_id` (required) - Workstation tunnel ID (persistent identifier)
+- `url` (required) - Tunnel server base WebSocket URL without query parameters (e.g., `wss://tunnel.example.com/ws`)
+- `key` (required) - Workstation auth key for client authentication
+
+**Important:** The `url` field must contain only the base WebSocket address without any query parameters. The `tunnel_id` is provided separately in the payload and should not be included in the URL.
+
+**Example:**
+```
+tiflis://connect?data=eyJ0dW5uZWxfaWQiOiJaNnE2MmFLei1GOTYiLCJ1cmwiOiJ3c3M6Ly90dW5uZWwuZXhhbXBsZS5jb20vd3MiLCJrZXkiOiJteS13b3Jrc3RhdGlvbi1hdXRoLWtleSJ9
+```
+
+**Decoded payload (for reference):**
+```json
+{
+  "tunnel_id": "Z6q62aKz-F96",
+  "url": "wss://tunnel.example.com/ws",
+  "key": "my-workstation-auth-key"
+}
+```
+
+**Note:** The URL must be the base WebSocket address only. Do not include `tunnel_id` as a query parameter in the URL, as it is already provided in the JSON payload.
+
+**Note:** The `tunnel_id` is the persistent workstation identifier that must be included in the magic link so mobile clients can route to the correct workstation. The `tunnel_id` persists across both workstation and tunnel server restarts, ensuring stable routing.
 
 ---
 

@@ -11,8 +11,8 @@
 <p align="center">
   <a href="#project-overview">Overview</a> •
   <a href="#system-architecture">Architecture</a> •
-  <a href="#ios--watchos-development-stack">iOS Stack</a> •
-  <a href="#typescript--nodejs-development-stack">Node.js Stack</a> •
+  <a href="#ios-watchos-development-stack">iOS Stack</a> •
+  <a href="#typescript-nodejs-development-stack">Node.js Stack</a> •
   <a href="#local-development-setup">Setup</a>
 </p>
 
@@ -156,6 +156,8 @@ The mobile application UI is inspired by modern minimalist design principles:
 
 The app supports **both light and dark themes**, automatically following the system preference.
 
+> 📖 **Detailed Implementation**: See [docs/MOBILE_APP_LOGIC.md](docs/MOBILE_APP_LOGIC.md) for complete documentation of navigation patterns, state management, and UI component behavior.
+
 ### App Structure Overview
 
 ```
@@ -244,15 +246,54 @@ A colored dot indicator is **always visible** in the header on all screens:
 | **Disconnected** | ○ | Gray |
 | **Error** | ● | Red |
 
-Tapping the indicator shows a popover with connection details and quick reconnect option.
+Tapping the indicator shows a popover (320pt wide) with:
+- **Connected state**: Information displayed in order:
+  1. Connection status (circle indicator + text)
+  2. Workstation name (from server via `auth.success`)
+  3. Tunnel URL (full URL with protocol)
+  4. Tunnel ID
+  5. Tunnel Version (tunnel server version with tunnel's protocol version inline, e.g., "0.1.0 (1.0.0)")
+  6. Workstation Version (workstation server version with workstation's protocol version inline, e.g., "0.1.0 (1.0.0)")
+  7. Disconnect button (with confirmation dialog)
+- **Disconnected state**: "Scan QR Code" and "Paste Magic Link" buttons for quick connection
 
-#### Adaptive Sidebar Toggle
+#### Adaptive Navigation
 
-| Device / Orientation | Sidebar State | Toggle Visibility |
-|---------------------|---------------|-------------------|
-| iPhone (any) | Overlay sheet | `☰` visible |
-| iPad Portrait | Overlay sheet | `☰` visible |
-| iPad Landscape | Persistent sidebar | `☰` hidden |
+The app uses **different navigation patterns** based on device:
+
+| Device / Orientation | Navigation Pattern | Sidebar Behavior |
+|---------------------|-------------------|------------------|
+| **iPhone (any)** | Custom full-screen drawer | Swipe from left edge to open, covers entire screen |
+| **iPad Portrait** | `NavigationSplitView` | Overlay sidebar |
+| **iPad Landscape** | `NavigationSplitView` | Persistent sidebar |
+
+##### iPhone Drawer Navigation
+
+On iPhone, the sidebar opens as a **full-screen drawer** with gesture support:
+
+| Gesture | Action |
+|---------|--------|
+| Swipe right from left edge (20pt) | Open drawer (strict check - only from left edge) |
+| Swipe left anywhere when open | Close drawer |
+| Tap `☰` button in toolbar | Open drawer |
+| Tap already-selected item | Close drawer |
+
+**Important:** The drawer **only opens** when swiping from the left edge (20pt). Swipes from other areas are ignored to prevent accidental opening.
+
+**Hit Testing:** The drawer uses `allowsHitTesting` to ensure buttons work correctly:
+- Main content is disabled when drawer is open
+- Drawer buttons are enabled only when drawer is actually visible (at least 90% on screen)
+- Uses position-based check: `drawerOffsetValue(drawerWidth: drawerWidth) > -drawerWidth * 0.9` instead of just state flag
+
+The drawer automatically closes when:
+- User selects a different session
+- User taps on the already-selected session (acts as "close")
+
+##### iPad Split View Navigation
+
+On iPad, standard `NavigationSplitView` is used with balanced layout:
+- Sidebar can be toggled via `☰` button or swipe
+- In landscape, sidebar is persistent
 
 ### Sidebar Navigation
 
@@ -260,15 +301,34 @@ The sidebar serves as the primary navigation hub:
 
 | Element | Behavior |
 |---------|----------|
-| **Header** | App logo + `[+]` button for creating new sessions |
+| **Header** | "Tiflis Code" title + `[+]` button for creating new sessions |
 | **Supervisor** | Always visible at top; single persistent session per workstation |
 | **Sessions List** | All active sessions from the workstation (grouped by type) |
-| **Settings** | Fixed at bottom of sidebar |
+| **Settings** | Fixed at bottom of sidebar; opens as separate page (not within sidebar) |
+
+#### Selection Indicator
+
+The currently active item in the sidebar displays a **checkmark** (✓) next to it. Tapping on an already-selected item closes the sidebar menu (on iPhone).
+
+**Button Clickability:** All sidebar buttons must be fully clickable across their entire row width, including empty areas on the right. This is achieved by:
+- Adding `.frame(maxWidth: .infinity, alignment: .leading)` to `SessionRow` to fill the entire width
+- Adding `.contentShape(Rectangle())` to the button label to make the entire rectangular area tappable
+- This ensures buttons work even when content is sparse (e.g., short session names)
 
 **Session Subscription Logic:**
 - Entering a session → automatically subscribes to session events
 - Leaving a session → automatically unsubscribes from session events
 - All sessions remain visible in sidebar regardless of subscription state
+
+**Session Icons:**
+
+| Session Type | Icon Source | Description |
+|--------------|-------------|-------------|
+| Supervisor | Custom Image | Tiflis Code logo (`TiflisLogo`) |
+| Cursor | Custom Image | Cursor app logo (`CursorLogo`) |
+| Claude | Custom Image | Claude/Anthropic logo (`ClaudeLogo`) |
+| OpenCode | Custom Image (theme-aware) | OpenCode logo, switches between light/dark variants |
+| Terminal | SF Symbol | `apple.terminal.fill` |
 
 ### Session Creation
 
@@ -276,12 +336,17 @@ Sessions can be created in two ways:
 
 #### 1. Via UI (Quick Action)
 
-Tapping `[+]` in sidebar header opens a creation sheet:
+Tapping `[+]` in sidebar header opens a creation sheet with:
+
+1. **Session Type Selection** — Radio-style selection with icons for each type
+2. **Project Selection** (for agents only) — Two cascading pickers:
+   - **Workspace** dropdown — Select from available workspaces
+   - **Project** dropdown — Populated based on selected workspace
 
 | Session Type | Required Selection |
 |--------------|-------------------|
-| **Terminal** | Working directory (defaults to workspace root) |
-| **Cursor / Claude / OpenCode** | Workspace → Project → Worktree (optional) |
+| **Terminal** | None (working directory defaults to workspace root) |
+| **Cursor / Claude / OpenCode** | Workspace (required) → Project (required) → Worktree (optional) |
 
 #### 2. Via Supervisor (Natural Language)
 
@@ -304,6 +369,7 @@ Inspired by [shadcn/ai components](https://www.shadcn.io/ai):
 
 | Component | Description |
 |-----------|-------------|
+| **ChatEmptyState** | Displayed when no messages exist — shows agent icon, name, working directory, and invitation message |
 | **MessageBubble** | Role-based styling (user/assistant), markdown rendering, streaming support |
 | **VoiceMessageBubble** | Audio waveform display for voice input before transcription |
 | **TranscriptionMessage** | Displayed after voice input is transcribed |
@@ -311,6 +377,16 @@ Inspired by [shadcn/ai components](https://www.shadcn.io/ai):
 | **PromptInputBar** | Text input + voice button + send button |
 | **TypingIndicator** | Visual feedback while agent is processing |
 | **ToolCallDisplay** | Collapsible display for agent tool invocations (optional) |
+
+#### Empty State Messages
+
+When no messages exist in a chat session, an empty state is displayed with context-specific invitation:
+
+| Session Type | Invitation Message |
+|-------------|-------------------|
+| **Supervisor** | "Ask me to create sessions, manage projects, or explore your workspaces" |
+| **Claude/Cursor/OpenCode** | "Send a message to start coding with AI assistance" |
+| **Terminal** | (no message — terminal uses different UI) |
 
 ### Voice Interaction Flow
 
@@ -366,13 +442,39 @@ Full terminal emulation using [SwiftTerm](https://github.com/migueldeicaza/Swift
 
 ### SettingsView
 
-| Section | Options |
-|---------|---------|
-| **Connection** | Tunnel URL, Auth Key, Connection status indicator, Connect/Disconnect button |
-| **Voice & Speech** | Language selection, TTS on/off toggle, Speech playback speed |
-| **About** | App version, Workstation info when connected |
+Settings opens as a **separate page** (not within the sidebar menu) and includes:
 
-**Connection Setup**: Initial configuration via QR code scan or manual entry (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)).
+#### Connection Section
+
+| State | Content |
+|-------|---------|
+| **Connected** | Information displayed in order: 1) Connection status, 2) Workstation name (from server), 3) Tunnel URL (full URL with protocol), 4) Tunnel ID, 5) Tunnel Version (tunnel server version with tunnel's protocol version inline, e.g., "0.1.0 (1.0.0)"), 6) Workstation Version (workstation server version with workstation's protocol version inline, e.g., "0.1.0 (1.0.0)"), 7) Disconnect button (with confirmation) |
+| **Disconnected** | "Scan QR Code" button, "Paste Magic Link" button |
+
+#### Voice & Speech Section
+
+| Option | Description |
+|--------|-------------|
+| **Text-to-Speech** | Toggle for TTS audio responses |
+| **Speech Language** | Picker with English and Russian options |
+
+#### About Section
+
+| Item | Value |
+|------|-------|
+| Version | App version and build number |
+| Author | Roman Barinov |
+| GitHub Repository | Link to `github.com/tiflis-io/tiflis-code` |
+| License | MIT |
+
+#### Legal Section
+
+| Link | Destination |
+|------|-------------|
+| Privacy Policy | `PRIVACY.md` in repository |
+| Terms of Service | `TERMS.md` in repository |
+
+**Connection Setup**: Initial configuration via QR code scan or magic link paste. Magic link format: `tiflis://connect?data=<base64_encoded_json>` where the JSON payload contains `tunnel_id`, `url`, and `key` (see [PROTOCOL.md § QR Code Payload](PROTOCOL.md#11-qr-code--magic-link-payload)). The `tunnel_id` is the persistent workstation identifier that enables proper routing.
 
 ---
 
@@ -468,6 +570,34 @@ Configuration is shared from the iOS app using **WatchConnectivity**:
 | **SwiftLint** | Code style enforcement and linting |
 | **SwiftFormat** | Automatic code formatting |
 | **Xcode Instruments** | Performance profiling and debugging |
+
+#### Info.plist Configuration
+
+The `Info.plist` file must include interface orientation support to avoid Xcode warnings:
+
+**Required Keys:**
+
+```xml
+<key>UISupportedInterfaceOrientations</key>
+<array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+</array>
+<key>UISupportedInterfaceOrientations~ipad</key>
+<array>
+    <string>UIInterfaceOrientationPortrait</string>
+    <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    <string>UIInterfaceOrientationLandscapeLeft</string>
+    <string>UIInterfaceOrientationLandscapeRight</string>
+</array>
+```
+
+**Orientation Support:**
+- **iPhone**: Portrait, Landscape Left, Landscape Right (no upside down - standard for modern iPhone apps)
+- **iPad**: All four orientations including upside down (standard for iPad apps)
+
+This configuration resolves the Xcode warning: "All interface orientations must be supported unless the app requires full screen."
 
 ### Project Structure
 
@@ -641,9 +771,21 @@ This section defines the technology stack, architecture, and best practices for 
 
 | Library | Purpose |
 |---------|---------|
-| **@langchain/core** | LLM orchestration framework |
-| **@langchain/langgraph** | Stateful agent graphs |
-| **@langchain/openai** | OpenAI provider (or other LLM providers) |
+| **@langchain/core** | LangChain core framework for building AI agents |
+| **@langchain/langgraph** | LangGraph for stateful agent graphs with tools |
+| **@langchain/openai** | LangChain OpenAI integration (works with compatible APIs) |
+| **nanoid** | Unique ID generation for sessions and messages |
+
+> **LLM Provider Support**: The Supervisor Agent uses LangGraph with OpenAI-compatible APIs:
+> - **OpenAI** (gpt-4o, gpt-4o-mini)
+> - **Cerebras** (llama3.1-70b, llama3.1-8b) via OpenAI-compatible API
+> - **Anthropic** (claude-3-5-sonnet, claude-3-haiku) via OpenAI-compatible API
+>
+> LangGraph provides structured tool calling for workspace discovery, session management, and file operations.
+
+> **Speech Provider Support**:
+> - **TTS**: OpenAI (tts-1, tts-1-hd), ElevenLabs (eleven_multilingual_v2, eleven_flash_v2_5)
+> - **STT**: OpenAI Whisper (whisper-1), ElevenLabs
 
 #### Data Persistence (Workstation only)
 
@@ -662,10 +804,58 @@ This section defines the technology stack, architecture, and best practices for 
 | **tsx** | TypeScript execution (dev mode) |
 | **tsup** | TypeScript bundler (production builds) |
 | **vitest** | Unit & integration testing |
-| **eslint** | Code linting |
+| **eslint** | Code linting (v9 flat config) |
 | **prettier** | Code formatting |
 | **husky** | Git hooks |
 | **lint-staged** | Pre-commit linting |
+
+#### ESLint 9 Configuration
+
+ESLint 9 uses the new **flat config** format (`eslint.config.js`):
+
+```javascript
+// eslint.config.js
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  eslint.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  ...tseslint.configs.stylisticTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+    },
+  },
+  {
+    ignores: ['dist/', 'node_modules/', 'coverage/'],
+  }
+);
+```
+
+**Required packages for ESLint 9 with TypeScript:**
+
+| Package | Purpose |
+|---------|---------|
+| `eslint` | ESLint v9 core |
+| `@eslint/js` | Base recommended rules |
+| `typescript-eslint` | TypeScript support (replaces `@typescript-eslint/parser` + `@typescript-eslint/eslint-plugin`) |
 
 ### TypeScript Configuration
 
@@ -768,87 +958,97 @@ tiflis-code-tunnel/                      # Tunnel Server
 ```
 tiflis-code-workstation/                 # Workstation Server
 ├── src/
-│   ├── main.ts
-│   ├── app.ts
+│   ├── main.ts                          # Application entry point
+│   ├── app.ts                           # Fastify app setup
 │   │
 │   ├── domain/
 │   │   ├── entities/
 │   │   │   ├── session.ts               # Base session entity
 │   │   │   ├── agent-session.ts         # Headless agent session
 │   │   │   ├── terminal-session.ts      # PTY terminal session
-│   │   │   └── supervisor-session.ts    # Supervisor agent session
+│   │   │   ├── supervisor-session.ts    # Supervisor agent session
+│   │   │   └── client.ts                # Connected client entity
 │   │   ├── value-objects/
 │   │   │   ├── session-id.ts
-│   │   │   ├── workspace.ts
-│   │   │   └── project.ts
+│   │   │   ├── device-id.ts
+│   │   │   ├── auth-key.ts
+│   │   │   ├── workspace-path.ts
+│   │   │   └── chat-message.ts          # Structured chat message
 │   │   ├── errors/
 │   │   │   └── domain-errors.ts
 │   │   └── ports/
 │   │       ├── session-manager.ts
-│   │       ├── agent-executor.ts
-│   │       └── speech-service.ts
+│   │       ├── client-registry.ts
+│   │       ├── message-broadcaster.ts
+│   │       └── workspace-discovery.ts
 │   │
 │   ├── application/
 │   │   ├── commands/                    # Command handlers
 │   │   │   ├── create-session.ts
 │   │   │   ├── terminate-session.ts
-│   │   │   └── execute-command.ts
-│   │   ├── queries/                     # Query handlers
-│   │   │   ├── list-sessions.ts
-│   │   │   └── get-session-history.ts
+│   │   │   └── authenticate-client.ts
+│   │   ├── queries/
+│   │   │   └── list-sessions.ts
 │   │   └── services/
-│   │       └── subscription-service.ts
+│   │       ├── subscription-service.ts
+│   │       ├── message-broadcaster-impl.ts
+│   │       ├── chat-history-service.ts  # Chat persistence
+│   │       └── session-replay-service.ts # Session replay
 │   │
 │   ├── infrastructure/
 │   │   ├── websocket/
-│   │   │   ├── websocket-server.ts
 │   │   │   ├── tunnel-client.ts         # Connection to tunnel server
-│   │   │   └── message-router.ts
+│   │   │   └── message-router.ts        # WebSocket message routing
 │   │   ├── http/
 │   │   │   └── health-route.ts
 │   │   ├── agents/                      # Agent implementations
 │   │   │   ├── supervisor/
-│   │   │   │   ├── supervisor-agent.ts  # LangGraph supervisor
-│   │   │   │   └── tools/               # Supervisor tools
-│   │   │   │       ├── list-workspaces.ts
-│   │   │   │       ├── list-projects.ts
-│   │   │   │       ├── manage-worktrees.ts
-│   │   │   │       └── manage-sessions.ts
-│   │   │   └── headless/
-│   │   │       ├── cursor-agent.ts
-│   │   │       ├── claude-agent.ts
-│   │   │       └── opencode-agent.ts
+│   │   │   │   ├── supervisor-agent.ts  # LLM-based supervisor
+│   │   │   │   └── llm-provider.ts      # LLM provider abstraction
+│   │   │   ├── headless-agent-executor.ts  # CLI process spawner
+│   │   │   ├── agent-output-parser.ts   # JSON stream parser
+│   │   │   ├── agent-session-manager.ts # Agent lifecycle manager
+│   │   │   └── opencode-daemon.ts       # OpenCode serve manager
 │   │   ├── terminal/
 │   │   │   └── pty-manager.ts           # node-pty wrapper
 │   │   ├── speech/
-│   │   │   ├── stt-service.ts           # Speech-to-text
-│   │   │   └── tts-service.ts           # Text-to-speech
+│   │   │   ├── stt-service.ts           # Speech-to-text (OpenAI/ElevenLabs)
+│   │   │   └── tts-service.ts           # Text-to-speech (OpenAI/ElevenLabs)
 │   │   ├── persistence/
 │   │   │   ├── database/
 │   │   │   │   ├── schema.ts            # Drizzle schema definitions
-│   │   │   │   ├── migrations/          # SQL migrations
 │   │   │   │   └── client.ts            # Database client singleton
 │   │   │   ├── repositories/
 │   │   │   │   ├── session-repository.ts
-│   │   │   │   ├── message-repository.ts
-│   │   │   │   └── audio-repository.ts
-│   │   │   └── storage/
-│   │   │       └── audio-storage.ts     # File system audio storage
+│   │   │   │   └── message-repository.ts
+│   │   │   ├── storage/
+│   │   │   │   └── audio-storage.ts     # File system audio storage
+│   │   │   ├── in-memory-registry.ts    # Client registry
+│   │   │   ├── in-memory-session-manager.ts
+│   │   │   └── workspace-discovery.ts   # Workspace/project scanner
 │   │   └── logging/
 │   │       └── pino-logger.ts
 │   │
-│   ├── protocol/                        # Shared with tunnel
+│   ├── protocol/                        # WebSocket protocol types
 │   │   ├── messages.ts
 │   │   ├── schemas.ts
 │   │   └── errors.ts
 │   │
 │   └── config/
-│       ├── env.ts
-│       └── constants.ts
+│       ├── env.ts                       # Environment configuration
+│       └── constants.ts                 # Application constants
 │
 ├── tests/
+│   └── unit/
+│       ├── domain/
+│       │   ├── session-id.test.ts
+│       │   ├── auth-key.test.ts
+│       │   └── chat-message.test.ts
+│       └── infrastructure/
+│           └── agent-output-parser.test.ts
 ├── package.json
 ├── tsconfig.json
+├── drizzle.config.ts                    # Drizzle Kit config
 └── Dockerfile
 ```
 
@@ -1073,6 +1273,73 @@ const requestLogger = logger.child({ requestId, clientId });
 requestLogger.info('Processing request');
 ```
 
+
+### Startup Banner
+
+
+> **⚠️ MANDATORY**: All backend servers and CLI tools must display a startup banner when launched.
+
+The startup banner provides consistent branding and essential information at application startup. It must include:
+
+| Element | Required | Description |
+|---------|----------|-------------|
+| **ASCII Logo** | ✅ | Tiflis Code logo converted to ASCII art with colors |
+| **Component Name** | ✅ | e.g., "Tunnel Server", "Workstation Server" |
+| **Description** | ✅ | Brief one-line description of the component |
+| **Version** | ✅ | Current version from `package.json` or constants |
+| **Copyright** | ✅ | `© 2025 Roman Barinov` |
+| **License** | ✅ | `MIT License` |
+| **Repository URL** | ✅ | `https://github.com/tiflis-io/tiflis-code` |
+
+> **ASCII Art Source**: The original ASCII art logo is stored in `assets/branding/ascii-art.txt`
+
+#### Color Scheme
+
+Use ANSI escape codes for consistent terminal colors:
+
+```typescript
+const colors = {
+  dim: '\x1b[2m',           // Dim text for borders and secondary info
+  blue: '\x1b[38;5;69m',    // Blue for left bracket (matches logo gradient start)
+  purple: '\x1b[38;5;135m', // Purple for right bracket (matches logo gradient end)
+  white: '\x1b[97m',        // White for main text and "t" letter
+  reset: '\x1b[0m',         // Reset all formatting
+};
+```
+
+#### Example Implementation
+
+```typescript
+function printBanner(): void {
+  const dim = '\x1b[2m';
+  const blue = '\x1b[38;5;69m';
+  const purple = '\x1b[38;5;135m';
+  const white = '\x1b[97m';
+  const reset = '\x1b[0m';
+
+  const banner = `
+${'$'}{blue}       -####.${'$'}{reset}           ${'$'}{white}#     #${'$'}{reset}              ${'$'}{purple}-###+.${'$'}{reset}
+${'$'}{blue}     .##    .${'$'}{reset}        ${'$'}{white}.. #     #....${'$'}{reset}          ${'$'}{purple}-   ##-${'$'}{reset}
+     ...ASCII art continues...
+
+       ${'$'}{white}T I F L I S   C O D E${'$'}{reset}  ${'$'}{dim}·${'$'}{reset}  Component Name
+       ${'$'}{dim}Brief description of the component${'$'}{reset}
+
+       ${'$'}{dim}v${'$'}{VERSION}  ·  © 2025 Roman Barinov  ·  MIT License${'$'}{reset}
+       ${'$'}{dim}https://github.com/tiflis-io/tiflis-code${'$'}{reset}
+`;
+  console.log(banner);
+}
+```
+
+#### When to Display
+
+- **Backend servers**: Display immediately on startup, before any log messages
+- **CLI tools**: Display when run without arguments or with `--version` flag
+- **Development mode**: Always display
+- **Production mode**: Display (can be suppressed with `--quiet` flag if needed)
+
+
 ### Connection Resilience (Server-side)
 
 > **⚠️ CRITICAL REQUIREMENT**: Server components must handle client disconnections gracefully and support seamless reconnection with state recovery.
@@ -1083,7 +1350,7 @@ requestLogger.info('Processing request');
 |-------------|----------------|
 | **Workstation Health Monitoring** | Heartbeat every 20s, timeout after 30s |
 | **Client Notification** | Broadcast `workstation_offline`/`workstation_online` events |
-| **Tunnel ID Persistence** | Allow workstation to reclaim tunnel_id on reconnect |
+| **Tunnel ID Persistence** | Allow workstation to reclaim tunnel_id on reconnect, even after tunnel server restart |
 | **Graceful Degradation** | Queue messages during brief disconnections |
 
 #### Workstation Server Requirements
@@ -1427,53 +1694,125 @@ describe('WebSocket Integration', () => {
 
 ### Environment Configuration
 
-```typescript
-// config/env.ts
-import { z } from 'zod';
+#### Tunnel Server Environment Variables
 
-const EnvSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
-  PORT: z.coerce.number().default(3000),
-  LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error']).default('info'),
-  
-  // Tunnel server specific
-  TUNNEL_REGISTRATION_API_KEY: z.string().min(32).optional(),
-  
-  // Workstation server specific
-  TUNNEL_URL: z.string().url().optional(),
-  WORKSTATION_AUTH_KEY: z.string().min(16).optional(),
-  WORKSPACES_ROOT: z.string().default(process.env.HOME + '/work'),
-  
-  // Speech services
-  OPENAI_API_KEY: z.string().optional(),
-});
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | No | `development` | Environment mode |
+| `PORT` | No | `3000` | HTTP/WebSocket port |
+| `LOG_LEVEL` | No | `info` | Logging level (trace, debug, info, warn, error) |
+| `TUNNEL_REGISTRATION_API_KEY` | Yes | — | API key for workstation registration (min 32 chars) |
 
-export type Env = z.infer<typeof EnvSchema>;
+#### Workstation Server Environment Variables
 
-export function loadEnv(): Env {
-  const result = EnvSchema.safeParse(process.env);
-  
-  if (!result.success) {
-    console.error('Invalid environment variables:', result.error.format());
-    process.exit(1);
-  }
-  
-  return result.data;
-}
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `NODE_ENV` | No | `development` | Environment mode |
+| `PORT` | No | `3002` | HTTP server port |
+| `LOG_LEVEL` | No | `info` | Logging level |
+| `TUNNEL_URL` | Yes | — | Tunnel server WebSocket URL |
+| `TUNNEL_API_KEY` | Yes | — | API key for tunnel registration |
+| `WORKSTATION_NAME` | No | hostname | Display name for workstation |
+| `WORKSTATION_AUTH_KEY` | Yes | — | Auth key for client connections |
+| `WORKSPACES_ROOT` | No | `~/work` | Root directory for workspaces |
+| `DATA_DIR` | No | `~/.tiflis-code` | Data directory for SQLite and audio |
 
-export const env = loadEnv();
+**Agent/LLM Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AGENT_PROVIDER` | No | `openai` | LLM provider (openai, cerebras, anthropic) |
+| `AGENT_API_KEY` | Yes | — | API key for LLM provider |
+| `AGENT_MODEL_NAME` | No | `gpt-4o-mini` | Model name for supervisor agent |
+| `AGENT_BASE_URL` | No | provider default | Custom API base URL |
+| `AGENT_TEMPERATURE` | No | `0` | LLM temperature (0-1) |
+
+**Speech-to-Text (STT) Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `STT_PROVIDER` | No | `openai` | STT provider (openai, elevenlabs) |
+| `STT_API_KEY` | Yes | — | API key for STT provider |
+| `STT_MODEL` | No | `whisper-1` | STT model name |
+| `STT_LANGUAGE` | No | `en` | Default transcription language |
+
+**Text-to-Speech (TTS) Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `TTS_PROVIDER` | No | `openai` | TTS provider (openai, elevenlabs) |
+| `TTS_API_KEY` | Yes | — | API key for TTS provider |
+| `TTS_MODEL` | No | `tts-1` | TTS model name |
+| `TTS_VOICE` | No | `alloy` | Voice ID for TTS |
+
+**Headless Agent Configuration:**
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `AGENT_EXECUTION_TIMEOUT` | No | `900` | Command timeout in seconds (15 min) |
+| `CLAUDE_SESSION_LOCK_WAIT_MS` | No | `1500` | Wait time for Claude CLI session lock |
+| `OPENCODE_DAEMON_URL` | No | `http://localhost:4200` | OpenCode daemon URL |
+
+#### Example Configuration
+
+```bash
+# Workstation Server (.env.local)
+NODE_ENV=development
+PORT=3002
+LOG_LEVEL=debug
+
+# Tunnel connection
+TUNNEL_URL=wss://tunnel.example.com/ws
+TUNNEL_API_KEY=your-32-char-tunnel-api-key-here!
+WORKSTATION_NAME=my-macbook
+WORKSTATION_AUTH_KEY=dev-workstation-key
+
+# Workspaces
+WORKSPACES_ROOT=/Users/yourname/work
+DATA_DIR=/Users/yourname/.tiflis-code
+
+# LLM (Supervisor Agent)
+AGENT_PROVIDER=cerebras
+AGENT_API_KEY=your-cerebras-api-key
+AGENT_MODEL_NAME=llama3.1-70b
+AGENT_BASE_URL=https://api.cerebras.ai/v1
+AGENT_TEMPERATURE=0
+
+# Speech-to-Text
+STT_PROVIDER=openai
+STT_API_KEY=sk-xxx
+STT_MODEL=whisper-1
+STT_LANGUAGE=en
+
+# Text-to-Speech
+TTS_PROVIDER=elevenlabs
+TTS_API_KEY=your-elevenlabs-key
+TTS_MODEL=eleven_flash_v2_5
+TTS_VOICE=uYXf8XasLslADfZ2MB4u
+
+# Headless Agents
+AGENT_EXECUTION_TIMEOUT=900
+CLAUDE_SESSION_LOCK_WAIT_MS=1500
+OPENCODE_DAEMON_URL=http://localhost:4200
 ```
 
 ### Docker Configuration
 
+Multi-architecture Dockerfile supporting `linux/amd64` and `linux/arm64`:
+
 ```dockerfile
-# Dockerfile
-FROM node:22-alpine AS builder
+# Dockerfile (multi-arch)
+FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+
+# Build arguments for multi-arch
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+ARG VERSION=0.0.0
 
 WORKDIR /app
 
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Install pnpm (use specific version for reproducibility)
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 # Install dependencies
 COPY package.json pnpm-lock.yaml ./
@@ -1486,18 +1825,28 @@ RUN pnpm build
 # Production image
 FROM node:22-alpine AS runner
 
+# Labels for GitHub Container Registry
+LABEL org.opencontainers.image.source="https://github.com/tiflis-io/tiflis-code"
+
 WORKDIR /app
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Create non-root user
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 tiflis
 
-COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --frozen-lockfile --prod
-
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
+COPY package.json ./
+
+RUN chown -R tiflis:nodejs /app
+USER tiflis
 
 ENV NODE_ENV=production
-
 EXPOSE 3000
+
+# Use Node.js fetch for health check (no wget needed)
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "fetch('http://localhost:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
 
 CMD ["node", "dist/main.js"]
 ```
@@ -1508,7 +1857,7 @@ CMD ["node", "dist/main.js"]
 
 ### Repository Structure
 
-The project is hosted at **github.com/tiflis/tiflis-code** as a monorepo:
+The project is hosted at **github.com/tiflis-io/tiflis-code** as a monorepo:
 
 ```
 tiflis-code/
@@ -1809,12 +2158,12 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
           
           # Build and push tunnel server
-          docker build -t ghcr.io/tiflis/tiflis-code-tunnel:latest -f packages/tunnel/Dockerfile packages/tunnel
-          docker push ghcr.io/tiflis/tiflis-code-tunnel:latest
+          docker build -t ghcr.io/tiflis-io/tiflis-code-tunnel:latest -f packages/tunnel/Dockerfile packages/tunnel
+          docker push ghcr.io/tiflis-io/tiflis-code-tunnel:latest
           
           # Build and push workstation server
-          docker build -t ghcr.io/tiflis/tiflis-code-workstation:latest -f packages/workstation/Dockerfile packages/workstation
-          docker push ghcr.io/tiflis/tiflis-code-workstation:latest
+          docker build -t ghcr.io/tiflis-io/tiflis-code-workstation:latest -f packages/workstation/Dockerfile packages/workstation
+          docker push ghcr.io/tiflis-io/tiflis-code-workstation:latest
 ```
 
 #### iOS/watchOS Release (with fastlane)
@@ -1989,7 +2338,7 @@ end
     "@changesets/cli": "^2.27.0",
     "turbo": "^2.0.0"
   },
-  "packageManager": "pnpm@9.0.0",
+  "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=22.0.0",
     "pnpm": ">=9.0.0"
@@ -2001,6 +2350,46 @@ end
 # pnpm-workspace.yaml
 packages:
   - 'packages/*'
+```
+
+### GitHub Packages Publishing
+
+All npm packages are published to **GitHub Packages** (not npmjs.com).
+
+#### Package Configuration
+
+```json
+// packages/*/package.json
+{
+  "name": "@tiflis/tiflis-code-tunnel",
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  }
+}
+```
+
+#### npm Registry Configuration
+
+```
+# .npmrc (repository root)
+@tiflis:registry=https://npm.pkg.github.com
+```
+
+#### Installing from GitHub Packages
+
+Users need to authenticate with GitHub Packages:
+
+```bash
+# Add to ~/.npmrc (with personal access token)
+//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
+@tiflis:registry=https://npm.pkg.github.com
+```
+
+Then install:
+
+```bash
+npm install @tiflis/tiflis-code-tunnel
 ```
 
 ### Release Flow Summary
@@ -2162,6 +2551,10 @@ pnpm dev
 ```
 
 The workstation server will connect to the local tunnel and register.
+
+<p align="center">
+  <img src="assets/screenshots/workstation/startup.png" alt="Workstation Server Startup" width="600">
+</p>
 
 #### Running Both with Turborepo
 
@@ -2349,16 +2742,26 @@ NODE_ENV=development
 ```bash
 # Required
 TUNNEL_URL=ws://localhost:3001/ws
+TUNNEL_API_KEY=dev-api-key-32-chars-minimum!!
 WORKSTATION_AUTH_KEY=dev-workstation-key
 
 # Optional
 PORT=3002
 WORKSPACES_ROOT=/Users/yourname/work
+DATA_DIR=/Users/yourname/.tiflis-code
 LOG_LEVEL=debug
 NODE_ENV=development
 
-# For STT/TTS (optional in dev)
-OPENAI_API_KEY=sk-...
+# LLM for Supervisor Agent
+AGENT_PROVIDER=openai          # or cerebras, anthropic
+AGENT_API_KEY=sk-xxx
+AGENT_MODEL_NAME=gpt-4o-mini
+
+# Speech (optional in dev)
+STT_PROVIDER=openai
+STT_API_KEY=sk-xxx
+TTS_PROVIDER=openai
+TTS_API_KEY=sk-xxx
 ```
 
 ### Debugging
@@ -2523,7 +2926,7 @@ All `package.json` files must include:
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/tiflis/tiflis-code.git"
+    "url": "https://github.com/tiflis-io/tiflis-code.git"
   }
 }
 ```
@@ -2601,6 +3004,313 @@ Examples:
 
 ---
 
+## Mandatory Policies
+
+### Documentation Creation Policy
+
+> **⚠️ MANDATORY**: Never create NEW `.md` files for progress tracking, work results, or any other documentation unless the user **EXPLICITLY** asks for it.
+
+This rule is strictly enforced:
+- **No automatic NEW .md file creation** for any work progress, summaries, or results
+- **No NEW documentation files** unless specifically requested by name
+- **No status reports** in markdown format unless explicitly asked
+- **No project notes** or development logs in .md files unless user requests them
+
+**Exception**: Only create NEW .md files when the user explicitly asks for them by name or clearly states they want a markdown document created.
+
+**Clarification**: This policy applies only to creating NEW .md files. Updating existing documentation files to sync with new codebase changes and features should still be done when requested by the user or when clearly necessary for maintaining documentation accuracy.
+
+---
+
+## AI Agent Performance Guidelines
+
+> **⚠️ PERFORMANCE OPTIMIZATION**: These guidelines are mandatory for all AI agents working on this project to ensure maximum efficiency and speed.
+
+### Core Performance Principles
+
+1. **Parallel Execution** - Always use parallel tool calls when possible
+2. **Minimal Output** - Reduce unnecessary text and explanations
+3. **Batch Operations** - Group similar operations together
+4. **Direct Actions** - Avoid intermediate steps when possible
+5. **Smart Searching** - Use appropriate search tools for each task
+
+### Speed Optimization Commands
+
+Users can include these directives in prompts for maximum performance:
+
+| Directive | Effect | Example |
+|-----------|---------|---------|
+| **"Use parallel queries"** | Execute multiple tool calls simultaneously | `Use parallel queries to find all WebSocket files and update error handling` |
+| **"No explanations"** | Skip descriptive text, output only results | `Fix connection timeout, no explanations` |
+| **"Batch operations"** | Group related changes into single operations | `Batch rename all session variables, use replaceAll` |
+| **"Fast mode"** | Combines all optimizations | `Fast mode: Add voice recognition to iOS app` |
+
+### Tool Selection Guidelines
+
+| Task Type | Preferred Tool | Why |
+|------------|----------------|-----|
+| **File discovery** | `glob` | Fast pattern matching |
+| **Content search** | `grep` | Direct content search |
+| **Complex exploration** | `task` with explore agent | Multi-step analysis |
+| **Simple file reads** | `read` (batched) | Direct file access |
+| **Code changes** | `edit`/`write` | Immediate modification |
+
+### Performance Patterns
+
+#### 1. Parallel File Operations
+```bash
+# ❌ Sequential (slow)
+read file1.ts
+read file2.ts
+read file3.ts
+
+# ✅ Parallel (fast)
+read file1.ts file2.ts file3.ts
+```
+
+#### 2. Smart Search Strategy
+```bash
+# ❌ Broad search (slow)
+grep "function" . -r
+
+# ✅ Targeted search (fast)
+grep "class.*Session" packages/**/*.ts
+```
+
+#### 3. Batch Code Changes
+```bash
+# ❌ Individual edits (slow)
+edit file1.ts "old1" "new1"
+edit file2.ts "old2" "new2"
+
+# ✅ Batch operations (fast)
+edit file1.ts "old1" "new1" --replaceAll
+```
+
+### Response Optimization
+
+- **Code-first**: Present code immediately, explanations after
+- **Concise summaries**: Maximum 2-3 sentences for results
+- **Action-oriented**: Focus on what was done, not how
+- **Error efficiency**: Group related errors, suggest batch fixes
+
+### Mandatory Performance Metrics
+
+All agents must maintain:
+- **First response time**: < 3 seconds for simple tasks
+- **Parallel execution**: Minimum 2 concurrent operations when possible
+- **Tool efficiency**: > 80% of operations should be batched
+- **Output conciseness**: < 4 lines unless detailed explanation requested
+
+### Example Optimized Workflow
+
+```
+User: "Add voice recognition to mobile app"
+
+Agent Response:
+✅ Using parallel queries, batch operations
+✅ Found 3 relevant files via glob
+✅ Updated AudioRecorder.swift and VoiceManager.swift
+✅ Added voice permissions to Info.plist
+✅ Created VoiceRecognitionService.swift
+
+Done. Voice recognition integrated.
+```
+
+---
+
+## 🚀 Advanced Performance Optimizations
+
+### 1. **Result Caching**
+Cache and reuse search results to avoid redundant operations:
+
+```bash
+# Cache search results for reuse
+cache_search "WebSocket files" -> [file1.ts, file2.ts, file3.ts]
+reuse_cache "WebSocket files"
+```
+
+### 2. **Predictive Actions**
+Anticipate next steps and execute them proactively:
+
+```bash
+# Predict and execute next steps in advance
+predict_and_execute "add voice recognition" -> [
+  "find audio files",
+  "check permissions", 
+  "prepare interfaces"
+]
+```
+
+### 3. **Incremental Changes**
+Apply changes incrementally without full file re-reading:
+
+```bash
+# Apply changes incrementally without complete re-read
+incremental_edit file.ts +line:45 "new code"
+```
+
+### 4. **Context Compression**
+Compress context to essential information only:
+
+```bash
+# Compress context to key information
+compress_context "focus on WebSocket connection logic"
+```
+
+### 5. **Parallel Validation**
+Validate changes in parallel with creation:
+
+```bash
+# Validate changes in parallel with creation
+validate_parallel --syntax --types --tests
+```
+
+### 6. **Smart Templates**
+Use ready-made templates for common tasks:
+
+```bash
+# Use ready templates for frequent tasks
+template "swift_view_model" -> generate complete structure
+```
+
+### 7. **Zero-Copy Operations**
+Modify files without complete re-reading:
+
+```bash
+# Modify files without full re-reading
+zero_copy_edit file.ts replace_function "oldName" "newName"
+```
+
+### 8. **Batch Compilation**
+Compile all changes in a single batch:
+
+```bash
+# Compile all changes in one batch
+batch_compile --incremental --parallel
+```
+
+### 9. **Dependency Preloading**
+Preload likely dependencies:
+
+```bash
+# Preload probable dependencies
+preload_deps ["SwiftUI", "Combine", "AVFoundation"]
+```
+
+### 10. **Asynchronous Rollback**
+Roll back changes asynchronously in background:
+
+```bash
+# Roll back changes asynchronously in background
+async_rollback --on_failure --keep_state
+```
+
+### 🎯 Combined Directives
+
+```bash
+# Maximum speed
+"ultra-fast mode: parallel + cache + predictive + zero-copy"
+
+# Balance of speed and reliability  
+"optimized mode: parallel + incremental + validation"
+
+# For large refactoring
+"refactor mode: batch + template + async_rollback"
+```
+
+### 📊 Performance Metrics
+
+All agents must maintain:
+- **Cache hit rate**: > 70%
+- **Prediction accuracy**: > 80%  
+- **Zero-copy operations**: > 60%
+- **Parallel validation**: 100% for changes
+- **Template reuse**: > 50% for standard tasks
+
+### 🔧 Implementation Examples
+
+#### Swift Development Optimization
+```swift
+// ❌ Sequential approach
+func setupAudio() {
+    configureSession()
+    requestPermissions()
+    setupRecorder()
+}
+
+// ✅ Parallel with predictive loading
+func setupAudio() async {
+    async let permissions = requestPermissions()
+    async let session = configureSession()
+    async let recorder = setupRecorder()
+    
+    await (permissions, session, recorder)
+}
+```
+
+#### TypeScript Development Optimization
+```typescript
+// ❌ Multiple individual searches
+const wsFiles = findFiles('**/websocket/**/*.ts')
+const httpFiles = findFiles('**/http/**/*.ts')
+const dbFiles = findFiles('**/db/**/*.ts')
+
+// ✅ Single parallel search with caching
+const [wsFiles, httpFiles, dbFiles] = await Promise.all([
+    cache_search('websocket'),
+    cache_search('http'), 
+    cache_search('db')
+])
+```
+
+#### Batch Operation Pattern
+```bash
+# ❌ Individual file operations
+edit src/auth.ts "add validation"
+edit src/user.ts "add validation"
+edit src/session.ts "add validation"
+
+# ✅ Batch operation with template
+template "add_validation" --files="src/auth.ts,src/user.ts,src/session.ts"
+```
+
+### 🎪 Advanced Workflow Example
+
+```
+User: "Refactor authentication system with ultra-fast mode"
+
+Agent Response:
+✅ Ultra-fast mode activated: parallel + cache + predictive + zero-copy
+✅ Cache hit: auth files already located [auth.ts, user.ts, session.ts]
+✅ Predictive loading: security, validation, token management modules
+✅ Zero-copy batch edit: applying auth refactor pattern
+✅ Parallel validation: syntax ✓ types ✓ tests ✓
+✅ Async rollback ready: backup created
+
+Refactoring complete in 2.3s (normally 8.7s)
+```
+
+### ⚡ Emergency Speed Mode
+
+For critical time-sensitive operations:
+
+```bash
+"emergency mode: no_validation + zero_copy + cache_only + silent"
+```
+
+**Use only when:**
+- Production hotfixes required
+- Time-critical deployments
+- Emergency debugging sessions
+
+**Trade-offs:**
+- Reduced safety checks
+- Limited error recovery
+- Minimal logging
+
+---
+
 ## Agent Competency Requirements
 
 When working on this project, the AI agent must operate at an **expert senior developer level** for both technology stacks. Below are the detailed competency requirements.
@@ -2657,6 +3367,273 @@ The agent must embody the expertise of a **world-class Swift developer** with de
 - Comprehensive unit and integration testing with XCTest
 - UI testing with XCUITest
 - Documentation comments for public APIs
+
+#### Swift Concurrency Best Practices
+
+> **⚠️ CRITICAL**: These patterns are mandatory for all async operations in the project.
+
+##### 1. Task-Based Periodic Operations (Not Timer)
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Timer requires RunLoop and doesn't work well in async contexts
+private var pingTimer: Timer?
+
+func startHeartbeat() {
+    pingTimer = Timer.scheduledTimer(withTimeInterval: 20.0, repeats: true) { [weak self] _ in
+        self?.sendPing()
+    }
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use Task.sleep for periodic operations in async contexts
+private var pingTask: Task<Void, Never>?
+
+func startHeartbeat() {
+    pingTask = Task { [weak self] in
+        guard let self = self else { return }
+        
+        // Initial delay before first periodic ping
+        try? await Task.sleep(for: .seconds(self.pingInterval))
+        
+        // Periodic loop
+        while !Task.isCancelled {
+            // Check connection state on MainActor before sending
+            let shouldContinue = await MainActor.run {
+                guard self.isConnected else { return false }
+                return true
+            }
+            
+            guard shouldContinue else { break }
+            
+            // Send ping
+            await self.sendPing()
+            
+            // Wait for next interval
+            try? await Task.sleep(for: .seconds(self.pingInterval))
+        }
+    }
+}
+
+func stopHeartbeat() {
+    pingTask?.cancel()
+    pingTask = nil
+}
+```
+
+**Why:** `Task.sleep` works reliably in any async context, doesn't require RunLoop, and integrates seamlessly with Swift concurrency cancellation.
+
+##### 2. Actor Isolation for State Access
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Accessing MainActor-isolated properties from non-isolated context
+private func sendPing() async {
+    guard isConnected, let task = webSocketTask else { return } // ❌ Data race warning
+    // ...
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Access state on MainActor, then use the captured values
+private func sendPing() async {
+    // Capture state on MainActor first
+    let canSend = await MainActor.run {
+        guard self.isConnected, let task = self.webSocketTask, task.state == .running else {
+            return false
+        }
+        return true
+    }
+    
+    guard canSend else { return }
+    
+    // Now use the captured state safely
+    // ...
+}
+```
+
+**Why:** Prevents data races and ensures thread-safe access to UI-related state.
+
+##### 3. Connection State Management
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Multiple simultaneous connection attempts
+func connect() async throws {
+    // No guard against concurrent calls
+    webSocketTask = urlSession.webSocketTask(with: url)
+    // ...
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Prevent multiple simultaneous attempts
+private var isConnecting = false
+private var isReconnecting = false
+
+func connect() async throws {
+    // Prevent concurrent connection attempts
+    guard !isConnecting, !isReconnecting, !isConnected else {
+        WebSocketClient.log("⚠️ WebSocket: Connection already in progress or connected")
+        return
+    }
+    
+    isConnecting = true
+    defer { isConnecting = false }
+    
+    do {
+        // Connection logic...
+        isConnecting = false
+    } catch {
+        isConnecting = false
+        throw error
+    }
+}
+```
+
+**Why:** Prevents connection storms and ensures predictable state transitions.
+
+##### 4. Message Listening Patterns
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Using timeout-based receive for ongoing listening
+private func listenForMessages() async {
+    while true {
+        let message = try await receiveMessage(timeout: 30.0) // ❌ Times out after auth
+        // ...
+    }
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use timeout for setup, direct receive for ongoing listening
+private func receiveMessage(timeout: TimeInterval) async throws -> [String: Any] {
+    // Use with timeout for connection setup (connect, auth)
+    // ...
+}
+
+private func listenForMessages() async {
+    guard let task = webSocketTask else { return }
+    
+    while !Task.isCancelled {
+        do {
+            // Use task.receive() directly (no timeout) for ongoing listening
+            let wsMessage = try await task.receive()
+            // Process message...
+        } catch {
+            if Task.isCancelled { break }
+            // Handle error...
+        }
+    }
+}
+```
+
+**Why:** Connection setup needs timeouts, but ongoing listening should wait indefinitely for messages.
+
+##### 5. Task Cancellation and Cleanup
+
+**✅ Best Practice:**
+```swift
+// Always track tasks and cancel them properly
+private var pingTask: Task<Void, Never>?
+private var pongTimeoutTask: Task<Void, Never>?
+private var listenTask: Task<Void, Never>?
+
+func disconnect() {
+    // Cancel all tasks
+    pingTask?.cancel()
+    pingTask = nil
+    pongTimeoutTask?.cancel()
+    pongTimeoutTask = nil
+    listenTask?.cancel()
+    listenTask = nil
+    
+    // Clean up resources
+    webSocketTask?.cancel()
+    webSocketTask = nil
+}
+
+// In task loops, always check cancellation
+while !Task.isCancelled {
+    // Work...
+    try? await Task.sleep(for: .seconds(interval))
+}
+```
+
+**Why:** Prevents resource leaks and ensures proper cleanup when connections close.
+
+##### 6. Static Logging Utilities
+
+**✅ Best Practice:**
+```swift
+// DO: Use static methods for logging utilities
+final class WebSocketClient {
+    private static var timestamp: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss.SSS"
+        return formatter.string(from: Date())
+    }
+    
+    private static func log(_ message: String) {
+        print("[\(WebSocketClient.timestamp)] \(message)")
+    }
+    
+    // Usage throughout the class
+    private func connect() async throws {
+        WebSocketClient.log("🔌 WebSocket: Connecting to \(url)")
+        // ...
+    }
+}
+```
+
+**Why:** Avoids `self.` requirements in closures, provides consistent formatting, and improves readability.
+
+##### 7. Sendable Safety in Task Groups
+
+**❌ Anti-Pattern:**
+```swift
+// DON'T: Passing non-Sendable types through TaskGroup
+let result = try await withThrowingTaskGroup(of: [String: Any].self) { group in
+    // ❌ [String: Any] is not Sendable
+}
+```
+
+**✅ Best Practice:**
+```swift
+// DO: Use Sendable types (Data) in TaskGroup, parse after
+let result = try await withThrowingTaskGroup(of: Data.self) { group in
+    group.addTask {
+        let wsMessage = try await task.receive()
+        // Convert to Data (which is Sendable)
+        switch wsMessage {
+        case .string(let text):
+            return text.data(using: .utf8) ?? Data()
+        case .data(let data):
+            return data
+        }
+    }
+    
+    // Wait for result
+    guard let messageData = try await group.next() else {
+        throw WebSocketError.connectionClosed
+    }
+    
+    // Parse JSON on current actor (not in TaskGroup)
+    guard let dict = try? JSONSerialization.jsonObject(with: messageData) as? [String: Any] else {
+        throw WebSocketError.invalidMessage
+    }
+    
+    return dict
+}
+```
+
+**Why:** Ensures thread safety and prevents data race warnings in concurrent code.
 
 #### Naming Conventions
 
@@ -2805,6 +3782,18 @@ src/
 4. **Fail Fast**: Validate inputs early, throw meaningful errors
 5. **Immutability**: Prefer immutable data structures when possible
 6. **Pure Functions**: Minimize side effects, maximize testability
+
+### Swift Concurrency Guidelines
+
+> **⚠️ MANDATORY**: These patterns must be followed for all async operations.
+
+1. **Always use `Task.sleep` for periodic operations** — Never use `Timer` in async contexts (see [Swift Concurrency Best Practices](#swift-concurrency-best-practices) above)
+2. **Access MainActor-isolated state explicitly** — Use `await MainActor.run` to capture state before use in non-isolated contexts
+3. **Track all tasks and cancel them properly** — Store tasks as properties and cancel in cleanup methods (`disconnect()`, `deinit`, etc.)
+4. **Use Sendable types in TaskGroups** — Convert to `Data` or other Sendable types before passing through concurrent boundaries
+5. **Distinguish setup vs. ongoing operations** — Use timeouts for connection setup, direct receive for ongoing listening
+6. **Prevent concurrent operations** — Use flags (`isConnecting`, `isReconnecting`) to prevent race conditions and connection storms
+7. **Static utilities for logging** — Use static methods to avoid `self.` requirements in closures and improve code clarity
 
 ### Error Handling
 

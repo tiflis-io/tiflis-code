@@ -1,0 +1,266 @@
+# ============================================================================
+# Tiflis Code - Git Ignore
+# ============================================================================
+# Covers: Node.js/TypeScript, Apple/iOS/watchOS/Xcode, IDE, OS files
+#
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the MIT License.
+
+# ============================================================================
+# Node.js / TypeScript
+# ============================================================================
+
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Package manager files
+pnpm-debug.log*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.yarn/
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Environment files (keep examples)
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+
+# Cache directories
+.cache/
+.turbo/
+.eslintcache
+.prettiercache
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# ============================================================================
+# Apple / iOS / watchOS / Xcode
+# ============================================================================
+
+# Xcode build outputs
+DerivedData/
+build/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+
+# Xcode user-specific files
+*.xcuserstate
+*.xcuserdatad/
+xcuserdata/
+
+# Xcode breakpoints
+*.xcbkptlist
+
+# Xcode schemes (keep shared schemes)
+!*.xcscheme
+
+# Swift Package Manager
+.build/
+.swiftpm/
+# Note: Don't use "Packages/" here - it conflicts with our packages/ directory on macOS
+# Swift packages are typically in apps/TiflisCode/Packages/ anyway
+apps/**/Packages/
+Package.resolved
+
+# CocoaPods (if used)
+Pods/
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+Podfile.lock
+
+# Carthage (if used)
+Carthage/Build/
+Carthage/Checkouts/
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/**/*.png
+fastlane/test_output/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Code signing
+*.mobileprovision
+*.provisionprofile
+
+# App Store Connect
+*.itmsp
+
+# Playgrounds
+timeline.xctimeline
+playground.xcworkspace
+
+# ============================================================================
+# IDE / Editors
+# ============================================================================
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/*.code-snippets
+.history/
+
+# JetBrains IDEs (WebStorm, AppCode, etc.)
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Cursor
+.cursor/
+
+# Vim
+*.swp
+*.swo
+*~
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+.#*
+
+# Sublime Text
+*.sublime-workspace
+*.sublime-project
+
+# ============================================================================
+# Operating System
+# ============================================================================
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================================================
+# Docker
+# ============================================================================
+
+# Docker build artifacts (keep Dockerfile and compose files)
+*.tar
+docker-compose.override.yml
+
+# ============================================================================
+# Logs & Debug
+# ============================================================================
+
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================================================
+# Secrets & Credentials (NEVER commit these)
+# ============================================================================
+
+# Private keys
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Certificates (keep public certs if needed)
+*.crt
+*.cer
+
+# Auth tokens
+.netrc
+.npmrc.local
+
+# API keys
+secrets/
+.secrets/
+
+# ============================================================================
+# Miscellaneous
+# ============================================================================
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# SQLite databases (local dev)
+*.db
+*.sqlite
+*.sqlite3
+
+# Audio files (generated/cached)
+*.m4a
+*.mp3
+*.wav
+
+# Lock files for sub-projects (keep root pnpm-lock.yaml)
+packages/*/pnpm-lock.yaml
+packages/*/package-lock.json
+packages/*/yarn.lock
+

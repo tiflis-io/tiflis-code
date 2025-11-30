@@ -192,7 +192,7 @@ Built with **SwiftUI** following Apple Human Interface Guidelines. Supports ligh
 
 ```bash
 # Clone the repository
-git clone https://github.com/tiflis/tiflis-code.git
+git clone https://github.com/tiflis-io/tiflis-code.git
 cd tiflis-code
 
 # Install dependencies
@@ -213,6 +213,10 @@ cp .env.example .env.local
 pnpm dev
 ```
 
+<p align="center">
+  <img src="assets/screenshots/tunnel/startup.png" alt="Tunnel Server Startup" width="600">
+</p>
+
 #### 2. Start Workstation Server
 
 ```bash
@@ -223,6 +227,10 @@ cp .env.example .env.local
 #   WORKSTATION_AUTH_KEY=your-secret-key
 pnpm dev
 ```
+
+<p align="center">
+  <img src="assets/screenshots/workstation/startup.png" alt="Workstation Server Startup" width="600">
+</p>
 
 #### 3. Run iOS App
 
