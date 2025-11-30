@@ -136,6 +136,15 @@ struct TerminalView: View {
             // State will be reloaded from server when view reappears
             viewModel.unsubscribeFromSession()
         }
+        .onChange(of: isDrawerOpen) { _, newValue in
+            if newValue {
+                // Drawer opened - resign first responder to dismiss keyboard
+                viewModel.resignFirstResponder()
+            } else {
+                // Drawer closed - restore first responder to allow keyboard input
+                viewModel.becomeFirstResponder()
+            }
+        }
     }
 }
 
