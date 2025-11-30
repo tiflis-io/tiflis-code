@@ -1,9 +1,9 @@
-# Release Pipeline - npm & Docker Publishing
+# Release Pipeline - Manual Version Bump
 #
-# Triggered on push to main after CI passes.
-# Uses Changesets for versioning and publishes to:
-# - npm registry (GitHub Packages)
-# - GitHub Container Registry (multi-arch Docker images)
+# Упрощенный процесс релиза:
+# 1. Обновите версию в package.json вручную
+# 2. Закоммитьте и запушьте в main
+# 3. Workflow автоматически обнаружит изменение версии и опубликует
 #
 # Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 # Licensed under the MIT License.
@@ -15,8 +15,8 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
-      force_docker_build:
-        description: 'Force Docker build even without new version'
+      force_publish:
+        description: 'Force publish even without version change'
         required: false
         type: boolean
         default: false
@@ -30,21 +30,16 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/tiflis-code-tunnel
 
 jobs:
-  # ─────────────────────────────────────────────────────────────
-  # Release npm packages via Changesets
-  # ─────────────────────────────────────────────────────────────
   release:
     name: Release Packages
     runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write
-      pull-requests: write
       id-token: write
     
     outputs:
-      published: ${{ steps.changesets.outputs.published }}
-      publishedPackages: ${{ steps.changesets.outputs.publishedPackages }}
+      published: ${{ steps.version_check.outputs.should_publish }}
       tunnel_version: ${{ steps.get_version.outputs.version }}
 
     steps:
@@ -63,6 +58,7 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@tiflis-io'
+          always-auth: true
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -73,34 +69,53 @@ jobs:
       - name: Run tests
         run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" test
 
-      - name: Create Release Pull Request or Publish
-        id: changesets
-        uses: changesets/action@v1
-        with:
-          publish: pnpm changeset publish
-          version: pnpm changeset version
-          title: 'chore: version packages'
-          commit: 'chore: version packages'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Get tunnel package version
+      - name: Get current version
         id: get_version
         run: |
           VERSION=$(node -p "require('./packages/tunnel/package.json').version")
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "Tunnel version: $VERSION"
+          echo "Current tunnel version: $VERSION"
 
-  # ─────────────────────────────────────────────────────────────
-  # Build and Push Multi-arch Docker Images
-  # ─────────────────────────────────────────────────────────────
+      - name: Check if version changed
+        id: version_check
+        run: |
+          CURRENT_VERSION=$(node -p "require('./packages/tunnel/package.json').version")
+          
+          # Try to get previous version from git
+          PREVIOUS_VERSION=$(git show HEAD~1:packages/tunnel/package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
+          
+          if [ -z "$PREVIOUS_VERSION" ]; then
+            echo "⚠️ No previous version found, checking if package exists in registry..."
+            # Check if package exists in GitHub Packages
+            if npm view "@tiflis-io/tiflis-code-tunnel@$CURRENT_VERSION" version 2>/dev/null; then
+              echo "Package version $CURRENT_VERSION already exists"
+              echo "should_publish=false" >> $GITHUB_OUTPUT
+            else
+              echo "✅ First publish or new version: $CURRENT_VERSION"
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+            fi
+          elif [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+            echo "✅ Version changed: $PREVIOUS_VERSION → $CURRENT_VERSION"
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "ℹ️ Version unchanged: $CURRENT_VERSION"
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish packages
+        if: steps.version_check.outputs.should_publish == 'true' || github.event.inputs.force_publish == 'true'
+        run: |
+          echo "📦 Publishing packages to GitHub Packages..."
+          pnpm --filter "@tiflis-io/tiflis-code-tunnel" publish --no-git-checks --access public
+          pnpm --filter "@tiflis-io/tiflis-code-workstation" publish --no-git-checks --access public || echo "Workstation package not ready for publish"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   docker:
     name: Build & Push Docker Images
     runs-on: ubuntu-latest
     needs: release
-    # Run if packages were published OR force build was requested
-    if: needs.release.outputs.published == 'true' || github.event.inputs.force_docker_build == 'true'
+    if: needs.release.outputs.published == 'true' || github.event.inputs.force_publish == 'true'
     
     permissions:
       contents: read
@@ -135,11 +150,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Version tag from package.json
             type=raw,value=${{ needs.release.outputs.tunnel_version }}
-            # Latest tag for main branch
             type=raw,value=latest,enable={{is_default_branch}}
-            # Git SHA tag
             type=sha,prefix=sha-,format=short
 
       - name: Build and push Docker image
@@ -179,9 +191,6 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Platforms:** \`linux/amd64\`, \`linux/arm64\`" >> $GITHUB_STEP_SUMMARY
 
-  # ─────────────────────────────────────────────────────────────
-  # Create GitHub Release
-  # ─────────────────────────────────────────────────────────────
   github-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
@@ -221,4 +230,3 @@ jobs:
           draft: false
           prerelease: false
           generate_release_notes: true
-
