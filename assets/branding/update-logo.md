@@ -26,6 +26,8 @@ This command regenerates all PNG logo assets from updated SVG logos for iOS and 
   - `CursorLogo.imageset/`
   - `ClaudeLogo.imageset/`
   - `OpenCodeLogo.imageset/` (theme-aware)
+    - File names: `OpenCodeLogo-dark.png`, `OpenCodeLogo-dark@2x.png`, `OpenCodeLogo-dark@3x.png`, `OpenCodeLogo-light.png`, `OpenCodeLogo-light@2x.png`, `OpenCodeLogo-light@3x.png`
+    - **Note**: File names must match Contents.json exactly (use `-dark` and `-light` suffix, not `~dark` and `~light`)
 - **watchOS App**: `apps/TiflisCode/TiflisCodeWatch/Resources/Assets.xcassets/`
   - `CursorLogo.imageset/`
   - `ClaudeLogo.imageset/`
@@ -33,17 +35,17 @@ This command regenerates all PNG logo assets from updated SVG logos for iOS and 
 
 ### App Icons (Home Screen)
 - **iOS App**: `apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/`
-  - **iPhone**: `Icon-20@2x.png` (80x80), `Icon-20@3x.png` (120x120), `Icon-29@2x.png` (58x58), `Icon-29@3x.png` (87x87), `Icon-40@2x.png` (80x80), `Icon-40@3x.png` (120x120), `Icon-60@2x.png` (120x120), `Icon-60@3x.png` (180x180)
-  - **iPad**: `Icon-20.png` (40x40), `Icon-20@2x.png` (80x80, shared with iPhone), `Icon-29.png` (29x29), `Icon-29@2x.png` (58x58, shared with iPhone), `Icon-40.png` (40x40), `Icon-40@2x.png` (80x80, shared with iPhone), `Icon-76@2x.png` (152x152), `Icon-83.5@2x.png` (167x167)
+  - **iPhone**: `Icon-20@2x.png` (40x40), `Icon-20@3x.png` (60x60), `Icon-29@2x.png` (58x58), `Icon-29@3x.png` (87x87), `Icon-40@2x.png` (80x80), `Icon-40@3x.png` (120x120), `Icon-60@2x.png` (120x120), `Icon-60@3x.png` (180x180)
+  - **iPad**: `Icon-20.png` (20x20), `Icon-20@2x.png` (40x40, shared with iPhone), `Icon-29.png` (29x29), `Icon-29@2x.png` (58x58, shared with iPhone), `Icon-40.png` (40x40), `Icon-40@2x.png` (80x80, shared with iPhone), `Icon-76@2x.png` (152x152), `Icon-83.5@2x.png` (167x167)
   - **App Store**: `Icon-1024.png` (1024x1024)
   - **Size Calculation Logic**: 
-    - **For 20pt ONLY**: base @1x = 40px (exception! not 20px) → @2x = 80px, @3x = 120px
-    - **For all other sizes**: base @1x = size in points
-      - 29pt: base = 29px → @2x = 58px, @3x = 87px
-      - 40pt: base = 40px → @2x = 80px, @3x = 120px
-      - 60pt: base = 60px → @2x = 120px, @3x = 180px
-      - 76pt: base = 76px → @2x = 152px
-      - 83.5pt: base = 83.5px → @2x = 167px
+    - Formula: `size_in_points × scale = pixel_size`
+    - 20pt: @1x = 20px, @2x = 40px, @3x = 60px
+    - 29pt: @1x = 29px, @2x = 58px, @3x = 87px
+    - 40pt: @1x = 40px, @2x = 80px, @3x = 120px
+    - 60pt: @1x = 60px, @2x = 120px, @3x = 180px
+    - 76pt: @1x = 76px, @2x = 152px
+    - 83.5pt: @1x = 83.5px, @2x = 167px
 - **watchOS App**: `apps/TiflisCode/TiflisCodeWatch/Resources/Assets.xcassets/WatchIcon.appiconset/`
   - **All sizes**: `Icon-24@2x.png` (48x48), `Icon-27.5@2x.png` (55x55), `Icon-29@2x.png` (58x58), `Icon-29@3x.png` (87x87), `Icon-40@2x.png` (80x80), `Icon-44@2x.png` (88x88), `Icon-86@2x.png` (172x172), `Icon-98@2x.png` (196x196), `Icon-108@2x.png` (216x216)
 
@@ -58,11 +60,12 @@ This command regenerates all PNG logo assets from updated SVG logos for iOS and 
 cd assets/branding/
 
 # Generate all iOS app icons in parallel (fastest)
+# Calculation: size_in_points × scale = pixel_size
 # Note: Icon-20@2x.png and Icon-29@2x.png, Icon-40@2x.png are shared between iPhone and iPad
 (
   # iPhone icons
-  rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png &
-  rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png &
+  rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png &
+  rsvg-convert -w 60 -h 60 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png &
   rsvg-convert -w 58 -h 58 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@2x.png &
   rsvg-convert -w 87 -h 87 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@3x.png &
   rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-40@2x.png &
@@ -70,7 +73,7 @@ cd assets/branding/
   rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-60@2x.png &
   rsvg-convert -w 180 -h 180 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-60@3x.png &
   # iPad icons (unique sizes only, @2x shared with iPhone)
-  rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20.png &
+  rsvg-convert -w 20 -h 20 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20.png &
   rsvg-convert -w 29 -h 29 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29.png &
   rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-40.png &
   rsvg-convert -w 152 -h 152 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-76@2x.png &
@@ -129,13 +132,14 @@ rsvg-convert -w 96 -h 96 third-party/ClaudeLogo.svg -o ../../apps/TiflisCode/Tif
 rsvg-convert -w 144 -h 144 third-party/ClaudeLogo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/ClaudeLogo.imageset/ClaudeLogo@3x.png
 
 # OpenCode (theme-aware - generate both variants)
-rsvg-convert -w 48 -h 48 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo~dark.png
-rsvg-convert -w 96 -h 96 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo@2x~dark.png
-rsvg-convert -w 144 -h 144 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo@3x~dark.png
+# Note: File names must match Contents.json (OpenCodeLogo-dark.png, not OpenCodeLogo~dark.png)
+rsvg-convert -w 48 -h 48 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-dark.png
+rsvg-convert -w 96 -h 96 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-dark@2x.png
+rsvg-convert -w 144 -h 144 third-party/opencode-logo-dark.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-dark@3x.png
 
-rsvg-convert -w 48 -h 48 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo~light.png
-rsvg-convert -w 96 -h 96 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo@2x~light.png
-rsvg-convert -w 144 -h 144 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo@3x~light.png
+rsvg-convert -w 48 -h 48 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-light.png
+rsvg-convert -w 96 -h 96 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-light@2x.png
+rsvg-convert -w 144 -h 144 third-party/opencode-logo-light.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/OpenCodeLogo.imageset/OpenCodeLogo-light@3x.png
 
 # Agent Icons - watchOS (smaller sizes)
 rsvg-convert -w 32 -h 32 third-party/CursorLogo.svg -o ../../apps/TiflisCode/TiflisCodeWatch/Resources/Assets.xcassets/CursorLogo.imageset/CursorLogo.png
@@ -144,13 +148,11 @@ rsvg-convert -w 64 -h 64 third-party/CursorLogo.svg -o ../../apps/TiflisCode/Tif
 rsvg-convert -w 32 -h 32 third-party/ClaudeLogo.svg -o ../../apps/TiflisCode/TiflisCodeWatch/Resources/Assets.xcassets/ClaudeLogo.imageset/ClaudeLogo.png
 rsvg-convert -w 64 -h 64 third-party/ClaudeLogo.svg -o ../../apps/TiflisCode/TiflisCodeWatch/Resources/Assets.xcassets/ClaudeLogo.imageset/ClaudeLogo@2x.png
 
-# iOS App Icons (all sizes - matches actual file dimensions)
-# IMPORTANT: For 20pt size ONLY, base @1x is 40px (not 20px) - iOS app icon exception
-# For all other sizes: base @1x = size in points (e.g., 29pt @1x = 29px, 40pt @1x = 40px)
-# Calculation: base_size × scale = pixel_size
+# iOS App Icons (all sizes - matches Contents.json: size × scale = pixels)
+# Calculation: size_in_points × scale = pixel_size
 # iPhone icons
-rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png  # 20pt: base=40px (exception!) × 2 = 80px
-rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png  # 20pt: base=40px (exception!) × 3 = 120px
+rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png  # 20pt × 2 = 40px
+rsvg-convert -w 60 -h 60 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png  # 20pt × 3 = 60px
 rsvg-convert -w 58 -h 58 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@2x.png  # 29pt: base=29px × 2 = 58px
 rsvg-convert -w 87 -h 87 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@3x.png  # 29pt: base=29px × 3 = 87px
 rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-40@2x.png  # 40pt: base=40px × 2 = 80px
@@ -158,8 +160,8 @@ rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resource
 rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-60@2x.png  # 60pt: base=60px × 2 = 120px
 rsvg-convert -w 180 -h 180 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-60@3x.png  # 60pt: base=60px × 3 = 180px
 # iPad icons
-rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20.png  # 20pt: base=40px (exception!) × 1 = 40px
-rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png  # 20pt: base=40px (exception!) × 2 = 80px (shared with iPhone)
+rsvg-convert -w 20 -h 20 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20.png  # 20pt × 1 = 20px
+rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png  # 20pt × 2 = 40px (shared with iPhone)
 rsvg-convert -w 29 -h 29 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29.png  # 29pt: base=29px × 1 = 29px
 rsvg-convert -w 58 -h 58 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@2x.png  # 29pt: base=29px × 2 = 58px (shared with iPhone)
 rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-40.png  # 40pt: base=40px × 1 = 40px
@@ -257,13 +259,11 @@ rsvg-convert -w 160 -h 160 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resource
 rsvg-convert -w 240 -h 240 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/TiflisLogo.imageset/TiflisLogo@3x.png
 
 echo "🏠 Generating iOS app icons (parallel execution for speed)..."
-# Note: For 20pt size ONLY, base @1x is 40px (not 20px) - iOS app icon exception
-# For all other sizes: base @1x = size in points (e.g., 29pt @1x = 29px, 40pt @1x = 40px)
-# Calculation: base_size × scale = pixel_size
+# Calculation: size_in_points × scale = pixel_size (e.g., 20pt × 2 = 40px)
 (
   # iPhone icons
-  rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png &
-  rsvg-convert -w 120 -h 120 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png &
+  rsvg-convert -w 40 -h 40 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@2x.png &
+  rsvg-convert -w 60 -h 60 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-20@3x.png &
   rsvg-convert -w 58 -h 58 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@2x.png &
   rsvg-convert -w 87 -h 87 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-29@3x.png &
   rsvg-convert -w 80 -h 80 logo.svg -o ../../apps/TiflisCode/TiflisCode/Resources/Assets.xcassets/AppIcon.appiconset/Icon-40@2x.png &
