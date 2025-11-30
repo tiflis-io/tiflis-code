@@ -102,12 +102,19 @@ jobs:
             echo "should_publish=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Configure npm for GitHub Packages
+        run: |
+          echo "@tiflis-io:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
+
       - name: Publish packages
         if: steps.version_check.outputs.should_publish == 'true' || github.event.inputs.force_publish == 'true'
         run: |
           echo "📦 Publishing packages to GitHub Packages..."
-          pnpm --filter "@tiflis-io/tiflis-code-tunnel" publish --no-git-checks --access public
-          pnpm --filter "@tiflis-io/tiflis-code-workstation" publish --no-git-checks --access public || echo "Workstation package not ready for publish"
+          cd packages/tunnel
+          pnpm publish --no-git-checks --access public --registry https://npm.pkg.github.com
+          cd ../workstation
+          pnpm publish --no-git-checks --access public --registry https://npm.pkg.github.com || echo "Workstation package not ready for publish"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
