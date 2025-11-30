@@ -201,9 +201,9 @@ final class TerminalViewUIKit: UIView {
     /// Configures dark theme colors following best practices
     /// Uses system colors that adapt to dark mode
     private func configureDarkTheme() {
-        // Use systemGray6 for dark theme foreground (lighter gray, better contrast)
-        // This provides good readability on dark backgrounds
-        let foregroundColor = UIColor.systemGray6
+        // Use label color for dark theme foreground (white/light gray, good contrast on dark background)
+        // UIColor.label adapts to dark mode automatically, providing white text on dark backgrounds
+        let foregroundColor = UIColor.label
         terminalView.nativeForegroundColor = foregroundColor
         terminalView.nativeBackgroundColor = UIColor.systemBackground
         terminalView.selectedTextBackgroundColor = UIColor.systemBlue.withAlphaComponent(0.3)
