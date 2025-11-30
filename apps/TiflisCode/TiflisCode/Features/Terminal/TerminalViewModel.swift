@@ -551,13 +551,13 @@ final class TerminalViewModel: ObservableObject {
     /// Dismisses the keyboard by resigning first responder
     /// Called when drawer opens to hide keyboard
     func resignFirstResponder() {
-        swiftTermView?.resignFirstResponder()
+        _ = swiftTermView?.resignFirstResponder()
     }
     
     /// Shows the keyboard by becoming first responder
     /// Called when drawer closes to restore keyboard input
     func becomeFirstResponder() {
-        swiftTermView?.becomeFirstResponder()
+        _ = swiftTermView?.becomeFirstResponder()
     }
 }
 
