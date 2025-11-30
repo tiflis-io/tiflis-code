@@ -2035,8 +2035,6 @@ git push origin main
 name: CI
 
 on:
-  pull_request:
-    branches: [main]
   push:
     branches: [main]
 
