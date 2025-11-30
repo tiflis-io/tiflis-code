@@ -16,13 +16,13 @@ export interface AppConfig {
 /**
  * Creates and configures the Fastify application.
  */
-export function createApp(config: AppConfig): FastifyInstance {
+export function createApp(config: AppConfig) {
   const app = Fastify({
     loggerInstance: config.logger,
     trustProxy: config.env.TRUST_PROXY,
     // Disable request logging since we use pino directly
     disableRequestLogging: true,
-  }) as unknown as FastifyInstance;
+  });
 
   // Request logging middleware
   app.addHook('onRequest', async (request, _reply) => {
