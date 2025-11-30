@@ -107,13 +107,24 @@ struct SidebarView: View {
         }
         .listStyle(.sidebar)
         .toolbar {
+            ToolbarItem(placement: .navigation) {
+                if let onDismiss = onDismiss {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.body.weight(.medium))
+                    }
+                    .accessibilityLabel("Close Sidebar")
+                }
+            }
+            
             ToolbarItem(placement: .principal) {
                 Text("Tiflis Code")
                     .font(.system(size: 18, weight: .semibold))
                     .tracking(0.5)
             }
-        }
-        .toolbar {
+            
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     showCreateSessionSheet = true
