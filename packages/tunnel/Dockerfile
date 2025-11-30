@@ -20,20 +20,24 @@ WORKDIR /app
 # Install pnpm (use specific version for reproducibility)
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Copy package files first for better layer caching
-COPY package.json pnpm-lock.yaml* ./
+# Copy root package files for monorepo (pnpm workspace)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy tunnel package.json
+COPY packages/tunnel/package.json ./packages/tunnel/
 
 # Install all dependencies (including dev dependencies for building)
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
-COPY . .
+COPY packages/tunnel ./packages/tunnel
 
 # Build the application
+WORKDIR /app/packages/tunnel
 RUN pnpm build
 
 # Store version for runtime
-RUN echo "$VERSION" > /app/VERSION
+RUN echo "$VERSION" > /app/packages/tunnel/VERSION
 
 # ============================================================================
 # Stage 2: Production Dependencies
@@ -45,12 +49,15 @@ WORKDIR /app
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
-# Copy package files
-COPY package.json pnpm-lock.yaml* ./
+# Copy root package files for monorepo
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy tunnel package.json
+COPY packages/tunnel/package.json ./packages/tunnel/
 
 # Install production dependencies only
 # This stage is separate to optimize caching
-RUN pnpm install --frozen-lockfile --prod
+RUN pnpm install --frozen-lockfile --prod --filter @tiflis/tiflis-code-tunnel
 
 # ============================================================================
 # Stage 3: Production Runner
@@ -70,14 +77,15 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 tiflis
 
 # Copy production dependencies from deps stage
+# In pnpm workspace, all dependencies are in root node_modules
 COPY --from=deps /app/node_modules ./node_modules
 
 # Copy built application from builder stage
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/VERSION ./VERSION
+COPY --from=builder /app/packages/tunnel/dist ./dist
+COPY --from=builder /app/packages/tunnel/VERSION ./VERSION
 
 # Copy package.json for runtime (needed for module resolution)
-COPY package.json ./
+COPY --from=builder /app/packages/tunnel/package.json ./package.json
 
 # Set ownership to non-root user
 RUN chown -R tiflis:nodejs /app

@@ -72,7 +72,7 @@ jobs:
       - name: Build Docker image (test only)
         uses: docker/build-push-action@v6
         with:
-          context: ./packages/tunnel
+          context: .
           file: ./packages/tunnel/Dockerfile
           platforms: linux/amd64
           push: false

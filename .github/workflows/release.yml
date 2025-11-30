@@ -146,7 +146,7 @@ jobs:
         id: push
         uses: docker/build-push-action@v6
         with:
-          context: ./packages/tunnel
+          context: .
           file: ./packages/tunnel/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
