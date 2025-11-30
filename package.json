@@ -15,14 +15,12 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
-    "version:tunnel": "pnpm --filter @tiflis-io/tiflis-code-tunnel version",
-    "version:workstation": "pnpm --filter @tiflis-io/tiflis-code-workstation version",
-    "version:tunnel:patch": "pnpm --filter @tiflis-io/tiflis-code-tunnel version patch",
-    "version:tunnel:minor": "pnpm --filter @tiflis-io/tiflis-code-tunnel version minor",
-    "version:tunnel:major": "pnpm --filter @tiflis-io/tiflis-code-tunnel version major",
-    "version:workstation:patch": "pnpm --filter @tiflis-io/tiflis-code-workstation version patch",
-    "version:workstation:minor": "pnpm --filter @tiflis-io/tiflis-code-workstation version minor",
-    "version:workstation:major": "pnpm --filter @tiflis-io/tiflis-code-workstation version major"
+    "version:tunnel:patch": "cd packages/tunnel && npm version patch --no-git-tag-version",
+    "version:tunnel:minor": "cd packages/tunnel && npm version minor --no-git-tag-version",
+    "version:tunnel:major": "cd packages/tunnel && npm version major --no-git-tag-version",
+    "version:workstation:patch": "cd packages/workstation && npm version patch --no-git-tag-version",
+    "version:workstation:minor": "cd packages/workstation && npm version minor --no-git-tag-version",
+    "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0"
