@@ -15,6 +15,9 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
+    "version:tunnel:patch": "cd packages/tunnel && npm version patch --no-git-tag-version",
+    "version:tunnel:minor": "cd packages/tunnel && npm version minor --no-git-tag-version",
+    "version:tunnel:major": "cd packages/tunnel && npm version major --no-git-tag-version",
     "version:workstation:patch": "cd packages/workstation && npm version patch --no-git-tag-version",
     "version:workstation:minor": "cd packages/workstation && npm version minor --no-git-tag-version",
     "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version"
