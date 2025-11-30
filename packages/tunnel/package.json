@@ -1,6 +1,6 @@
 {
   "name": "@tiflis-io/tiflis-code-tunnel",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Tunnel server for tiflis-code - reverse proxy for workstation connections",
   "author": "Roman Barinov <rbarinov@gmail.com>",
   "license": "MIT",
