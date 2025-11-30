@@ -1,5 +1,5 @@
 # Simple Release Workflow
-# Just bump version in package.json, commit, push - that's it!
+# Publishes packages only when version changes in package.json
 
 name: Release
 
@@ -11,7 +11,7 @@ on:
 
 jobs:
   publish:
-    name: Publish All Packages
+    name: Publish Changed Packages
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -19,6 +19,8 @@ jobs:
     
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Need previous commit to compare versions
       
       - uses: pnpm/action-setup@v4
       
@@ -33,14 +35,24 @@ jobs:
       
       - run: pnpm build
       
-      - name: Publish all packages
+      - name: Publish packages with version changes
         run: |
           for pkg in packages/*/; do
             if [ -f "$pkg/package.json" ]; then
-              echo "📦 Publishing $(basename $pkg)..."
-              cd "$pkg"
-              pnpm publish --no-git-checks --access public || echo "⚠️ Failed to publish $(basename $pkg)"
-              cd ../..
+              PKG_NAME=$(basename $pkg)
+              CURRENT_VERSION=$(node -p "require('./$pkg/package.json').version")
+              
+              # Try to get previous version from git
+              PREVIOUS_VERSION=$(git show HEAD~1:$pkg/package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
+              
+              if [ -z "$PREVIOUS_VERSION" ] || [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+                echo "📦 Publishing $PKG_NAME@$CURRENT_VERSION (was: ${PREVIOUS_VERSION:-none})"
+                cd "$pkg"
+                pnpm publish --no-git-checks --access public || echo "⚠️ Failed to publish $PKG_NAME"
+                cd ../..
+              else
+                echo "⏭️  Skipping $PKG_NAME@$CURRENT_VERSION (version unchanged)"
+              fi
             fi
           done
         env:

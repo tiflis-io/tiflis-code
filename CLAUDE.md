@@ -1942,48 +1942,51 @@ export const PROTOCOL_VERSION = {
 | **Breaking** (removed/changed field) | Major bump | **All components must update** |
 | **Internal** (implementation only) | Patch bump | Independent update |
 
-### Release Process (Manual Version Bump)
+### Release Process (Simple Version Bump)
 
-The project uses a **simplified manual version bump** strategy for releases. Developers update package versions using pnpm commands, and GitHub Actions automatically detects version changes and publishes packages.
+The project uses a **simple version bump** strategy. Developers commit directly to `main` branch. Packages are published automatically only when version changes in `package.json`.
 
 #### Version Bump Commands
 
 ```bash
 # For tunnel server
-pnpm version:tunnel:patch    # 0.1.1 → 0.1.2
-pnpm version:tunnel:minor    # 0.1.1 → 0.2.0
-pnpm version:tunnel:major    # 0.1.1 → 1.0.0
+pnpm version:tunnel:patch    # 0.1.7 → 0.1.8
+pnpm version:tunnel:minor    # 0.1.7 → 0.2.0
+pnpm version:tunnel:major    # 0.1.7 → 1.0.0
 
 # For workstation server
-pnpm version:workstation:patch
-pnpm version:workstation:minor
-pnpm version:workstation:major
+pnpm version:workstation:patch   # 0.1.2 → 0.1.3
+pnpm version:workstation:minor    # 0.1.2 → 0.2.0
+pnpm version:workstation:major    # 0.1.2 → 1.0.0
 ```
 
 **What these commands do:**
 - Update version in `package.json`
-- Create git commit with message like `chore(tunnel): bump version to 0.1.2`
-- **Do NOT push automatically** — manual push required
+- **Do NOT create commit automatically** — you commit manually
+- **Do NOT push automatically** — you push manually
 
 #### Release Workflow
 
 ```bash
 # 1. Update version using command
-pnpm version:tunnel:patch
+pnpm version:workstation:patch
 
-# 2. Verify changes
-git status
-git log -1
-
-# 3. Push to main
+# 2. Commit and push directly to main
+git add packages/workstation/package.json
+git commit -m "chore(workstation): bump version to 0.1.3"
 git push origin main
 
-# 4. GitHub Actions automatically:
-#    - Detects version change (0.1.1 → 0.1.2)
-#    - Publishes @tiflis-io/tiflis-code-tunnel@0.1.2 to GitHub Packages
-#    - Builds and pushes Docker images to GHCR
-#    - Creates GitHub Release
+# 3. GitHub Actions automatically:
+#    - Detects version change by comparing with previous commit
+#    - Publishes only packages with changed versions
+#    - Skips packages with unchanged versions
 ```
+
+**Important:**
+- ✅ Commit directly to `main` — no PRs needed
+- ✅ Regular commits (without version changes) don't trigger publishing
+- ✅ Only packages with version changes are published
+- ✅ All packages are built, but only changed ones are published
 
 #### Semantic Versioning
 
@@ -2119,7 +2122,7 @@ jobs:
 
 #### Server Packages Release
 
-The release workflow (`.github/workflows/release.yml`) automatically detects version changes and publishes packages:
+The release workflow (`.github/workflows/release.yml`) automatically publishes packages only when version changes:
 
 ```yaml
 # .github/workflows/release.yml
@@ -2128,116 +2131,57 @@ name: Release
 on:
   push:
     branches: [main]
-  workflow_dispatch:
-    inputs:
-      force_publish:
-        description: 'Force publish even without version change'
-        required: false
-        type: boolean
+    paths:
+      - 'packages/**/package.json'
 
 jobs:
-  release:
-    name: Release Packages
+  publish:
+    name: Publish Changed Packages
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history for version comparison
+          fetch-depth: 2  # Need previous commit to compare versions
       
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v4
       
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'pnpm'
           registry-url: 'https://npm.pkg.github.com'
           scope: '@tiflis-io'
       
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
       
-      - name: Build packages
-        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" build
-      
-      - name: Get current version
-        id: get_version
+      - name: Publish packages with version changes
         run: |
-          VERSION=$(node -p "require('./packages/tunnel/package.json').version")
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-      
-      - name: Check if version changed
-        id: version_check
-        run: |
-          CURRENT_VERSION=$(node -p "require('./packages/tunnel/package.json').version")
-          PREVIOUS_VERSION=$(git show HEAD~1:packages/tunnel/package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
-          
-          if [ -z "$PREVIOUS_VERSION" ]; then
-            # Check if package exists in registry
-            if npm view "@tiflis-io/tiflis-code-tunnel@$CURRENT_VERSION" version 2>/dev/null; then
-              echo "should_publish=false" >> $GITHUB_OUTPUT
-            else
-              echo "should_publish=true" >> $GITHUB_OUTPUT
+          for pkg in packages/*/; do
+            if [ -f "$pkg/package.json" ]; then
+              PKG_NAME=$(basename $pkg)
+              CURRENT_VERSION=$(node -p "require('./$pkg/package.json').version")
+              PREVIOUS_VERSION=$(git show HEAD~1:$pkg/package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
+              
+              if [ -z "$PREVIOUS_VERSION" ] || [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
+                echo "📦 Publishing $PKG_NAME@$CURRENT_VERSION"
+                cd "$pkg"
+                pnpm publish --no-git-checks --access public
+                cd ../..
+              else
+                echo "⏭️  Skipping $PKG_NAME@$CURRENT_VERSION (version unchanged)"
+              fi
             fi
-          elif [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-            echo "should_publish=true" >> $GITHUB_OUTPUT
-          else
-            echo "should_publish=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Configure npm for GitHub Packages
-        run: |
-          echo "@tiflis-io:registry=https://npm.pkg.github.com" >> .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GITHUB_TOKEN }}" >> .npmrc
-      
-      - name: Publish packages
-        if: steps.version_check.outputs.should_publish == 'true'
-        run: |
-          cd packages/tunnel
-          pnpm publish --no-git-checks --access public
-          cd ../workstation
-          pnpm publish --no-git-checks --access public || echo "Workstation package not ready"
+          done
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  docker:
-    name: Build & Push Docker Images
-    needs: release
-    if: needs.release.outputs.published == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Build and push multi-arch Docker images
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./packages/tunnel/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository_owner }}/tiflis-code-tunnel:${{ needs.release.outputs.tunnel_version }}
-            ghcr.io/${{ github.repository_owner }}/tiflis-code-tunnel:latest
-
-  github-release:
-    name: Create GitHub Release
-    needs: [release, docker]
-    if: needs.release.outputs.published == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: tunnel-v${{ needs.release.outputs.tunnel_version }}
-          name: Tunnel Server v${{ needs.release.outputs.tunnel_version }}
-          generate_release_notes: true
 ```
 
 **Key Features:**
 - **Automatic version detection**: Compares current version with previous commit
-- **Conditional publishing**: Only publishes if version changed or package doesn't exist
-- **Multi-architecture Docker**: Builds for `linux/amd64` and `linux/arm64`
-- **GitHub Release**: Automatically creates release with notes
+- **Smart publishing**: Only publishes packages with changed versions
+- **No false triggers**: Regular commits (without version changes) don't publish
+- **All packages**: Automatically finds and publishes all packages in `packages/`
 
 #### iOS/watchOS Release (with fastlane)
 
@@ -2472,41 +2416,40 @@ npm install @tiflis-io/tiflis-code-tunnel
 sequenceDiagram
     participant Dev as Developer
     participant CMD as pnpm version
-    participant Git as Git Repository
+    participant Git as Git (main branch)
     participant CI as GitHub Actions
     participant NPM as GitHub Packages
-    participant Docker as GHCR
-    participant Release as GitHub Release
 
-    Dev->>CMD: 1. pnpm version:tunnel:patch
-    Note over CMD: Updates package.json<br/>Creates git commit
-    CMD->>Git: 2. Commit version change
-    Dev->>Git: 3. git push origin main
-    Git->>CI: 4. Trigger Release workflow
-    CI->>CI: 5. Compare versions<br/>(current vs previous)
+    Dev->>CMD: 1. pnpm version:workstation:patch
+    Note over CMD: Updates package.json<br/>(no commit)
+    Dev->>Git: 2. git commit + push to main
+    Note over Git: Direct commit to main<br/>(no PR needed)
+    Git->>CI: 3. Trigger on package.json change
+    CI->>CI: 4. Compare versions<br/>(current vs previous commit)
     alt Version changed
-        CI->>CI: 6. Build packages
-        CI->>NPM: 7. Publish to GitHub Packages
-        CI->>Docker: 8. Build multi-arch images
-        Docker->>Docker: 9. Push to GHCR
-        CI->>Release: 10. Create GitHub Release
+        CI->>CI: 5. Build all packages
+        CI->>NPM: 6. Publish changed packages
     else Version unchanged
-        CI->>CI: Skip publishing
+        CI->>CI: Skip publishing<br/>(regular commit)
     end
 ```
 
 **Step-by-Step Process:**
 
-1. **Developer updates version** using `pnpm version:tunnel:patch` (or minor/major)
-2. **Command creates commit** with version bump in `package.json`
-3. **Developer pushes** to `main` branch
-4. **GitHub Actions detects** version change by comparing with previous commit
+1. **Developer updates version** using `pnpm version:workstation:patch` (or minor/major)
+2. **Developer commits and pushes** directly to `main` branch (no PR needed)
+3. **GitHub Actions triggers** on `package.json` changes
+4. **Workflow compares** current version with previous commit
 5. **If version changed:**
-   - Builds TypeScript packages
-   - Publishes to GitHub Packages (`@tiflis-io/tiflis-code-tunnel`)
-   - Builds and pushes Docker images to GHCR (multi-arch: `linux/amd64`, `linux/arm64`)
-   - Creates GitHub Release with automatic release notes
-6. **If version unchanged:** Workflow skips publishing
+   - Builds all packages
+   - Publishes only packages with changed versions to GitHub Packages
+6. **If version unchanged:** Workflow skips publishing (regular commits don't trigger publishing)
+
+**Key Principles:**
+- ✅ Commit directly to `main` — no pull requests required
+- ✅ Regular commits don't trigger publishing
+- ✅ Only version changes trigger publishing
+- ✅ All packages in `packages/` are checked automatically
 
 **iOS Release** (separate manual workflow):
 - Triggered via `workflow_dispatch` with version and build number inputs
