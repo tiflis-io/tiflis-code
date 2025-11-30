@@ -4,7 +4,7 @@
   "commit": false,
   "fixed": [],
   "linked": [
-    ["@tiflis/tiflis-code-tunnel", "@tiflis/tiflis-code-workstation"]
+    ["@tiflis-io/tiflis-code-tunnel", "@tiflis-io/tiflis-code-workstation"]
   ],
   "access": "public",
   "baseBranch": "main",
