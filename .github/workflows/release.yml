@@ -111,9 +111,10 @@ jobs:
         if: steps.version_check.outputs.should_publish == 'true' || github.event.inputs.force_publish == 'true'
         run: |
           echo "📦 Publishing packages to GitHub Packages..."
-          cd packages/tunnel
-          pnpm publish --no-git-checks --access public --registry https://npm.pkg.github.com
-          cd ../workstation
+          # Tunnel server publication disabled
+          # cd packages/tunnel
+          # pnpm publish --no-git-checks --access public --registry https://npm.pkg.github.com
+          cd packages/workstation
           pnpm publish --no-git-checks --access public --registry https://npm.pkg.github.com || echo "Workstation package not ready for publish"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -202,7 +203,7 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [release, docker]
-    if: needs.release.outputs.published == 'true'
+    if: false  # Tunnel server releases disabled
     
     permissions:
       contents: write
