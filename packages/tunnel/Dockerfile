@@ -57,7 +57,7 @@ COPY packages/tunnel/package.json ./packages/tunnel/
 
 # Install production dependencies only
 # This stage is separate to optimize caching
-RUN pnpm install --frozen-lockfile --prod --filter @tiflis/tiflis-code-tunnel
+RUN pnpm install --frozen-lockfile --prod --filter @tiflis-io/tiflis-code-tunnel
 
 # ============================================================================
 # Stage 3: Production Runner

@@ -43,16 +43,16 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" lint
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" lint
 
       - name: Type check
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" typecheck
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" typecheck
 
       - name: Build
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" build
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" build
 
       - name: Test
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" test
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" test
 
   # ─────────────────────────────────────────────────────────────
   # Docker Build Test (no push, just verify it builds)

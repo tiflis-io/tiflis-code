@@ -62,16 +62,16 @@ jobs:
           node-version: 22
           cache: 'pnpm'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@tiflis'
+          scope: '@tiflis-io'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build packages
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" build
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" build
 
       - name: Run tests
-        run: pnpm --filter "@tiflis/tiflis-code-tunnel" test
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" test
 
       - name: Create Release Pull Request or Publish
         id: changesets
@@ -214,7 +214,7 @@ jobs:
             ### npm Package
             
             ```bash
-            npm install @tiflis/tiflis-code-tunnel@${{ needs.release.outputs.tunnel_version }}
+            npm install @tiflis-io/tiflis-code-tunnel@${{ needs.release.outputs.tunnel_version }}
             ```
             
             See [CHANGELOG.md](./packages/tunnel/CHANGELOG.md) for details.
