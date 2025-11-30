@@ -3004,6 +3004,24 @@ Examples:
 
 ---
 
+## Mandatory Policies
+
+### Documentation Creation Policy
+
+> **⚠️ MANDATORY**: Never create NEW `.md` files for progress tracking, work results, or any other documentation unless the user **EXPLICITLY** asks for it.
+
+This rule is strictly enforced:
+- **No automatic NEW .md file creation** for any work progress, summaries, or results
+- **No NEW documentation files** unless specifically requested by name
+- **No status reports** in markdown format unless explicitly asked
+- **No project notes** or development logs in .md files unless user requests them
+
+**Exception**: Only create NEW .md files when the user explicitly asks for them by name or clearly states they want a markdown document created.
+
+**Clarification**: This policy applies only to creating NEW .md files. Updating existing documentation files to sync with new codebase changes and features should still be done when requested by the user or when clearly necessary for maintaining documentation accuracy.
+
+---
+
 ## Agent Competency Requirements
 
 When working on this project, the AI agent must operate at an **expert senior developer level** for both technology stacks. Below are the detailed competency requirements.
