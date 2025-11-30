@@ -146,6 +146,16 @@ if startX < edgeWidth && (translation > drawerWidth / 3 || velocity > 500) {
 if translation < -drawerWidth / 3 || velocity < -500 {
     isDrawerOpen = false
 }
+
+// Auto-close on session change (with silent mode support)
+.onChange(of: appState.selectedSessionId) { _, _ in
+    // Don't close drawer on silent session changes (e.g., terminating from sidebar)
+    if !appState.isSilentSessionChange {
+        withAnimation(.easeOut(duration: 0.25)) {
+            isDrawerOpen = false
+        }
+    }
+}
 ```
 
 **Hit Testing:**
@@ -502,18 +512,35 @@ Sessions can be terminated via:
 2. **Menu action** in session detail view (with confirmation for terminal sessions)
 
 ```swift
-func terminateSession(_ session: Session) {
+func terminateSession(_ session: Session, silent: Bool = false) {
     sessions.removeAll { $0.id == session.id }
     if selectedSessionId == session.id {
-        selectedSessionId = "supervisor"  // Fallback to supervisor
+        // Set flag before changing selection
+        isSilentSessionChange = silent
+        selectedSessionId = "supervisor"
+        // Reset flag after a brief delay
+        if silent {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+                self?.isSilentSessionChange = false
+            }
+        }
     }
 }
 ```
 
 **Termination Behavior:**
-- **Agent sessions** (Claude, Cursor, OpenCode): Menu action terminates immediately
-- **Terminal sessions**: Menu action shows confirmation dialog, then navigates to supervisor
-- **All sessions**: After termination, supervisor is automatically selected
+
+**From Sidebar (Swipe-to-Delete):**
+- Session is removed from the list immediately
+- If the terminated session was currently selected, `selectedSessionId` silently changes to "supervisor"
+- **No UI transitions occur** - drawer stays open, no navigation animations
+- User remains on the sidebar for quick multi-session management
+- Applies to all session types (agents and terminals)
+
+**From Session Detail View (Menu Action):**
+- **Agent sessions** (Claude, Cursor, OpenCode): Terminates immediately with navigation
+- **Terminal sessions**: Shows confirmation dialog, then navigates to supervisor
+- After termination, supervisor is automatically selected
 - **iPhone**: Sidebar drawer opens to show supervisor selection (for terminal only)
 - **iPad**: View switches to supervisor immediately
 
@@ -1063,6 +1090,9 @@ final class AppState: ObservableObject {
     
     @AppStorage("tunnelURL") private var tunnelURL = ""
     
+    // Flag to indicate if session change should not trigger UI transitions
+    var isSilentSessionChange = false
+    
     // Computed properties
     var selectedSession: Session? { ... }
     var isShowingSettings: Bool { selectedSessionId == Self.settingsId }
@@ -1073,7 +1103,7 @@ final class AppState: ObservableObject {
     func disconnect() { ... }
     func selectSession(_ session: Session) { ... }
     func createSession(type:workspace:project:) { ... }
-    func terminateSession(_ session: Session) { ... }
+    func terminateSession(_ session: Session, silent: Bool = false) { ... }
 }
 ```
 
@@ -1082,6 +1112,12 @@ final class AppState: ObservableObject {
 - Updated automatically when receiving `connection.workstation_offline` or `connection.workstation_online` events from the tunnel server
 - Defaults to `true` (assumes online until notified otherwise)
 - Reset to `true` when tunnel disconnects
+
+**Silent Session Changes:**
+- `isSilentSessionChange` flag prevents UI transitions when terminating sessions from sidebar
+- When `true`, the drawer's `onChange(of: selectedSessionId)` handler skips the auto-close animation
+- Flag is set before `selectedSessionId` changes and reset after 0.1 seconds
+- This allows quick multi-session management without disruptive navigation transitions
 
 ### Settings Navigation
 
