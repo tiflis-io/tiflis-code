@@ -1863,10 +1863,9 @@ The project is hosted at **github.com/tiflis-io/tiflis-code** as a monorepo:
 tiflis-code/
 ├── .github/
 │   └── workflows/
-│       ├── ci.yml                       # PR checks
-│       ├── release-server.yml           # Server packages release
-│       ├── release-ios.yml              # iOS/watchOS release
-│       └── deploy-tunnel.yml            # Tunnel server deployment
+│       ├── ci.yml                       # CI pipeline (lint, typecheck, build, test)
+│       ├── release.yml                   # Server packages release
+│       └── release-ios.yml               # iOS/watchOS release
 │
 ├── apps/
 │   └── TiflisCode/                      # Xcode project (iOS + watchOS)
@@ -1891,12 +1890,6 @@ tiflis-code/
 │
 ├── assets/
 │   └── branding/
-│
-├── .github/
-│   └── workflows/
-│       ├── ci.yml                       # CI pipeline
-│       ├── release.yml                  # Release workflow
-│       └── release-ios.yml              # iOS release workflow
 │
 ├── turbo.json                           # Turborepo config
 ├── pnpm-workspace.yaml
@@ -1950,18 +1943,19 @@ The project uses a **simple version bump** strategy. Developers commit directly 
 
 ```bash
 # For tunnel server
-pnpm version:tunnel:patch    # 0.1.7 → 0.1.8
-pnpm version:tunnel:minor    # 0.1.7 → 0.2.0
-pnpm version:tunnel:major    # 0.1.7 → 1.0.0
+pnpm version:tunnel:patch    # 0.1.8 → 0.1.9
+pnpm version:tunnel:minor    # 0.1.8 → 0.2.0
+pnpm version:tunnel:major    # 0.1.8 → 1.0.0
 
 # For workstation server
-pnpm version:workstation:patch   # 0.1.2 → 0.1.3
-pnpm version:workstation:minor    # 0.1.2 → 0.2.0
-pnpm version:workstation:major    # 0.1.2 → 1.0.0
+pnpm version:workstation:patch   # 0.1.1 → 0.1.2
+pnpm version:workstation:minor    # 0.1.1 → 0.2.0
+pnpm version:workstation:major    # 0.1.1 → 1.0.0
 ```
 
 **What these commands do:**
-- Update version in `package.json`
+- Update version in `package.json` using `npm version` command
+- Use `--no-git-tag-version` flag to prevent automatic git tag creation
 - **Do NOT create commit automatically** — you commit manually
 - **Do NOT push automatically** — you push manually
 
@@ -1971,22 +1965,27 @@ pnpm version:workstation:major    # 0.1.2 → 1.0.0
 # 1. Update version using command
 pnpm version:workstation:patch
 
-# 2. Commit and push directly to main
-git add packages/workstation/package.json
-git commit -m "chore(workstation): bump version to 0.1.3"
+# 2. Add any other changes and commit
+git add -A
+git commit -m "chore(workstation): bump version to 0.1.2"
+
+# 3. Push directly to main
 git push origin main
 
-# 3. GitHub Actions automatically:
-#    - Detects version change by comparing with previous commit
-#    - Publishes only packages with changed versions
+# 4. GitHub Actions automatically:
+#    - Triggers on push to main when package.json files change
+#    - Compares current version with previous commit
+#    - Builds all packages
+#    - Publishes only packages with changed versions to GitHub Packages
 #    - Skips packages with unchanged versions
 ```
 
 **Important:**
-- ✅ Commit directly to `main` — no PRs needed
+- ✅ Commit directly to `main` — no pull requests required
 - ✅ Regular commits (without version changes) don't trigger publishing
 - ✅ Only packages with version changes are published
-- ✅ All packages are built, but only changed ones are published
+- ✅ All packages in `packages/*` are automatically checked
+- ✅ Workflow triggers only when `packages/**/package.json` files change
 
 #### Semantic Versioning
 
@@ -2038,6 +2037,10 @@ on:
   push:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ─────────────────────────────────────────────────────────────
   # TypeScript Packages
@@ -2045,77 +2048,60 @@ jobs:
   typescript:
     name: TypeScript CI
     runs-on: ubuntu-latest
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: pnpm/action-setup@v3
-        with:
-          version: 9
-          
-      - uses: actions/setup-node@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: 'pnpm'
-          
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-        
+
       - name: Lint
-        run: pnpm turbo lint
-        
-      - name: Typecheck
-        run: pnpm turbo typecheck
-        
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" lint
+
+      - name: Type check
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" typecheck
+
       - name: Build
-        run: pnpm turbo build
-        
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" build
+
       - name: Test
-        run: pnpm turbo test
+        run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" test
 
   # ─────────────────────────────────────────────────────────────
-  # iOS/watchOS App
+  # Docker Build Test (no push, just verify it builds)
   # ─────────────────────────────────────────────────────────────
-  ios:
-    name: iOS CI
-    runs-on: macos-14
+  docker-build-test:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: typescript
+    
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.1.app
-        
-      - name: Cache Swift packages
-        uses: actions/cache@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image (test only)
+        uses: docker/build-push-action@v6
         with:
-          path: ~/Library/Developer/Xcode/DerivedData
-          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
-          
-      - name: Build iOS
-        run: |
-          xcodebuild build \
-            -project apps/TiflisCode/TiflisCode.xcodeproj \
-            -scheme TiflisCode \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-            
-      - name: Build watchOS
-        run: |
-          xcodebuild build \
-            -project apps/TiflisCode/TiflisCode.xcodeproj \
-            -scheme TiflisCodeWatch \
-            -destination 'platform=watchOS Simulator,name=Apple Watch Ultra 2' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-            
-      - name: Run Tests
-        run: |
-          xcodebuild test \
-            -project apps/TiflisCode/TiflisCode.xcodeproj \
-            -scheme TiflisCode \
-            -destination 'platform=iOS Simulator,name=iPhone 16 Pro' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+          context: .
+          file: ./packages/tunnel/Dockerfile
+          platforms: linux/amd64
+          push: false
+          tags: tiflis-code-tunnel:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 ```
 
 #### Server Packages Release
@@ -2136,6 +2122,10 @@ jobs:
   publish:
     name: Publish Changed Packages
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
     steps:
       - uses: actions/checkout@v4
         with:
@@ -2162,9 +2152,9 @@ jobs:
               PREVIOUS_VERSION=$(git show HEAD~1:$pkg/package.json 2>/dev/null | node -p "JSON.parse(require('fs').readFileSync(0, 'utf-8')).version" 2>/dev/null || echo "")
               
               if [ -z "$PREVIOUS_VERSION" ] || [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
-                echo "📦 Publishing $PKG_NAME@$CURRENT_VERSION"
+                echo "📦 Publishing $PKG_NAME@$CURRENT_VERSION (was: ${PREVIOUS_VERSION:-none})"
                 cd "$pkg"
-                pnpm publish --no-git-checks --access public
+                pnpm publish --no-git-checks --access public || echo "⚠️ Failed to publish $PKG_NAME"
                 cd ../..
               else
                 echo "⏭️  Skipping $PKG_NAME@$CURRENT_VERSION (version unchanged)"
@@ -2178,8 +2168,9 @@ jobs:
 **Key Features:**
 - **Automatic version detection**: Compares current version with previous commit
 - **Smart publishing**: Only publishes packages with changed versions
-- **No false triggers**: Regular commits (without version changes) don't publish
+- **No false triggers**: Regular commits (without version changes) don't trigger publishing
 - **All packages**: Automatically finds and publishes all packages in `packages/`
+- **Error handling**: Continues publishing other packages if one fails
 
 #### iOS/watchOS Release (with fastlane)
 
@@ -2241,41 +2232,6 @@ jobs:
           bundle exec fastlane release version:$VERSION build:$BUILD_NUMBER
 ```
 
-#### Tunnel Server Deployment
-
-```yaml
-# .github/workflows/deploy-tunnel.yml
-name: Deploy Tunnel Server
-
-on:
-  workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'packages/tunnel/**'
-      - 'packages/protocol/**'
-
-jobs:
-  deploy:
-    name: Deploy to Production
-    runs-on: ubuntu-latest
-    environment: production
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.TUNNEL_SERVER_HOST }}
-          username: ${{ secrets.TUNNEL_SERVER_USER }}
-          key: ${{ secrets.TUNNEL_SERVER_SSH_KEY }}
-          script: |
-            cd /opt/tiflis-code-tunnel
-            docker compose pull
-            docker compose up -d
-            docker system prune -f
-```
 
 ### Fastlane Configuration
 
@@ -2345,12 +2301,12 @@ end
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
-    "version:tunnel:patch": "pnpm --filter @tiflis-io/tiflis-code-tunnel version patch",
-    "version:tunnel:minor": "pnpm --filter @tiflis-io/tiflis-code-tunnel version minor",
-    "version:tunnel:major": "pnpm --filter @tiflis-io/tiflis-code-tunnel version major",
-    "version:workstation:patch": "pnpm --filter @tiflis-io/tiflis-code-workstation version patch",
-    "version:workstation:minor": "pnpm --filter @tiflis-io/tiflis-code-workstation version minor",
-    "version:workstation:major": "pnpm --filter @tiflis-io/tiflis-code-workstation version major"
+    "version:tunnel:patch": "cd packages/tunnel && npm version patch --no-git-tag-version",
+    "version:tunnel:minor": "cd packages/tunnel && npm version minor --no-git-tag-version",
+    "version:tunnel:major": "cd packages/tunnel && npm version major --no-git-tag-version",
+    "version:workstation:patch": "cd packages/workstation && npm version patch --no-git-tag-version",
+    "version:workstation:minor": "cd packages/workstation && npm version minor --no-git-tag-version",
+    "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version"
   },
   "packageManager": "pnpm@9.15.0",
   "engines": {
@@ -2418,15 +2374,15 @@ sequenceDiagram
     participant CI as GitHub Actions
     participant NPM as GitHub Packages
 
-    Dev->>CMD: 1. pnpm version:workstation:patch
+    Dev->>CMD: 1. pnpm version:tunnel:patch<br/>or version:workstation:patch
     Note over CMD: Updates package.json<br/>(no commit)
-    Dev->>Git: 2. git commit + push to main
-    Note over Git: Direct commit to main<br/>(no PR needed)
-    Git->>CI: 3. Trigger on package.json change
+    Dev->>Git: 2. git add -A && commit + push to main
+    Note over Git: Direct commit to main<br/>(no pull request needed)
+    Git->>CI: 3. Trigger on push to main<br/>(when package.json changes)
     CI->>CI: 4. Compare versions<br/>(current vs previous commit)
     alt Version changed
         CI->>CI: 5. Build all packages
-        CI->>NPM: 6. Publish changed packages
+        CI->>NPM: 6. Publish changed packages<br/>(skip unchanged)
     else Version unchanged
         CI->>CI: Skip publishing<br/>(regular commit)
     end
@@ -2434,20 +2390,22 @@ sequenceDiagram
 
 **Step-by-Step Process:**
 
-1. **Developer updates version** using `pnpm version:workstation:patch` (or minor/major)
-2. **Developer commits and pushes** directly to `main` branch (no PR needed)
-3. **GitHub Actions triggers** on `package.json` changes
-4. **Workflow compares** current version with previous commit
+1. **Developer updates version** using `pnpm version:tunnel:patch` or `pnpm version:workstation:patch` (or minor/major)
+2. **Developer commits and pushes** directly to `main` branch (no pull request needed)
+3. **GitHub Actions triggers** on push to `main` when `packages/**/package.json` files change
+4. **Workflow compares** current version with previous commit for each package
 5. **If version changed:**
    - Builds all packages
    - Publishes only packages with changed versions to GitHub Packages
+   - Skips packages with unchanged versions
 6. **If version unchanged:** Workflow skips publishing (regular commits don't trigger publishing)
 
 **Key Principles:**
 - ✅ Commit directly to `main` — no pull requests required
-- ✅ Regular commits don't trigger publishing
+- ✅ Regular commits (without version changes) don't trigger publishing
 - ✅ Only version changes trigger publishing
-- ✅ All packages in `packages/` are checked automatically
+- ✅ All packages in `packages/` are automatically checked
+- ✅ Workflow only runs when `packages/**/package.json` files are modified
 
 **iOS Release** (separate manual workflow):
 - Triggered via `workflow_dispatch` with version and build number inputs
