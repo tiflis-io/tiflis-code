@@ -15,9 +15,14 @@
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
-    "changeset": "changeset",
-    "changeset:version": "changeset version",
-    "changeset:publish": "pnpm build && changeset publish"
+    "version:tunnel": "pnpm --filter @tiflis-io/tiflis-code-tunnel version",
+    "version:workstation": "pnpm --filter @tiflis-io/tiflis-code-workstation version",
+    "version:tunnel:patch": "pnpm --filter @tiflis-io/tiflis-code-tunnel version patch",
+    "version:tunnel:minor": "pnpm --filter @tiflis-io/tiflis-code-tunnel version minor",
+    "version:tunnel:major": "pnpm --filter @tiflis-io/tiflis-code-tunnel version major",
+    "version:workstation:patch": "pnpm --filter @tiflis-io/tiflis-code-workstation version patch",
+    "version:workstation:minor": "pnpm --filter @tiflis-io/tiflis-code-workstation version minor",
+    "version:workstation:major": "pnpm --filter @tiflis-io/tiflis-code-workstation version major"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0"
