@@ -1,7 +1,7 @@
 # 📘 Tiflis Code — Project Guide
 
 <p align="center">
-  <img src="assets/branding/logo-large.svg" width="120" height="120" alt="Tiflis Code">
+  <img src="assets/branding/logo.svg" width="120" height="120" alt="Tiflis Code">
 </p>
 
 <p align="center">

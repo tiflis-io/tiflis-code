@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/branding/logo-large.svg" width="140" height="140" alt="Tiflis Code">
+  <img src="assets/branding/logo.svg" width="140" height="140" alt="Tiflis Code">
 </p>
 
 <h1 align="center">Tiflis Code</h1>
