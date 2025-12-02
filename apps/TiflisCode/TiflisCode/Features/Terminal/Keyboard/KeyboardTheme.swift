@@ -186,10 +186,20 @@ enum KeyboardLanguage: String, CaseIterable {
         print("🌐 System keyboards raw: \(systemLanguages)")
 
         let systemLanguageCodes = systemLanguages.compactMap { keyboard -> String? in
-            // Extract language code from keyboard identifier (e.g., "en_US@sw=QWERTY" -> "en")
-            let components = keyboard.split(separator: "_")
-            let code = components.first.map(String.init)
-            print("   Keyboard '\(keyboard)' -> code: '\(code ?? "nil")'")
+            // Extract language code from keyboard identifier
+            // Examples:
+            //   "en_US@sw=QWERTY;hw=Automatic" -> "en"
+            //   "ru_RU@sw=Russian;hw=Automatic" -> "ru"
+            //   "ka@sw=Georgian-Phonetic;hw=Automatic" -> "ka" (no underscore!)
+            //   "emoji@sw=Emoji" -> "emoji"
+
+            // Split by @ first to get the language part
+            let languagePart = keyboard.split(separator: "@").first.map(String.init) ?? keyboard
+
+            // Then split by _ to get just the language code (if locale is present)
+            let code = languagePart.split(separator: "_").first.map(String.init) ?? languagePart
+
+            print("   Keyboard '\(keyboard)' -> code: '\(code)'")
             return code
         }
 
