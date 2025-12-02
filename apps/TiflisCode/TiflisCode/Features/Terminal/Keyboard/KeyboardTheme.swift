@@ -134,8 +134,8 @@ struct KeyboardTheme {
         keyTextColor: .white,
         keySecondaryTextColor: UIColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.5),
         keyShadowColor: .black,
-        modifierActiveBackgroundColor: .white,
-        modifierActiveTextColor: .black,
+        modifierActiveBackgroundColor: UIColor(red: 0.478, green: 0.478, blue: 0.502, alpha: 1.0), // #7A7A80 - lighter gray for dark mode
+        modifierActiveTextColor: .white,
         toolbarBackgroundColor: UIColor(red: 0.051, green: 0.051, blue: 0.051, alpha: 1.0),
         toolbarSeparatorColor: UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1.0)
     )

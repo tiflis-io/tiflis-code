@@ -506,14 +506,18 @@ final class KeyboardKeyView: UIView {
 
         // Update icon for modifier button when active
         if case .modifier(let type) = configuration.type {
+            print("🔧 setModifierActive for \(type) - active: \(active)")
             if let symbolName = active ? type.activeSfSymbolName : type.sfSymbolName {
                 // Используем SF Symbol
+                print("   Using SF Symbol: \(symbolName)")
                 primaryLabel.isHidden = true
                 primaryImageView.isHidden = false
                 let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
                 primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+                print("   Image set: \(primaryImageView.image != nil)")
             } else {
                 // Используем текст
+                print("   Using text instead")
                 primaryLabel.isHidden = false
                 primaryImageView.isHidden = true
                 primaryLabel.text = active ? type.activeDisplayText : type.displayText
@@ -532,12 +536,21 @@ final class KeyboardKeyView: UIView {
             primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
         }
         // Проверяем, есть ли SF Symbol для модификатора
-        else if case .modifier(let type) = configuration.type, let symbolName = type.sfSymbolName {
-            // Используем SF Symbol (учитываем активное состояние через setModifierActive)
-            primaryLabel.isHidden = true
-            primaryImageView.isHidden = false
-            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
-            primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+        else if case .modifier(let type) = configuration.type {
+            // Choose symbol based on active state
+            let symbolName = isModifierActive ? type.activeSfSymbolName : type.sfSymbolName
+            if let symbolName = symbolName {
+                // Используем SF Symbol (учитываем активное состояние)
+                primaryLabel.isHidden = true
+                primaryImageView.isHidden = false
+                let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+                primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+            } else {
+                // Fallback to text if no symbol
+                primaryLabel.isHidden = false
+                primaryImageView.isHidden = true
+                primaryLabel.text = isModifierActive ? type.activeDisplayText : type.displayText
+            }
         }
         // Проверяем, есть ли SF Symbol для переключателя раскладки
         else if case .layoutSwitch(let layout) = configuration.type, let symbolName = layout.sfSymbolName {
@@ -598,12 +611,15 @@ final class KeyboardKeyView: UIView {
         } else if isModifierActive {
             backgroundView.backgroundColor = theme.modifierActiveBackgroundColor
             primaryLabel.textColor = theme.modifierActiveTextColor
+            primaryImageView.tintColor = theme.modifierActiveTextColor
         } else if configuration.type.isFunctional {
             backgroundView.backgroundColor = theme.functionKeyBackgroundColor
             primaryLabel.textColor = theme.keyTextColor
+            primaryImageView.tintColor = theme.keyTextColor
         } else {
             backgroundView.backgroundColor = theme.letterKeyBackgroundColor
             primaryLabel.textColor = theme.keyTextColor
+            primaryImageView.tintColor = theme.keyTextColor
         }
     }
     

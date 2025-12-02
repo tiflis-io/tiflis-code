@@ -179,9 +179,9 @@ final class TerminalViewUIKit: UIView {
         terminalView.smartQuotesType = .no
         terminalView.smartDashesType = .no
         terminalView.smartInsertDeleteType = .no
-        
-        // Configure keyboard appearance
-        terminalView.keyboardAppearance = .dark
+
+        // Configure keyboard appearance to match system theme
+        terminalView.keyboardAppearance = traitCollection.userInterfaceStyle == .dark ? .dark : .light
     }
     
     /// Configures accessibility support
@@ -241,13 +241,17 @@ final class TerminalViewUIKit: UIView {
         switch traitCollection.userInterfaceStyle {
         case .dark:
             configureDarkTheme()
+            terminalView.keyboardAppearance = .dark
         case .light:
             configureLightTheme()
+            terminalView.keyboardAppearance = .light
         case .unspecified:
             // Default to light theme if unspecified
             configureLightTheme()
+            terminalView.keyboardAppearance = .light
         @unknown default:
             configureLightTheme()
+            terminalView.keyboardAppearance = .light
         }
     }
     

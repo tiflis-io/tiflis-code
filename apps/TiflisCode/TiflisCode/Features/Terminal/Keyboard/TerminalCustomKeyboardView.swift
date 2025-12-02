@@ -32,13 +32,13 @@ final class TerminalCustomKeyboardView: UIView {
 
     private var currentLayout: KeyboardLayout = .letters
     private var modifierState = ModifierState()
-    private var theme: KeyboardTheme = .light
+    private var theme: KeyboardTheme = .light  // Will be updated in didMoveToWindow based on system theme
 
     private let layoutManager = KeyboardLayoutManager()
 
     /// Время последнего нажатия shift для обнаружения двойного тапа
     private var lastShiftTapTime: TimeInterval = 0
-    private let doubleTapInterval: TimeInterval = 0.3
+    private let doubleTapInterval: TimeInterval = 0.45  // 1.5x longer for easier Caps Lock activation
 
     /// Флаг для отслеживания первого layout
     private var hasPerformedInitialLayout = false
@@ -100,7 +100,7 @@ final class TerminalCustomKeyboardView: UIView {
         setupUI()
         setupInputViewProperties()
     }
-    
+
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupUI()
@@ -120,6 +120,21 @@ final class TerminalCustomKeyboardView: UIView {
     override func sizeThatFits(_ size: CGSize) -> CGSize {
         let height = KeyboardMetrics.terminalToolbarHeight + KeyboardMetrics.keyboardHeight
         return CGSize(width: size.width, height: height)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+
+        // Apply correct theme when added to window (has proper trait collection)
+        if window != nil {
+            print("🎨 Keyboard didMoveToWindow - userInterfaceStyle: \(traitCollection.userInterfaceStyle.rawValue)")
+            print("   0=unspecified, 1=light, 2=dark")
+            let detectedTheme = KeyboardTheme.theme(for: traitCollection.userInterfaceStyle)
+            print("   Detected theme: \(detectedTheme.keyboardBackgroundColor == KeyboardTheme.light.keyboardBackgroundColor ? "LIGHT" : "DARK")")
+            if detectedTheme.keyboardBackgroundColor !== theme.keyboardBackgroundColor {
+                applyTheme(detectedTheme)
+            }
+        }
     }
 
     override func layoutSubviews() {
@@ -570,9 +585,12 @@ final class TerminalCustomKeyboardView: UIView {
     
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
-        
+
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
+            print("🎨 Keyboard traitCollectionDidChange")
+            print("   Previous: \(previousTraitCollection?.userInterfaceStyle.rawValue ?? -1), Current: \(traitCollection.userInterfaceStyle.rawValue)")
             let newTheme = KeyboardTheme.theme(for: traitCollection.userInterfaceStyle)
+            print("   Applying theme: \(newTheme.keyboardBackgroundColor == KeyboardTheme.light.keyboardBackgroundColor ? "LIGHT" : "DARK")")
             applyTheme(newTheme)
         }
     }
@@ -605,25 +623,30 @@ final class TerminalCustomKeyboardView: UIView {
         switch type {
         case .shift:
             let now = Date().timeIntervalSince1970
+            print("🔄 toggleModifier(.shift) - current state: shift=\(modifierState.shift), capsLock=\(modifierState.capsLock)")
 
-            // If shift is already on, turn it off (don't toggle to caps lock)
+            // If shift is already on, turn it off
             if modifierState.shift {
-                // Check for double-tap to enable Caps Lock
+                print("   Shift is ON - turning OFF")
+                modifierState.shift = false
+            } else {
+                print("   Shift is OFF - turning ON")
+                // Check for double-tap when turning shift ON
                 if now - lastShiftTapTime < doubleTapInterval {
-                    // Double tap detected - enable Caps Lock
+                    print("   Double-tap detected - enabling Caps Lock instead")
+                    // Double tap detected - enable Caps Lock instead of shift
                     modifierState.capsLock = true
                     modifierState.shift = false
                 } else {
-                    // Single tap when active - turn off
-                    modifierState.shift = false
+                    print("   Single tap - enabling shift")
+                    // Single tap - turn on shift
+                    modifierState.shift = true
+                    modifierState.capsLock = false
                 }
-            } else {
-                // Shift is off - turn it on
-                modifierState.shift = true
-                modifierState.capsLock = false
             }
 
             lastShiftTapTime = now
+            print("   New state: shift=\(modifierState.shift), capsLock=\(modifierState.capsLock)")
         case .capsLock:
             modifierState.capsLock.toggle()
             modifierState.shift = false
@@ -727,7 +750,8 @@ extension TerminalCustomKeyboardView: KeyboardKeyDelegate {
 
         case .character, .special:
             sendInput(for: type)
-            resetShiftAfterKeyPress()
+            // Don't auto-reset shift - it stays ON until manually toggled OFF
+            // resetShiftAfterKeyPress()
         }
     }
     
