@@ -11,61 +11,51 @@ import UIKit
 // MARK: - iOS Native Keyboard Metrics
 
 /// Точные метрики нативной iOS клавиатуры iPhone
-/// Измерены на iPhone 14 Pro / iOS 17
+/// Соответствуют Apple Human Interface Guidelines
+/// Minimum touch target: 44x44pt
 struct KeyboardMetrics {
-    
+
     // MARK: - Размеры клавиатуры
-    
-    /// Общая высота клавиатуры (без safe area)
+
+    /// Общая высота клавиатуры (без safe area) - iOS standard
     static let keyboardHeight: CGFloat = 216
-    
+
     /// Высота тулбара терминала (дополнительная панель)
     static let terminalToolbarHeight: CGFloat = 44
-    
-    // MARK: - Размеры кнопок
-    
-    /// Высота обычной буквенной кнопки
-    static let keyHeight: CGFloat = 42
-    
-    /// Радиус скругления углов кнопки
+
+    // MARK: - Размеры кнопок (Apple HIG compliant)
+
+    /// Высота обычной буквенной кнопки - Apple HIG 44pt minimum touch target
+    static let keyHeight: CGFloat = 44
+
+    /// Радиус скругления углов кнопки - matches native iOS keyboard
     static let keyCornerRadius: CGFloat = 5
-    
+
     // MARK: - Отступы
-    
-    /// Горизонтальный отступ между кнопками
+
+    /// Горизонтальный отступ между кнопками - matches native iOS visual gap
     static let horizontalKeySpacing: CGFloat = 6
-    
+
     /// Вертикальный отступ между рядами кнопок
-    static let verticalRowSpacing: CGFloat = 12
-    
+    static let verticalRowSpacing: CGFloat = 10
+
     /// Отступ от левого/правого края клавиатуры
     static let horizontalEdgePadding: CGFloat = 3
-    
+
     /// Отступ сверху клавиатуры
-    static let topPadding: CGFloat = 8
-    
+    static let topPadding: CGFloat = 6
+
     /// Отступ снизу клавиатуры (до safe area)
-    static let bottomPadding: CGFloat = 4
-    
-    // MARK: - Множители ширины кнопок
-    
-    /// Множитель ширины для кнопки Shift / Backspace
-    static let shiftWidthMultiplier: CGFloat = 1.0
-    
-    /// Множитель ширины для пробела
-    static let spaceWidthMultiplier: CGFloat = 5.0
-    
-    /// Множитель ширины для кнопок переключения раскладки (123, ABC)
-    static let switchWidthMultiplier: CGFloat = 1.5
-    
+    static let bottomPadding: CGFloat = 3
+
     // MARK: - Тени
-    
+
     /// Смещение тени кнопки по Y
     static let keyShadowOffsetY: CGFloat = 1
-    
+
     /// Радиус размытия тени
     static let keyShadowRadius: CGFloat = 0
-    
+
     /// Прозрачность тени
     static let keyShadowOpacity: Float = 0.35
 }

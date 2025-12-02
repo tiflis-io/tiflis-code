@@ -148,15 +148,15 @@ final class TerminalCustomKeyboardView: UIView {
         toolbarStack.translatesAutoresizingMaskIntoConstraints = false
         toolbarStack.axis = .horizontal
         toolbarStack.distribution = .fillEqually
-        toolbarStack.spacing = 8
+        toolbarStack.spacing = 6
         toolbarStack.alignment = .fill
-        
+
         toolbarView.addSubview(toolbarStack)
-        
+
         NSLayoutConstraint.activate([
             toolbarStack.topAnchor.constraint(equalTo: toolbarView.topAnchor, constant: 4),
-            toolbarStack.leadingAnchor.constraint(equalTo: toolbarView.leadingAnchor, constant: 8),
-            toolbarStack.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor, constant: -8),
+            toolbarStack.leadingAnchor.constraint(equalTo: toolbarView.leadingAnchor, constant: 4),
+            toolbarStack.trailingAnchor.constraint(equalTo: toolbarView.trailingAnchor, constant: -4),
             toolbarStack.bottomAnchor.constraint(equalTo: toolbarView.bottomAnchor, constant: -4)
         ])
         
@@ -231,73 +231,74 @@ final class TerminalCustomKeyboardView: UIView {
         rowStack.axis = .horizontal
         rowStack.spacing = KeyboardMetrics.horizontalKeySpacing
         rowStack.alignment = .fill
-        
-        // Разная логика distribution для разных рядов
-        if rowIndex == 1 && currentLayout == .letters {
-            // Средний ряд с 9 буквами - центрируем с отступами
-            rowStack.distribution = .fill
-        } else if rowIndex == 3 {
-            // Нижний ряд с пробелом - используем fillProportionally
-            rowStack.distribution = .fill
-        } else {
-            rowStack.distribution = .fillEqually
-        }
-        
+        rowStack.distribution = .fill
+
+        // Вычисляем стандартную ширину кнопки на основе верхнего ряда (10 кнопок)
+        let totalWidth = bounds.width - KeyboardMetrics.horizontalEdgePadding * 2
+        let standardKeyWidth = (totalWidth - (9 * KeyboardMetrics.horizontalKeySpacing)) / 10
+
         // Добавляем отступы для среднего ряда (9 букв вместо 10)
         if rowIndex == 1 && currentLayout == .letters {
+            // Вычисляем отступ для центрирования 9 кнопок
+            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 8
+            let spacerWidth = (totalWidth - nineKeysWidth) / 2
+
             let leftSpacer = UIView()
             leftSpacer.translatesAutoresizingMaskIntoConstraints = false
-            leftSpacer.widthAnchor.constraint(equalToConstant: KeyboardMetrics.horizontalKeySpacing * 2).isActive = true
+            leftSpacer.widthAnchor.constraint(equalToConstant: spacerWidth).isActive = true
             rowStack.addArrangedSubview(leftSpacer)
         }
-        
+
         for config in configs {
             let keyView = KeyboardKeyView(configuration: config)
             keyView.delegate = self
             keyView.applyTheme(theme)
-            
-            // Устанавливаем ширину для специальных кнопок
-            setupKeyWidth(keyView, rowStack: rowStack, totalKeysInRow: configs.count, rowIndex: rowIndex)
-            
+
+            // Устанавливаем ширину для всех кнопок
+            setupKeyWidth(keyView, standardKeyWidth: standardKeyWidth, rowIndex: rowIndex)
+
             rowStack.addArrangedSubview(keyView)
             keyViews.append(keyView)
         }
-        
+
         // Добавляем отступ справа для среднего ряда
         if rowIndex == 1 && currentLayout == .letters {
+            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 8
+            let spacerWidth = (totalWidth - nineKeysWidth) / 2
+
             let rightSpacer = UIView()
             rightSpacer.translatesAutoresizingMaskIntoConstraints = false
-            rightSpacer.widthAnchor.constraint(equalToConstant: KeyboardMetrics.horizontalKeySpacing * 2).isActive = true
+            rightSpacer.widthAnchor.constraint(equalToConstant: spacerWidth).isActive = true
             rowStack.addArrangedSubview(rightSpacer)
         }
-        
+
         return rowStack
     }
     
-    private func setupKeyWidth(_ keyView: KeyboardKeyView, rowStack: UIStackView, totalKeysInRow: Int, rowIndex: Int) {
+    private func setupKeyWidth(_ keyView: KeyboardKeyView, standardKeyWidth: CGFloat, rowIndex: Int) {
         switch keyView.configuration.width {
         case .standard:
-            // Стандартные буквенные кнопки - одинаковая ширина, управляется через distribution
-            break
-            
+            // Стандартные буквенные кнопки - все одинаковой ширины на основе верхнего ряда
+            keyView.widthAnchor.constraint(equalToConstant: standardKeyWidth).isActive = true
+
         case .shift:
             // Shift и Backspace - фиксированная ширина
             keyView.widthAnchor.constraint(equalToConstant: 42).isActive = true
-            
+
         case .layoutSwitch:
             // Кнопка переключения раскладки
             keyView.widthAnchor.constraint(equalToConstant: 50).isActive = true
-            
+
         case .space:
             // Пробел заполняет оставшееся пространство
             // Приоритет ниже, чтобы другие кнопки сохраняли свою ширину
             keyView.setContentHuggingPriority(.defaultLow, for: .horizontal)
             keyView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-            
+
         case .returnKey:
             // Return - фиксированная ширина
             keyView.widthAnchor.constraint(equalToConstant: 88).isActive = true
-            
+
         case .fixed(let width):
             keyView.widthAnchor.constraint(equalToConstant: width).isActive = true
         }
