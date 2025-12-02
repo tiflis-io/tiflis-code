@@ -177,12 +177,42 @@ enum KeyboardLanguage: String, CaseIterable {
         }
     }
 
-    /// Следующий язык в цикле
+    /// Получить список доступных языков (пересечение с системными языками)
+    /// English всегда доступен по умолчанию
+    static func availableLanguages() -> [KeyboardLanguage] {
+        // Get system keyboard language identifiers
+        let systemLanguages = UserDefaults.standard.object(forKey: "AppleKeyboards") as? [String] ?? []
+        let systemLanguageCodes = systemLanguages.compactMap { keyboard -> String? in
+            // Extract language code from keyboard identifier (e.g., "en_US@sw=QWERTY" -> "en")
+            let components = keyboard.split(separator: "_")
+            return components.first.map(String.init)
+        }
+
+        // Filter app languages to only those in system languages
+        var available = KeyboardLanguage.allCases.filter { language in
+            systemLanguageCodes.contains(language.rawValue)
+        }
+
+        // English must always be available (fallback)
+        if !available.contains(.english) {
+            available.insert(.english, at: 0)
+        }
+
+        return available.isEmpty ? [.english] : available
+    }
+
+    /// Следующий язык в цикле (только среди доступных)
+    func next(availableLanguages: [KeyboardLanguage]) -> KeyboardLanguage {
+        guard let currentIndex = availableLanguages.firstIndex(of: self) else {
+            return .english
+        }
+        let nextIndex = (currentIndex + 1) % availableLanguages.count
+        return availableLanguages[nextIndex]
+    }
+
+    /// Следующий язык в цикле (legacy - использует все языки)
     var next: KeyboardLanguage {
-        let all = KeyboardLanguage.allCases
-        guard let currentIndex = all.firstIndex(of: self) else { return .english }
-        let nextIndex = (currentIndex + 1) % all.count
-        return all[nextIndex]
+        return next(availableLanguages: KeyboardLanguage.availableLanguages())
     }
 }
 

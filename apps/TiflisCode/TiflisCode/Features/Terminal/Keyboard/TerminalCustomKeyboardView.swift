@@ -43,13 +43,22 @@ final class TerminalCustomKeyboardView: UIView {
     /// Флаг для отслеживания первого layout
     private var hasPerformedInitialLayout = false
 
+    /// Доступные языки (пересечение системных и поддерживаемых приложением)
+    private lazy var availableLanguages: [KeyboardLanguage] = {
+        let languages = KeyboardLanguage.availableLanguages()
+        print("🌐 Available keyboard languages: \(languages.map { $0.displayName })")
+        return languages
+    }()
+
     /// Текущий язык клавиатуры (сохраняется в UserDefaults)
     private var currentLanguage: KeyboardLanguage {
         get {
             if let rawValue = UserDefaults.standard.string(forKey: "TerminalKeyboardLanguage"),
-               let language = KeyboardLanguage(rawValue: rawValue) {
+               let language = KeyboardLanguage(rawValue: rawValue),
+               availableLanguages.contains(language) {
                 return language
             }
+            // Default to English (always available)
             return .english
         }
         set {
@@ -489,6 +498,7 @@ final class TerminalCustomKeyboardView: UIView {
         micButton.isBottomRowButton = true  // Transparent background
         micButton.applyTheme(theme)
         micButton.translatesAutoresizingMaskIntoConstraints = false
+        micButton.isHidden = true  // Hidden but not removed (for future voice input feature)
         let micWidthConstraint = micButton.widthAnchor.constraint(equalToConstant: 60)
         micWidthConstraint.priority = .required
         micWidthConstraint.isActive = true
@@ -609,7 +619,9 @@ final class TerminalCustomKeyboardView: UIView {
 
     /// Переключить язык клавиатуры на следующий
     private func switchToNextLanguage() {
-        currentLanguage = currentLanguage.next
+        // Switch to next available language only
+        currentLanguage = currentLanguage.next(availableLanguages: availableLanguages)
+        print("🌐 Switched to language: \(currentLanguage.displayName)")
 
         // Перезагружаем раскладку с анимацией
         UIView.transition(with: keyboardContainer, duration: 0.15, options: .transitionCrossDissolve) {
