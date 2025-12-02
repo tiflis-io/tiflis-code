@@ -16,7 +16,14 @@
 		248CF7C36370193C1B02FD8D /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */; };
 		29B5D73E4900554B45E33C6D /* ConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD369F38E321907820448CEA /* ConnectionService.swift */; };
 		2D8A29E5869A02DD2963955D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D35A999999055053D03394B /* SettingsView.swift */; };
+		3070D43E2EDDBF420031B080 /* KeyboardKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4352EDDBF420031B080 /* KeyboardKey.swift */; };
+
+		3070D4422EDDBF420031B080 /* KeyboardLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4372EDDBF420031B080 /* KeyboardLayoutManager.swift */; };
+		3070D4432EDDBF420031B080 /* TerminalCustomKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D43C2EDDBF420031B080 /* TerminalCustomKeyboardView.swift */; };
+
+		3070D4462EDDBF420031B080 /* KeyboardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4382EDDBF420031B080 /* KeyboardTheme.swift */; };
 		30B7BCCF3A6701E4F24563ED /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E39FD3E80285CE5E52310 /* ChatView.swift */; };
+
 		374794E6BAE6E62146274000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5473A38F6C188E71D88D9AE /* Assets.xcassets */; };
 		3C4E352D636682EF9ABCE02C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C2904D9A71D4757DFF1D2095 /* Assets.xcassets */; };
 		3D6F27B4FA9E75DCB2DC6B10 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
@@ -81,11 +88,19 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+
 		0B4CC7A25F1ECFCBEA3CAD66 /* TiflisCodeWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeWatchApp.swift; sourceTree = "<group>"; };
 		1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewModel.swift; sourceTree = "<group>"; };
 		1EB369A0324105A5DCC91A1C /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		2D35A999999055053D03394B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2FD23EFAA7CD1C122DF89A3E /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
+
+		3070D4352EDDBF420031B080 /* KeyboardKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardKey.swift; sourceTree = "<group>"; };
+
+		3070D4372EDDBF420031B080 /* KeyboardLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardLayoutManager.swift; sourceTree = "<group>"; };
+		3070D4382EDDBF420031B080 /* KeyboardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTheme.swift; sourceTree = "<group>"; };
+
+		3070D43C2EDDBF420031B080 /* TerminalCustomKeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCustomKeyboardView.swift; sourceTree = "<group>"; };
 		308C9D6BE0BF345A41C8A1E5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3E96900D8413F72E4B064E10 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
 		545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketMessage.swift; sourceTree = "<group>"; };
@@ -177,6 +192,17 @@
 			path = Voice;
 			sourceTree = "<group>";
 		};
+		3070D43D2EDDBF420031B080 /* Keyboard */ = {
+			isa = PBXGroup;
+			children = (
+				3070D4352EDDBF420031B080 /* KeyboardKey.swift */,
+				3070D4372EDDBF420031B080 /* KeyboardLayoutManager.swift */,
+				3070D4382EDDBF420031B080 /* KeyboardTheme.swift */,
+				3070D43C2EDDBF420031B080 /* TerminalCustomKeyboardView.swift */,
+			);
+			path = Keyboard;
+			sourceTree = "<group>";
+		};
 		320908D6F72242F4943ECF03 /* Navigation */ = {
 			isa = PBXGroup;
 			children = (
@@ -208,6 +234,7 @@
 		47B9610030BC0EA6B32CEC71 /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				3070D43D2EDDBF420031B080 /* Keyboard */,
 				D20190820F4474054253D38F /* TerminalContentView.swift */,
 				E45A48D49667369980A068E8 /* TerminalView.swift */,
 				1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */,
@@ -585,6 +612,10 @@
 				B3904A366C4C66BF93C76DBA /* TerminalViewModel.swift in Sources */,
 				AA84AC61B7F9EEEC81ED5329 /* TerminalViewUIKit.swift in Sources */,
 				536CA474A3C8861D6711EB8A /* TiflisCodeApp.swift in Sources */,
+				3070D43E2EDDBF420031B080 /* KeyboardKey.swift in Sources */,
+				3070D4422EDDBF420031B080 /* KeyboardLayoutManager.swift in Sources */,
+				3070D4432EDDBF420031B080 /* TerminalCustomKeyboardView.swift in Sources */,
+				3070D4462EDDBF420031B080 /* KeyboardTheme.swift in Sources */,
 				BD7ABAF416CEFB24433634FC /* View+Extensions.swift in Sources */,
 				D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */,
 				536A7FE56FE78B6C906137F9 /* WebSocketClientProtocol.swift in Sources */,

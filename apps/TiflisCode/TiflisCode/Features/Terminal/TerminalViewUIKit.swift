@@ -11,9 +11,14 @@ import SwiftTerm
 
 /// UIKit wrapper for SwiftTerm's TerminalView
 /// Uses only TerminalView's internal Terminal - no duplicate instance needed
+/// Supports custom keyboard to solve iOS backspace buffer issues
 final class TerminalViewUIKit: UIView {
     private let terminalView: SwiftTerm.TerminalView
-    
+
+    // MARK: - Custom Keyboard Support
+
+    private var customKeyboard: TerminalCustomKeyboardView?
+
     // Font size for terminal (can be adjusted for Dynamic Type)
     private var fontSize: CGFloat = 14 {
         didSet {
@@ -23,13 +28,14 @@ final class TerminalViewUIKit: UIView {
             }
         }
     }
+
     
     init() {
         // SwiftTerm TerminalView: Creates its own Terminal instance internally
         // TerminalView implements TerminalDelegate and forwards to terminalDelegate
         // We set terminalDelegate on TerminalView to receive input events
         self.terminalView = SwiftTerm.TerminalView(frame: .zero)
-        
+
         // Now call super.init()
         super.init(frame: .zero)
         
@@ -52,14 +58,15 @@ final class TerminalViewUIKit: UIView {
         configureTerminalOptions()
         configureTextInput()
         configureAccessibility()
-        
+        configureCustomKeyboard()
+
         // Enable advanced features
         enableSixelGraphics()
         enableHyperlinkSupport()
-        
+
         // Observe theme changes
         observeThemeChanges()
-        
+
         // Register for trait changes on iOS 17+ (new API)
         // This uses the new UITraitChangeObservable protocol
         if #available(iOS 17.0, *) {
@@ -67,7 +74,7 @@ final class TerminalViewUIKit: UIView {
                 changedView.updateTheme()
             }
         }
-        
+
         // Observe Dynamic Type changes
         observeDynamicTypeChanges()
     }
@@ -143,7 +150,7 @@ final class TerminalViewUIKit: UIView {
     /// Configures terminal options (scrollback, cursor style, etc.)
     private func configureTerminalOptions() {
         let terminal = terminalView.getTerminal()
-        
+
         // Configure terminal options following best practices
         // Note: TerminalOptions only supports basic options, not mouse reporting
         terminal.options = TerminalOptions(
@@ -153,6 +160,11 @@ final class TerminalViewUIKit: UIView {
             scrollback: 1000,  // 1000 lines of scrollback
             enableSixelReported: true  // Enable Sixel graphics support
         )
+
+        // Configure backspace behavior
+        // When true, backspace sends Control-H (^H, ASCII 8)
+        // When false, backspace sends DEL (ASCII 127)
+        terminalView.backspaceSendsControlH = true
     }
     
     /// Optimizes text input settings for terminal use
@@ -179,7 +191,48 @@ final class TerminalViewUIKit: UIView {
         terminalView.accessibilityHint = "Double tap to interact with terminal"
         terminalView.accessibilityTraits = [.staticText]
     }
+
+    /// Configures custom keyboard to replace iOS standard keyboard
+    private func configureCustomKeyboard() {
+        // Calculate keyboard frame with proper height
+        let screenWidth = UIScreen.main.bounds.width
+        let keyboardHeight = KeyboardMetrics.terminalToolbarHeight + KeyboardMetrics.keyboardHeight
+        let keyboardFrame = CGRect(x: 0, y: 0, width: screenWidth, height: keyboardHeight)
+        
+        // Create custom keyboard instance with explicit frame
+        let keyboard = TerminalCustomKeyboardView(frame: keyboardFrame)
+        keyboard.delegate = self
+
+        // Store reference
+        self.customKeyboard = keyboard
+
+        // Apply theme based on current appearance
+        let theme = KeyboardTheme.theme(for: traitCollection.userInterfaceStyle)
+        keyboard.applyTheme(theme)
+
+        // Apply custom keyboard as input view
+        terminalView.inputView = keyboard
+        
+        // Disable SwiftTerm's default inputAccessoryView (grey toolbar with esc, ctrl, arrows)
+        // We have our own toolbar integrated into the custom keyboard
+        terminalView.inputAccessoryView = nil
+
+        #if DEBUG
+        print("[TerminalViewUIKit] Custom keyboard configured: frame=\(keyboardFrame), height=\(keyboardHeight)")
+        #endif
+    }
     
+    /// Called when terminal becomes first responder - reload input views
+    func terminalDidBecomeFirstResponder() {
+        terminalView.reloadInputViews()
+        
+        #if DEBUG
+        print("[TerminalViewUIKit] Terminal became first responder, input views reloaded")
+        #endif
+    }
+
+    /// Toggle between custom and system keyboard
+
     /// Updates theme based on current system appearance
     /// Automatically follows system dark/light mode settings
     private func updateTheme() {
@@ -342,6 +395,20 @@ final class TerminalViewUIKit: UIView {
     func cleanup() {
         terminalView.updateUiClosed()
         NotificationCenter.default.removeObserver(self)
+        // Remove keyboard reference
+        customKeyboard = nil
+    }
+
+    // MARK: - Terminal Delegate Support
+
+    /// Set the terminal delegate to receive input events
+    func setTerminalDelegate(_ delegate: SwiftTerm.TerminalViewDelegate?) {
+        terminalView.terminalDelegate = delegate
+    }
+
+    /// Get the current terminal delegate
+    func getTerminalDelegate() -> SwiftTerm.TerminalViewDelegate? {
+        return terminalView.terminalDelegate
     }
     
     // MARK: - Data Feeding
@@ -384,10 +451,32 @@ final class TerminalViewUIKit: UIView {
         // This is implemented in TerminalViewModel which opens URLs in Safari
     }
     
-    deinit {
-        // cleanup() is MainActor-isolated, so we can't call it from deinit
-        // Instead, we'll just remove the observer
-        NotificationCenter.default.removeObserver(self)
+  }
+
+// MARK: - TerminalKeyboardDelegate
+
+extension TerminalViewUIKit: TerminalKeyboardDelegate {
+
+    func keyboard(_ keyboard: TerminalCustomKeyboardView, didSendInput data: Data) {
+        // Send input directly to SwiftTerm terminal delegate
+        // This bypasses UITextInput buffer completely, solving the backspace issue
+        if let delegate = terminalView.terminalDelegate {
+            delegate.send(source: terminalView, data: Array(data)[...])
+        }
+
+        #if DEBUG
+        let hexString = data.map { String(format: "%02X", $0) }.joined(separator: " ")
+        print("[TerminalViewUIKit] Custom keyboard input: \(hexString)")
+        #endif
+    }
+
+    func keyboardDidRequestDismiss(_ keyboard: TerminalCustomKeyboardView) {
+        // Dismiss the keyboard
+        _ = terminalView.resignFirstResponder()
+
+        #if DEBUG
+        print("[TerminalViewUIKit] Keyboard dismissal requested")
+        #endif
     }
 }
 

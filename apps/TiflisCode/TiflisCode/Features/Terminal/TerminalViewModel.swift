@@ -569,9 +569,42 @@ extension TerminalViewModel: TerminalViewDelegate {
     /// Note: This is called from nonisolated context, so we use Task to access MainActor
     nonisolated func send(source: SwiftTerm.TerminalView, data: ArraySlice<UInt8>) {
         // Convert bytes to Data (nonisolated operation)
-        let dataArray = Array(data)
+        var dataArray = Array(data)
+
+        // Fix: Convert DEL (127) to Control-H (8) for iOS keyboard compatibility
+        // iOS screen keyboard sends DEL (0x7F) instead of backspace (0x08)
+        // even when backspaceSendsControlH is set to true in TerminalView
+        // This ensures backspace works consistently from both physical and screen keyboards
+        if dataArray.count == 1 && dataArray[0] == 127 {
+            dataArray[0] = 8  // Convert DEL to Control-H
+        }
+
+        #if DEBUG
+        // Log what we're sending to debug backspace issues
+        print("[TerminalViewModel] Sending \(dataArray.count) bytes: \(dataArray.map { String(format: "%02X", $0) }.joined(separator: " "))")
+        if dataArray.count == 1 {
+            let byte = dataArray[0]
+            switch byte {
+            case 8:
+                print("[TerminalViewModel] -> Control-H (^H, backspace)")
+            case 127:
+                print("[TerminalViewModel] -> DEL (^?)")
+            case 13:
+                print("[TerminalViewModel] -> Return/Enter")
+            case 9:
+                print("[TerminalViewModel] -> Tab")
+            default:
+                if byte >= 32 && byte < 127 {
+                    print("[TerminalViewModel] -> ASCII: '\(Character(UnicodeScalar(byte)))'")
+                } else if byte < 32 {
+                    print("[TerminalViewModel] -> Control character: ^" + String(Character(UnicodeScalar(byte + 64))))
+                }
+            }
+        }
+        #endif
+
         let dataToSend = Data(dataArray)
-        
+
         // Access MainActor-isolated properties via Task
         Task { @MainActor [weak self] in
             self?.sendInput(dataToSend)

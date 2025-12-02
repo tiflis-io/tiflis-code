@@ -143,6 +143,10 @@ struct TerminalView: View {
             // This will automatically request replay from server to restore terminal history
             Task { @MainActor in
                 await viewModel.subscribeToSession()
+                // Make terminal first responder to show keyboard
+                // Small delay to ensure view is fully laid out
+                try? await Task.sleep(for: .milliseconds(100))
+                viewModel.becomeFirstResponder()
             }
         }
         .onDisappear {
