@@ -245,40 +245,39 @@ struct ModifierState {
 
         // Преобразование регистра
         if isUppercase {
-            // Georgian letters - QWERTY keyboard shift mapping
-            // Source: http://kbdlayout.info/kbdgeoqw/shiftstates
+            // Georgian letters - iOS keyboard shift mapping
             switch character {
-            // Row 1 (QWERTY): Q W E R T Y U I O P
-            case "ქ": result = "ქ"  // Q: ქ → ქ (no change)
-            case "წ": result = "ჭ"  // W: წ → ჭ
-            case "ე": result = "ჱ"  // E: ე → ჱ
-            case "რ": result = "ღ"  // R: რ → ღ
-            case "ტ": result = "თ"  // T: ტ → თ
-            case "ყ": result = "ჸ"  // Y: ყ → ჸ
-            case "უ": result = "უ"  // U: უ → უ (no change)
-            case "ი": result = "ჲ"  // I: ი → ჲ
-            case "ო": result = "ო"  // O: ო → ო (no change)
-            case "პ": result = "პ"  // P: პ → პ (no change)
+            // Row 1: ქ წ ე რ ტ ყ უ ი ო პ
+            case "ქ": result = "ქ"  // ქ → ქ (no change)
+            case "წ": result = "ჭ"  // წ → ჭ
+            case "ე": result = "ე"  // ე → ე (no change)
+            case "რ": result = "ღ"  // რ → ღ
+            case "ტ": result = "თ"  // ტ → თ
+            case "ყ": result = "ყ"  // ყ → ყ (no change)
+            case "უ": result = "უ"  // უ → უ (no change)
+            case "ი": result = "ი"  // ი → ი (no change)
+            case "ო": result = "ო"  // ო → ო (no change)
+            case "პ": result = "პ"  // პ → პ (no change)
 
-            // Row 2 (ASDFGH): A S D F G H J K L
-            case "ა": result = "ჺ"  // A: ა → ჺ
-            case "ს": result = "შ"  // S: ს → შ
-            case "დ": result = "დ"  // D: დ → დ (no change)
-            case "ფ": result = "ჶ"  // F: ფ → ჶ
-            case "გ": result = "ჹ"  // G: გ → ჹ
-            case "ჰ": result = "ჵ"  // H: ჰ → ჵ
-            case "ჯ": result = "ჟ"  // J: ჯ → ჟ
-            case "კ": result = "კ"  // K: კ → კ (no change)
-            case "ლ": result = "₾"  // L: ლ → ₾ (Lari currency symbol)
+            // Row 2: ა ს დ ფ გ ჰ ჯ კ ლ
+            case "ა": result = "ა"  // ა → ა (no change)
+            case "ს": result = "შ"  // ს → შ
+            case "დ": result = "დ"  // დ → დ (no change)
+            case "ფ": result = "ფ"  // ფ → ფ (no change)
+            case "გ": result = "გ"  // გ → გ (no change)
+            case "ჰ": result = "ჰ"  // ჰ → ჰ (no change)
+            case "ჯ": result = "ჟ"  // ჯ → ჟ
+            case "კ": result = "კ"  // კ → კ (no change)
+            case "ლ": result = "ლ"  // ლ → ლ (no change)
 
-            // Row 3 (ZXCVBN): Z X C V B N M
-            case "ზ": result = "ძ"  // Z: ზ → ძ
-            case "ხ": result = "ჴ"  // X: ხ → ჴ
-            case "ც": result = "ჩ"  // C: ც → ჩ
-            case "ვ": result = "ჳ"  // V: ვ → ჳ
-            case "ბ": result = "ბ"  // B: ბ → ბ (no change)
-            case "ნ": result = "ჼ"  // N: ნ → ჼ
-            case "მ": result = "მ"  // M: მ → მ (no change)
+            // Row 3: ზ ხ ც ვ ბ ნ მ
+            case "ზ": result = "ძ"  // ზ → ძ
+            case "ხ": result = "ხ"  // ხ → ხ (no change)
+            case "ც": result = "ჩ"  // ც → ჩ
+            case "ვ": result = "ვ"  // ვ → ვ (no change)
+            case "ბ": result = "ბ"  // ბ → ბ (no change)
+            case "ნ": result = "ნ"  // ნ → ნ (no change)
+            case "მ": result = "მ"  // მ → მ (no change)
 
             // Non-Georgian letters - use standard uppercase
             default:

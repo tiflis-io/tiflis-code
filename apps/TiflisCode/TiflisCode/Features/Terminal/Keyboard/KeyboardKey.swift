@@ -586,40 +586,39 @@ final class KeyboardKeyView: UIView {
     private func applyShiftMapping(to char: String) -> String {
         guard let firstChar = char.first else { return char }
 
-        // Georgian letters - QWERTY keyboard shift mapping
-        // Source: http://kbdlayout.info/kbdgeoqw/shiftstates
+        // Georgian letters - iOS keyboard shift mapping
         switch firstChar {
-        // Row 1 (QWERTY): Q W E R T Y U I O P
-        case "ქ": return "ქ"  // Q: ქ → ქ (no change)
-        case "წ": return "ჭ"  // W: წ → ჭ
-        case "ე": return "ჱ"  // E: ე → ჱ
-        case "რ": return "ღ"  // R: რ → ღ
-        case "ტ": return "თ"  // T: ტ → თ
-        case "ყ": return "ჸ"  // Y: ყ → ჸ
-        case "უ": return "უ"  // U: უ → უ (no change)
-        case "ი": return "ჲ"  // I: ი → ჲ
-        case "ო": return "ო"  // O: ო → ო (no change)
-        case "პ": return "პ"  // P: პ → პ (no change)
+        // Row 1: ქ წ ე რ ტ ყ უ ი ო პ
+        case "ქ": return "ქ"  // ქ → ქ (no change)
+        case "წ": return "ჭ"  // წ → ჭ
+        case "ე": return "ე"  // ე → ე (no change)
+        case "რ": return "ღ"  // რ → ღ
+        case "ტ": return "თ"  // ტ → თ
+        case "ყ": return "ყ"  // ყ → ყ (no change)
+        case "უ": return "უ"  // უ → უ (no change)
+        case "ი": return "ი"  // ი → ი (no change)
+        case "ო": return "ო"  // ო → ო (no change)
+        case "პ": return "პ"  // პ → პ (no change)
 
-        // Row 2 (ASDFGH): A S D F G H J K L
-        case "ა": return "ჺ"  // A: ა → ჺ
-        case "ს": return "შ"  // S: ს → შ
-        case "დ": return "დ"  // D: დ → დ (no change)
-        case "ფ": return "ჶ"  // F: ფ → ჶ
-        case "გ": return "ჹ"  // G: გ → ჹ
-        case "ჰ": return "ჵ"  // H: ჰ → ჵ
-        case "ჯ": return "ჟ"  // J: ჯ → ჟ
-        case "კ": return "კ"  // K: კ → კ (no change)
-        case "ლ": return "₾"  // L: ლ → ₾ (Lari currency symbol)
+        // Row 2: ა ს დ ფ გ ჰ ჯ კ ლ
+        case "ა": return "ა"  // ა → ა (no change)
+        case "ს": return "შ"  // ს → შ
+        case "დ": return "დ"  // დ → დ (no change)
+        case "ფ": return "ფ"  // ფ → ფ (no change)
+        case "გ": return "გ"  // გ → გ (no change)
+        case "ჰ": return "ჰ"  // ჰ → ჰ (no change)
+        case "ჯ": return "ჟ"  // ჯ → ჟ
+        case "კ": return "კ"  // კ → კ (no change)
+        case "ლ": return "ლ"  // ლ → ლ (no change)
 
-        // Row 3 (ZXCVBN): Z X C V B N M
-        case "ზ": return "ძ"  // Z: ზ → ძ
-        case "ხ": return "ჴ"  // X: ხ → ჴ
-        case "ც": return "ჩ"  // C: ც → ჩ
-        case "ვ": return "ჳ"  // V: ვ → ჳ
-        case "ბ": return "ბ"  // B: ბ → ბ (no change)
-        case "ნ": return "ჼ"  // N: ნ → ჼ
-        case "მ": return "მ"  // M: მ → მ (no change)
+        // Row 3: ზ ხ ც ვ ბ ნ მ
+        case "ზ": return "ძ"  // ზ → ძ
+        case "ხ": return "ხ"  // ხ → ხ (no change)
+        case "ც": return "ჩ"  // ც → ჩ
+        case "ვ": return "ვ"  // ვ → ვ (no change)
+        case "ბ": return "ბ"  // ბ → ბ (no change)
+        case "ნ": return "ნ"  // ნ → ნ (no change)
+        case "მ": return "მ"  // მ → მ (no change)
 
         // Non-Georgian letters - use standard uppercase
         default:
