@@ -238,26 +238,47 @@ final class TerminalCustomKeyboardView: UIView {
         mainStack.translatesAutoresizingMaskIntoConstraints = false
         mainStack.axis = .vertical
         mainStack.spacing = KeyboardMetrics.verticalRowSpacing
-        mainStack.distribution = .fillEqually
+        mainStack.distribution = .fill
         mainStack.alignment = .fill
-        
+
         keyboardContainer.addSubview(mainStack)
-        
+
         NSLayoutConstraint.activate([
             mainStack.topAnchor.constraint(equalTo: keyboardContainer.topAnchor, constant: KeyboardMetrics.topPadding),
             mainStack.leadingAnchor.constraint(equalTo: keyboardContainer.leadingAnchor, constant: KeyboardMetrics.horizontalEdgePadding),
             mainStack.trailingAnchor.constraint(equalTo: keyboardContainer.trailingAnchor, constant: -KeyboardMetrics.horizontalEdgePadding),
             mainStack.bottomAnchor.constraint(equalTo: keyboardContainer.bottomAnchor, constant: -KeyboardMetrics.bottomPadding)
         ])
-        
+
         rowStackViews.append(mainStack)
-        
-        // Создаём ряды кнопок
+
+        // Создаём ряды кнопок (all equal height except bottom row)
         for (rowIndex, rowConfigs) in rows.enumerated() {
             let rowStack = createRowStack(for: rowIndex, configs: rowConfigs)
             mainStack.addArrangedSubview(rowStack)
             rowStackViews.append(rowStack)
+
+            // Set equal height for all rows except the last one
+            if rowIndex == 0 {
+                // Save first row height as reference
+                rowStack.heightAnchor.constraint(equalToConstant: 42).isActive = true
+            } else if rowIndex < rows.count - 1 {
+                // All other rows match first row height
+                rowStack.heightAnchor.constraint(equalTo: rowStackViews[1].heightAnchor).isActive = true
+            }
         }
+
+        // Add bottom row with globe and microphone buttons (shorter height)
+        let bottomRow = createBottomRow()
+        mainStack.addArrangedSubview(bottomRow)
+        rowStackViews.append(bottomRow)
+        bottomRow.heightAnchor.constraint(equalToConstant: 32).isActive = true
+
+        // Add bottom padding spacer
+        let bottomPaddingSpacer = UIView()
+        bottomPaddingSpacer.translatesAutoresizingMaskIntoConstraints = false
+        mainStack.addArrangedSubview(bottomPaddingSpacer)
+        bottomPaddingSpacer.heightAnchor.constraint(equalToConstant: 10).isActive = true
         
         // Обновляем отображение букв
         updateLetterDisplay()
@@ -411,6 +432,71 @@ final class TerminalCustomKeyboardView: UIView {
         return rowStack
     }
     
+    private func createBottomRow() -> UIStackView {
+        let rowStack = UIStackView()
+        rowStack.axis = .horizontal
+        rowStack.spacing = 0
+        rowStack.alignment = .fill
+        rowStack.distribution = .fill  // Use manual constraints for custom spacing
+
+        // Left spacer (flexible)
+        let leftSpacer = UIView()
+        leftSpacer.translatesAutoresizingMaskIntoConstraints = false
+        leftSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        leftSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        rowStack.addArrangedSubview(leftSpacer)
+
+        // Globe button (language switch) - 60pt (20% larger)
+        let globeConfig = KeyConfiguration(type: .special(.languageSwitch))
+        let globeButton = KeyboardKeyView(configuration: globeConfig)
+        globeButton.delegate = self
+        globeButton.isBottomRowButton = true  // Transparent background
+        globeButton.applyTheme(theme)
+        globeButton.translatesAutoresizingMaskIntoConstraints = false
+        let globeWidthConstraint = globeButton.widthAnchor.constraint(equalToConstant: 60)
+        globeWidthConstraint.priority = .required
+        globeWidthConstraint.isActive = true
+        globeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        rowStack.addArrangedSubview(globeButton)
+        keyViews.append(globeButton)
+
+        // Middle spacer (flexible, but wider than side spacers)
+        let middleSpacer = UIView()
+        middleSpacer.translatesAutoresizingMaskIntoConstraints = false
+        middleSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        middleSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        rowStack.addArrangedSubview(middleSpacer)
+
+        // Microphone button (voice input) - 60pt (20% larger)
+        let micConfig = KeyConfiguration(type: .special(.microphone))
+        let micButton = KeyboardKeyView(configuration: micConfig)
+        micButton.delegate = self
+        micButton.isBottomRowButton = true  // Transparent background
+        micButton.applyTheme(theme)
+        micButton.translatesAutoresizingMaskIntoConstraints = false
+        let micWidthConstraint = micButton.widthAnchor.constraint(equalToConstant: 60)
+        micWidthConstraint.priority = .required
+        micWidthConstraint.isActive = true
+        micButton.setContentCompressionResistancePriority(.required, for: .horizontal)
+        rowStack.addArrangedSubview(micButton)
+        keyViews.append(micButton)
+
+        // Right spacer (flexible)
+        let rightSpacer = UIView()
+        rightSpacer.translatesAutoresizingMaskIntoConstraints = false
+        rightSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        rightSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        rowStack.addArrangedSubview(rightSpacer)
+
+        // Make middle spacer 1.5x wider than side spacers
+        NSLayoutConstraint.activate([
+            middleSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor, multiplier: 1.5),
+            rightSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor)
+        ])
+
+        return rowStack
+    }
+
     private func setupKeyWidth(_ keyView: KeyboardKeyView, standardKeyWidth: CGFloat, rowIndex: Int, row3ShiftWidth: CGFloat) {
         switch keyView.configuration.width {
         case .standard:
@@ -438,8 +524,8 @@ final class TerminalCustomKeyboardView: UIView {
             keyView.setContentHuggingPriority(.required, for: .horizontal)
 
         case .layoutSwitch:
-            // Layout switch button
-            let constraint = keyView.widthAnchor.constraint(equalToConstant: 50)
+            // Layout switch button - same width as Return key
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: 88)
             constraint.priority = .required
             constraint.isActive = true
             keyView.setContentCompressionResistancePriority(.required, for: .horizontal)

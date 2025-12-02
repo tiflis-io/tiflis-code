@@ -17,8 +17,8 @@ struct KeyboardMetrics {
 
     // MARK: - Размеры клавиатуры
 
-    /// Общая высота клавиатуры (без safe area) - iOS standard
-    static let keyboardHeight: CGFloat = 216
+    /// Общая высота клавиатуры (без safe area) - iOS standard + bottom row (globe + mic)
+    static let keyboardHeight: CGFloat = 268  // 216 + 42 (bottom row with padding) + 10 (spacing)
 
     /// Высота тулбара терминала (дополнительная панель)
     static let terminalToolbarHeight: CGFloat = 44
@@ -197,8 +197,8 @@ enum KeyboardLayout {
     /// Текст для кнопки переключения на эту раскладку
     var switchButtonTitle: String {
         switch self {
-        case .letters: return ""  // Uses SF Symbol
-        case .numbers: return ""  // Uses SF Symbol
+        case .letters: return "ABC"
+        case .numbers: return "123"
         case .symbols: return "#+="
         }
     }
@@ -206,8 +206,8 @@ enum KeyboardLayout {
     /// SF Symbol name for layout switch button
     var sfSymbolName: String? {
         switch self {
-        case .letters: return "textformat.abc"
-        case .numbers: return "textformat.123"
+        case .letters: return nil  // Use text instead
+        case .numbers: return nil  // Use text instead
         default: return nil
         }
     }

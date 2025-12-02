@@ -67,6 +67,7 @@ enum SpecialKeyType: Equatable {
     case pageDown
     case dismiss
     case languageSwitch
+    case microphone
     case slash
     case tilde
 
@@ -88,6 +89,7 @@ enum SpecialKeyType: Equatable {
         case .pageDown: return "PgDn"
         case .dismiss: return ""  // Uses SF Symbol
         case .languageSwitch: return ""  // Uses SF Symbol
+        case .microphone: return ""  // Uses SF Symbol
         case .slash: return "/"
         case .tilde: return "~"
         }
@@ -106,6 +108,7 @@ enum SpecialKeyType: Equatable {
         case .arrowRight: return "arrow.right"
         case .dismiss: return "keyboard.chevron.compact.down"
         case .languageSwitch: return "globe"
+        case .microphone: return "mic.fill"
         default: return nil
         }
     }
@@ -129,6 +132,7 @@ enum SpecialKeyType: Equatable {
         case .pageDown: return [0x1B, 0x5B, 0x36, 0x7E]
         case .dismiss: return []
         case .languageSwitch: return []
+        case .microphone: return []  // No terminal bytes (UI action only)
         case .slash: return [0x2F]  // ASCII /
         case .tilde: return [0x7E]  // ASCII ~
         }
@@ -254,13 +258,16 @@ protocol KeyboardKeyDelegate: AnyObject {
 final class KeyboardKeyView: UIView {
     
     // MARK: - Properties
-    
+
     weak var delegate: KeyboardKeyDelegate?
-    
+
     let configuration: KeyConfiguration
     private var theme: KeyboardTheme = .light
     private var isPressed = false
     private var isModifierActive = false
+
+    /// Flag to indicate this is a bottom row button (transparent background)
+    var isBottomRowButton = false
     
     // MARK: - UI Components
     
@@ -537,7 +544,7 @@ final class KeyboardKeyView: UIView {
             // Используем SF Symbol
             primaryLabel.isHidden = true
             primaryImageView.isHidden = false
-            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            let config = UIImage.SymbolConfiguration(pointSize: 24, weight: .regular)
             primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
         }
         // Используем текст
@@ -578,6 +585,14 @@ final class KeyboardKeyView: UIView {
     }
     
     private func updateBackgroundColor() {
+        // Bottom row buttons are always transparent
+        if isBottomRowButton {
+            backgroundView.backgroundColor = .clear
+            primaryImageView.tintColor = theme.keyTextColor
+            layer.shadowOpacity = 0  // No shadow for transparent buttons
+            return
+        }
+
         if isPressed {
             backgroundView.backgroundColor = theme.pressedKeyBackgroundColor
         } else if isModifierActive {

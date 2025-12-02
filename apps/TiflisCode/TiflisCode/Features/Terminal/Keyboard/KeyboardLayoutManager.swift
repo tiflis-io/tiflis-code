@@ -70,10 +70,9 @@ final class KeyboardLayoutManager {
                 KeyConfiguration(type: .special(.backspace), width: .shift)
             ],
 
-            // Ряд 4: 123 🌐 Space Return
+            // Ряд 4: 123 Space Return (globe moved to bottom row)
             [
                 KeyConfiguration(type: .layoutSwitch(.numbers), width: .layoutSwitch),
-                KeyConfiguration(type: .special(.languageSwitch), width: .layoutSwitch),
                 KeyConfiguration(type: .special(.space), width: .space),
                 KeyConfiguration(type: .special(.enter), width: .returnKey)
             ]
@@ -105,10 +104,9 @@ final class KeyboardLayoutManager {
                 KeyConfiguration(type: .special(.backspace), width: .shift)
             ],
 
-            // Ряд 4: 123 🌐 Space Return
+            // Ряд 4: 123 Space Return (globe moved to bottom row)
             [
                 KeyConfiguration(type: .layoutSwitch(.numbers), width: .layoutSwitch),
-                KeyConfiguration(type: .special(.languageSwitch), width: .layoutSwitch),
                 KeyConfiguration(type: .special(.space), width: .space),
                 KeyConfiguration(type: .special(.enter), width: .returnKey)
             ]
@@ -140,10 +138,9 @@ final class KeyboardLayoutManager {
                 KeyConfiguration(type: .special(.backspace), width: .shift)
             ],
 
-            // Ряд 4: 123 🌐 Space Return
+            // Ряд 4: 123 Space Return (globe moved to bottom row)
             [
                 KeyConfiguration(type: .layoutSwitch(.numbers), width: .layoutSwitch),
-                KeyConfiguration(type: .special(.languageSwitch), width: .layoutSwitch),
                 KeyConfiguration(type: .special(.space), width: .space),
                 KeyConfiguration(type: .special(.enter), width: .returnKey)
             ]
@@ -174,10 +171,9 @@ final class KeyboardLayoutManager {
                 KeyConfiguration(type: .special(.backspace), width: .shift)
             ],
 
-            // Ряд 4: ABC 🌐 Space Return
+            // Ряд 4: ABC Space Return (globe moved to bottom row)
             [
                 KeyConfiguration(type: .layoutSwitch(.letters), width: .layoutSwitch),
-                KeyConfiguration(type: .special(.languageSwitch), width: .layoutSwitch),
                 KeyConfiguration(type: .special(.space), width: .space),
                 KeyConfiguration(type: .special(.enter), width: .returnKey)
             ]
@@ -208,10 +204,9 @@ final class KeyboardLayoutManager {
                 KeyConfiguration(type: .special(.backspace), width: .shift)
             ],
 
-            // Ряд 4: ABC 🌐 Space Return
+            // Ряд 4: ABC Space Return (globe moved to bottom row)
             [
                 KeyConfiguration(type: .layoutSwitch(.letters), width: .layoutSwitch),
-                KeyConfiguration(type: .special(.languageSwitch), width: .layoutSwitch),
                 KeyConfiguration(type: .special(.space), width: .space),
                 KeyConfiguration(type: .special(.enter), width: .returnKey)
             ]
