@@ -27,14 +27,36 @@ protocol TerminalKeyboardDelegate: AnyObject {
 final class TerminalCustomKeyboardView: UIView {
     
     // MARK: - Properties
-    
+
     weak var delegate: TerminalKeyboardDelegate?
-    
+
     private var currentLayout: KeyboardLayout = .letters
     private var modifierState = ModifierState()
     private var theme: KeyboardTheme = .light
-    
+
     private let layoutManager = KeyboardLayoutManager()
+
+    /// Время последнего нажатия shift для обнаружения двойного тапа
+    private var lastShiftTapTime: TimeInterval = 0
+    private let doubleTapInterval: TimeInterval = 0.3
+
+    /// Флаг для отслеживания первого layout
+    private var hasPerformedInitialLayout = false
+
+    /// Текущий язык клавиатуры (сохраняется в UserDefaults)
+    private var currentLanguage: KeyboardLanguage {
+        get {
+            if let rawValue = UserDefaults.standard.string(forKey: "TerminalKeyboardLanguage"),
+               let language = KeyboardLanguage(rawValue: rawValue) {
+                return language
+            }
+            return .english
+        }
+        set {
+            UserDefaults.standard.set(newValue.rawValue, forKey: "TerminalKeyboardLanguage")
+            layoutManager.currentLanguage = newValue
+        }
+    }
     
     // MARK: - UI Components
     
@@ -99,21 +121,34 @@ final class TerminalCustomKeyboardView: UIView {
         let height = KeyboardMetrics.terminalToolbarHeight + KeyboardMetrics.keyboardHeight
         return CGSize(width: size.width, height: height)
     }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+
+        // Reload layout once we have valid bounds (fixes key width calculation)
+        if !hasPerformedInitialLayout && bounds.width > 0 && !keyViews.isEmpty {
+            hasPerformedInitialLayout = true
+            loadLayout(currentLayout)
+        }
+    }
     
     // MARK: - Setup
     
     private func setupUI() {
         backgroundColor = theme.keyboardBackgroundColor
-        
+
+        // Инициализируем язык
+        layoutManager.currentLanguage = currentLanguage
+
         // Добавляем компоненты
         addSubview(toolbarView)
         addSubview(separatorView)
         addSubview(keyboardContainer)
-        
+
         setupConstraints()
         setupToolbar()
         loadLayout(currentLayout)
-        
+
         impactGenerator.prepare()
     }
     
@@ -160,11 +195,13 @@ final class TerminalCustomKeyboardView: UIView {
             toolbarStack.bottomAnchor.constraint(equalTo: toolbarView.bottomAnchor, constant: -4)
         ])
         
-        // Кнопки тулбара: Esc, Tab, Ctrl, ← ↓ ↑ → Dismiss
+        // Кнопки тулбара: Esc, Tab, Ctrl, /, ~, ← ↓ ↑ →, Dismiss
         let toolbarConfigs: [KeyConfiguration] = [
             KeyConfiguration(type: .special(.escape)),
             KeyConfiguration(type: .special(.tab)),
             KeyConfiguration(type: .modifier(.control)),
+            KeyConfiguration(type: .special(.slash)),
+            KeyConfiguration(type: .special(.tilde)),
             KeyConfiguration(type: .special(.arrowLeft)),
             KeyConfiguration(type: .special(.arrowDown)),
             KeyConfiguration(type: .special(.arrowUp)),
@@ -233,74 +270,198 @@ final class TerminalCustomKeyboardView: UIView {
         rowStack.alignment = .fill
         rowStack.distribution = .fill
 
-        // Вычисляем стандартную ширину кнопки на основе верхнего ряда (10 кнопок)
+        // Calculate standard key width based on top row (10 keys)
         let totalWidth = bounds.width - KeyboardMetrics.horizontalEdgePadding * 2
         let standardKeyWidth = (totalWidth - (9 * KeyboardMetrics.horizontalKeySpacing)) / 10
 
-        // Добавляем отступы для среднего ряда (9 букв вместо 10)
+        // Add spacers for middle row (9 letters instead of 10)
         if rowIndex == 1 && currentLayout == .letters {
-            // Вычисляем отступ для центрирования 9 кнопок
-            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 8
+            // Calculate offset to center 9 keys
+            // Need to account for 10 gaps: 8 between keys + 1 after left spacer + 1 before right spacer
+            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 10
             let spacerWidth = (totalWidth - nineKeysWidth) / 2
 
             let leftSpacer = UIView()
             leftSpacer.translatesAutoresizingMaskIntoConstraints = false
-            leftSpacer.widthAnchor.constraint(equalToConstant: spacerWidth).isActive = true
+            let leftSpacerConstraint = leftSpacer.widthAnchor.constraint(equalToConstant: spacerWidth)
+            leftSpacerConstraint.priority = .required
+            leftSpacerConstraint.isActive = true
+            leftSpacer.setContentHuggingPriority(.required, for: .horizontal)
+            leftSpacer.setContentCompressionResistancePriority(.required, for: .horizontal)
             rowStack.addArrangedSubview(leftSpacer)
         }
 
-        for config in configs {
+        // For third row (Shift Letters... Backspace) - ALWAYS equal width for both buttons!
+        // Logic:
+        // 1. Try to use ideal width (1.5x) for buttons
+        // 2. If it fits - remaining space goes to spacers
+        // 3. If it doesn't fit - remove spacers (= 0) and reduce buttons EQUALLY
+        var row3ShiftWidth: CGFloat = 0
+        var row3SpacerWidth: CGFloat = 0
+        if rowIndex == 2 && currentLayout == .letters {
+            let letterCount = configs.count - 2  // Subtract Shift and Backspace
+
+            // Width of letters with gaps between them
+            let lettersWidth = standardKeyWidth * CGFloat(letterCount) + KeyboardMetrics.horizontalKeySpacing * CGFloat(letterCount - 1)
+
+            // Ideal width for Shift/Backspace (ALWAYS THE SAME!)
+            let idealShiftWidth = standardKeyWidth * 1.5
+
+            // OPTION 1: Try ideal width WITHOUT spacers
+            // Structure: Shift | gap | Letters | gap | Backspace
+            // Gaps: 2 (after Shift, after letters)
+            let gapsNoSpacers = KeyboardMetrics.horizontalKeySpacing * 2
+            let requiredWidthNoSpacers = (idealShiftWidth * 2) + lettersWidth + gapsNoSpacers
+
+            if requiredWidthNoSpacers <= totalWidth {
+                // Fits with ideal width!
+                row3ShiftWidth = idealShiftWidth
+
+                // Check if there's room for spacers
+                // Structure with spacers: Shift | gap | Spacer | gap | Letters | gap | Spacer | gap | Backspace
+                // Additional gaps: +2 (after left and right spacers)
+                let gapsWithSpacers = KeyboardMetrics.horizontalKeySpacing * 4
+                let remainingForSpacers = totalWidth - (idealShiftWidth * 2) - lettersWidth - gapsWithSpacers
+
+                print("🔍 Row 3 calculation (\(letterCount) letters):")
+                print("   totalWidth: \(totalWidth)")
+                print("   lettersWidth: \(lettersWidth)")
+                print("   idealShiftWidth: \(idealShiftWidth)")
+                print("   gapsWithSpacers: \(gapsWithSpacers)")
+                print("   remainingForSpacers: \(remainingForSpacers)")
+
+                if remainingForSpacers >= 0 {
+                    // There's room for spacers - distribute remaining space equally
+                    row3SpacerWidth = remainingForSpacers / 2
+                    print("   ✅ Spacer width: \(row3SpacerWidth)")
+                } else {
+                    // No room for spacers - go without them
+                    row3SpacerWidth = 0
+                    print("   ❌ No room for spacers")
+                }
+            } else {
+                // Doesn't fit with ideal width - reduce buttons EQUALLY, spacers = 0
+                row3SpacerWidth = 0
+                let availableForModifiers = totalWidth - lettersWidth - gapsNoSpacers
+                row3ShiftWidth = availableForModifiers / 2  // Divide EQUALLY!
+                print("🔍 Row 3: Reducing button width to \(row3ShiftWidth)")
+            }
+        }
+
+        for (index, config) in configs.enumerated() {
             let keyView = KeyboardKeyView(configuration: config)
             keyView.delegate = self
             keyView.applyTheme(theme)
 
-            // Устанавливаем ширину для всех кнопок
-            setupKeyWidth(keyView, standardKeyWidth: standardKeyWidth, rowIndex: rowIndex)
+            // Set width for all keys
+            setupKeyWidth(keyView, standardKeyWidth: standardKeyWidth, rowIndex: rowIndex, row3ShiftWidth: row3ShiftWidth)
 
             rowStack.addArrangedSubview(keyView)
             keyViews.append(keyView)
+
+            // For third row, add spacer after Shift (index 0) ONLY if width > 0
+            if rowIndex == 2 && currentLayout == .letters && index == 0 && row3SpacerWidth > 0 {
+                print("   🟢 Adding LEFT spacer with width: \(row3SpacerWidth)")
+                let leftSpacer = UIView()
+                leftSpacer.translatesAutoresizingMaskIntoConstraints = false
+                leftSpacer.backgroundColor = .red.withAlphaComponent(0.3)  // DEBUG: make visible
+                let leftSpacerConstraint = leftSpacer.widthAnchor.constraint(equalToConstant: row3SpacerWidth)
+                leftSpacerConstraint.priority = .required
+                leftSpacerConstraint.isActive = true
+                leftSpacer.setContentHuggingPriority(.required, for: .horizontal)
+                leftSpacer.setContentCompressionResistancePriority(.required, for: .horizontal)
+                rowStack.addArrangedSubview(leftSpacer)
+            } else if rowIndex == 2 && currentLayout == .letters && index == 0 {
+                print("   ⚪ NOT adding left spacer (width = \(row3SpacerWidth))")
+            }
+
+            // For third row, add spacer before Backspace (last button) ONLY if width > 0
+            if rowIndex == 2 && currentLayout == .letters && index == configs.count - 2 && row3SpacerWidth > 0 {
+                print("   🟢 Adding RIGHT spacer with width: \(row3SpacerWidth)")
+                let rightSpacer = UIView()
+                rightSpacer.translatesAutoresizingMaskIntoConstraints = false
+                rightSpacer.backgroundColor = .blue.withAlphaComponent(0.3)  // DEBUG: make visible
+                let rightSpacerConstraint = rightSpacer.widthAnchor.constraint(equalToConstant: row3SpacerWidth)
+                rightSpacerConstraint.priority = .required
+                rightSpacerConstraint.isActive = true
+                rightSpacer.setContentHuggingPriority(.required, for: .horizontal)
+                rightSpacer.setContentCompressionResistancePriority(.required, for: .horizontal)
+                rowStack.addArrangedSubview(rightSpacer)
+            } else if rowIndex == 2 && currentLayout == .letters && index == configs.count - 2 {
+                print("   ⚪ NOT adding right spacer (width = \(row3SpacerWidth))")
+            }
         }
 
-        // Добавляем отступ справа для среднего ряда
+        // Add right spacer for middle row
         if rowIndex == 1 && currentLayout == .letters {
-            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 8
+            // Use the same formula for right spacer
+            let nineKeysWidth = standardKeyWidth * 9 + KeyboardMetrics.horizontalKeySpacing * 10
             let spacerWidth = (totalWidth - nineKeysWidth) / 2
 
             let rightSpacer = UIView()
             rightSpacer.translatesAutoresizingMaskIntoConstraints = false
-            rightSpacer.widthAnchor.constraint(equalToConstant: spacerWidth).isActive = true
+            let rightSpacerConstraint = rightSpacer.widthAnchor.constraint(equalToConstant: spacerWidth)
+            rightSpacerConstraint.priority = .required
+            rightSpacerConstraint.isActive = true
+            rightSpacer.setContentHuggingPriority(.required, for: .horizontal)
+            rightSpacer.setContentCompressionResistancePriority(.required, for: .horizontal)
             rowStack.addArrangedSubview(rightSpacer)
         }
 
         return rowStack
     }
     
-    private func setupKeyWidth(_ keyView: KeyboardKeyView, standardKeyWidth: CGFloat, rowIndex: Int) {
+    private func setupKeyWidth(_ keyView: KeyboardKeyView, standardKeyWidth: CGFloat, rowIndex: Int, row3ShiftWidth: CGFloat) {
         switch keyView.configuration.width {
         case .standard:
-            // Стандартные буквенные кнопки - все одинаковой ширины на основе верхнего ряда
-            keyView.widthAnchor.constraint(equalToConstant: standardKeyWidth).isActive = true
+            // Standard letter keys - all the same width based on top row
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: standardKeyWidth)
+            constraint.priority = .required
+            constraint.isActive = true
+            keyView.setContentCompressionResistancePriority(.required, for: .horizontal)
+            keyView.setContentHuggingPriority(.defaultHigh, for: .horizontal)
 
         case .shift:
-            // Shift и Backspace - фиксированная ширина
-            keyView.widthAnchor.constraint(equalToConstant: 42).isActive = true
+            // Shift and Backspace - ALWAYS use calculated width for row 3 letters
+            let shiftWidth: CGFloat
+            if rowIndex == 2 && currentLayout == .letters {
+                // Use EXACTLY calculated width (can be ideal 1.5x or less)
+                shiftWidth = row3ShiftWidth
+            } else {
+                // Fallback for other layouts (numbers, symbols)
+                shiftWidth = standardKeyWidth * 1.5
+            }
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: shiftWidth)
+            constraint.priority = .required
+            constraint.isActive = true
+            keyView.setContentCompressionResistancePriority(.required, for: .horizontal)
+            keyView.setContentHuggingPriority(.required, for: .horizontal)
 
         case .layoutSwitch:
-            // Кнопка переключения раскладки
-            keyView.widthAnchor.constraint(equalToConstant: 50).isActive = true
+            // Layout switch button
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: 50)
+            constraint.priority = .required
+            constraint.isActive = true
+            keyView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         case .space:
-            // Пробел заполняет оставшееся пространство
-            // Приоритет ниже, чтобы другие кнопки сохраняли свою ширину
+            // Space fills remaining space
+            // Lower priority so other keys maintain their width
             keyView.setContentHuggingPriority(.defaultLow, for: .horizontal)
             keyView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         case .returnKey:
-            // Return - фиксированная ширина
-            keyView.widthAnchor.constraint(equalToConstant: 88).isActive = true
+            // Return - fixed width
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: 88)
+            constraint.priority = .required
+            constraint.isActive = true
+            keyView.setContentCompressionResistancePriority(.required, for: .horizontal)
 
         case .fixed(let width):
-            keyView.widthAnchor.constraint(equalToConstant: width).isActive = true
+            let constraint = keyView.widthAnchor.constraint(equalToConstant: width)
+            constraint.priority = .required
+            constraint.isActive = true
+            keyView.setContentCompressionResistancePriority(.required, for: .horizontal)
         }
     }
     
@@ -331,12 +492,24 @@ final class TerminalCustomKeyboardView: UIView {
     }
     
     // MARK: - Layout Switching
-    
+
     func switchToLayout(_ layout: KeyboardLayout) {
         guard layout != currentLayout else { return }
-        
+
         UIView.transition(with: keyboardContainer, duration: 0.15, options: .transitionCrossDissolve) {
             self.loadLayout(layout)
+        }
+    }
+
+    // MARK: - Language Switching
+
+    /// Переключить язык клавиатуры на следующий
+    private func switchToNextLanguage() {
+        currentLanguage = currentLanguage.next
+
+        // Перезагружаем раскладку с анимацией
+        UIView.transition(with: keyboardContainer, duration: 0.15, options: .transitionCrossDissolve) {
+            self.loadLayout(self.currentLayout)
         }
     }
     
@@ -345,11 +518,26 @@ final class TerminalCustomKeyboardView: UIView {
     private func toggleModifier(_ type: ModifierKeyType) {
         switch type {
         case .shift:
-            modifierState.shift.toggle()
-            // Сбрасываем Caps Lock при нажатии Shift
+            let now = Date().timeIntervalSince1970
+
+            // If shift is already on, turn it off (don't toggle to caps lock)
             if modifierState.shift {
+                // Check for double-tap to enable Caps Lock
+                if now - lastShiftTapTime < doubleTapInterval {
+                    // Double tap detected - enable Caps Lock
+                    modifierState.capsLock = true
+                    modifierState.shift = false
+                } else {
+                    // Single tap when active - turn off
+                    modifierState.shift = false
+                }
+            } else {
+                // Shift is off - turn it on
+                modifierState.shift = true
                 modifierState.capsLock = false
             }
+
+            lastShiftTapTime = now
         case .capsLock:
             modifierState.capsLock.toggle()
             modifierState.shift = false
@@ -358,7 +546,7 @@ final class TerminalCustomKeyboardView: UIView {
         case .alt:
             modifierState.alt.toggle()
         }
-        
+
         updateModifierButtons()
         updateLetterDisplay()
     }
@@ -434,20 +622,23 @@ final class TerminalCustomKeyboardView: UIView {
 // MARK: - KeyboardKeyDelegate
 
 extension TerminalCustomKeyboardView: KeyboardKeyDelegate {
-    
+
     func keyDidPress(_ key: KeyboardKeyView, type: KeyType) {
         impactGenerator.impactOccurred()
-        
+
         switch type {
         case .modifier(let modType):
             toggleModifier(modType)
-            
+
         case .layoutSwitch(let layout):
             switchToLayout(layout)
-            
+
         case .special(.dismiss):
             delegate?.keyboardDidRequestDismiss(self)
-            
+
+        case .special(.languageSwitch):
+            switchToNextLanguage()
+
         case .character, .special:
             sendInput(for: type)
             resetShiftAfterKeyPress()

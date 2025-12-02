@@ -66,24 +66,47 @@ enum SpecialKeyType: Equatable {
     case pageUp
     case pageDown
     case dismiss
-    
+    case languageSwitch
+    case slash
+    case tilde
+
     var displayText: String {
         switch self {
-        case .backspace: return "⌫"
-        case .enter: return "return"
-        case .space: return "space"
-        case .tab: return "Tab"
-        case .escape: return "Esc"
+        case .backspace: return ""  // Uses SF Symbol
+        case .enter: return ""  // Uses SF Symbol
+        case .space: return ""  // Uses SF Symbol
+        case .tab: return ""  // Uses SF Symbol
+        case .escape: return "esc"
         case .delete: return "⌦"
-        case .arrowUp: return "↑"
-        case .arrowDown: return "↓"
-        case .arrowLeft: return "←"
-        case .arrowRight: return "→"
+        case .arrowUp: return ""  // Uses SF Symbol
+        case .arrowDown: return ""  // Uses SF Symbol
+        case .arrowLeft: return ""  // Uses SF Symbol
+        case .arrowRight: return ""  // Uses SF Symbol
         case .home: return "Home"
         case .end: return "End"
         case .pageUp: return "PgUp"
         case .pageDown: return "PgDn"
-        case .dismiss: return "⌄"
+        case .dismiss: return ""  // Uses SF Symbol
+        case .languageSwitch: return ""  // Uses SF Symbol
+        case .slash: return "/"
+        case .tilde: return "~"
+        }
+    }
+
+    /// SF Symbol name for keys that use symbols
+    var sfSymbolName: String? {
+        switch self {
+        case .backspace: return "delete.backward"
+        case .enter: return "return.left"
+        case .space: return "space"
+        case .tab: return "arrow.right.to.line.compact"
+        case .arrowUp: return "arrow.up"
+        case .arrowDown: return "arrow.down"
+        case .arrowLeft: return "arrow.left"
+        case .arrowRight: return "arrow.right"
+        case .dismiss: return "keyboard.chevron.compact.down"
+        case .languageSwitch: return "globe"
+        default: return nil
         }
     }
     
@@ -105,9 +128,12 @@ enum SpecialKeyType: Equatable {
         case .pageUp: return [0x1B, 0x5B, 0x35, 0x7E]
         case .pageDown: return [0x1B, 0x5B, 0x36, 0x7E]
         case .dismiss: return []
+        case .languageSwitch: return []
+        case .slash: return [0x2F]  // ASCII /
+        case .tilde: return [0x7E]  // ASCII ~
         }
     }
-    
+
     /// Поддерживает авто-повтор
     var supportsAutoRepeat: Bool {
         switch self {
@@ -125,13 +151,41 @@ enum ModifierKeyType: Equatable {
     case capsLock
     case control
     case alt
-    
+
     var displayText: String {
         switch self {
-        case .shift: return "⇧"
+        case .shift: return ""  // Uses SF Symbol
         case .capsLock: return "⇪"
-        case .control: return "Ctrl"
+        case .control: return ""  // Uses SF Symbol
         case .alt: return "⌥"
+        }
+    }
+
+    /// Иконка для активного состояния
+    var activeDisplayText: String {
+        switch self {
+        case .shift: return ""  // Uses SF Symbol (shift.fill)
+        case .capsLock: return "⇪"
+        case .control: return ""  // Uses SF Symbol
+        case .alt: return "⌥"
+        }
+    }
+
+    /// SF Symbol name for modifier keys
+    var sfSymbolName: String? {
+        switch self {
+        case .shift: return "shift"
+        case .control: return "control"
+        default: return nil
+        }
+    }
+
+    /// SF Symbol name for active state
+    var activeSfSymbolName: String? {
+        switch self {
+        case .shift: return "shift.fill"
+        case .control: return "control"
+        default: return nil
         }
     }
 }
@@ -227,7 +281,16 @@ final class KeyboardKeyView: UIView {
         label.minimumScaleFactor = 0.7
         return label
     }()
-    
+
+    /// SF Symbol для кнопки (используется вместо текста для некоторых кнопок)
+    private let primaryImageView: UIImageView = {
+        let imageView = UIImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        imageView.contentMode = .scaleAspectFit
+        imageView.isHidden = true
+        return imageView
+    }()
+
     /// Вторичный текст (символ над цифрой)
     private let secondaryLabel: UILabel = {
         let label = UILabel()
@@ -259,10 +322,11 @@ final class KeyboardKeyView: UIView {
     
     private func setupView() {
         translatesAutoresizingMaskIntoConstraints = false
-        
+
         // Добавляем фоновый вид
         addSubview(backgroundView)
         backgroundView.addSubview(primaryLabel)
+        backgroundView.addSubview(primaryImageView)
         backgroundView.addSubview(secondaryLabel)
         
         // Констрейнты для фона
@@ -280,7 +344,15 @@ final class KeyboardKeyView: UIView {
             primaryLabel.leadingAnchor.constraint(greaterThanOrEqualTo: backgroundView.leadingAnchor, constant: 4),
             primaryLabel.trailingAnchor.constraint(lessThanOrEqualTo: backgroundView.trailingAnchor, constant: -4)
         ])
-        
+
+        // Констрейнты для SF Symbol (та же позиция что и текст)
+        NSLayoutConstraint.activate([
+            primaryImageView.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
+            primaryImageView.centerYAnchor.constraint(equalTo: backgroundView.centerYAnchor),
+            primaryImageView.widthAnchor.constraint(equalToConstant: 20),
+            primaryImageView.heightAnchor.constraint(equalToConstant: 20)
+        ])
+
         // Констрейнты для вторичного текста
         NSLayoutConstraint.activate([
             secondaryLabel.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
@@ -303,11 +375,20 @@ final class KeyboardKeyView: UIView {
                 primaryLabel.font = UIFont.systemFont(ofSize: 16, weight: .regular)
             case .backspace, .delete:
                 primaryLabel.font = UIFont.systemFont(ofSize: 22, weight: .light)
+            case .escape, .tab:
+                // Toolbar buttons - consistent font size
+                primaryLabel.font = UIFont.systemFont(ofSize: 15, weight: .regular)
             default:
                 primaryLabel.font = UIFont.systemFont(ofSize: 15, weight: .regular)
             }
-        case .modifier:
-            primaryLabel.font = UIFont.systemFont(ofSize: 20, weight: .regular)
+        case .modifier(let type):
+            // Ctrl in toolbar should match Esc/Tab size
+            switch type {
+            case .control:
+                primaryLabel.font = UIFont.systemFont(ofSize: 15, weight: .regular)
+            default:
+                primaryLabel.font = UIFont.systemFont(ofSize: 20, weight: .regular)
+            }
         case .layoutSwitch:
             primaryLabel.font = UIFont.systemFont(ofSize: 15, weight: .regular)
         }
@@ -415,20 +496,65 @@ final class KeyboardKeyView: UIView {
     func setModifierActive(_ active: Bool) {
         isModifierActive = active
         updateBackgroundColor()
+
+        // Update icon for modifier button when active
+        if case .modifier(let type) = configuration.type {
+            if let symbolName = active ? type.activeSfSymbolName : type.sfSymbolName {
+                // Используем SF Symbol
+                primaryLabel.isHidden = true
+                primaryImageView.isHidden = false
+                let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+                primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+            } else {
+                // Используем текст
+                primaryLabel.isHidden = false
+                primaryImageView.isHidden = true
+                primaryLabel.text = active ? type.activeDisplayText : type.displayText
+            }
+        }
     }
     
     /// Обновить отображаемый текст (при изменении Shift)
     func updateDisplayText(uppercase: Bool = false) {
-        let text: String
-        
-        switch configuration.type {
-        case .character(let char):
-            text = uppercase ? char.uppercased() : char.lowercased()
-        default:
-            text = configuration.type.displayText
+        // Проверяем, есть ли SF Symbol для специальной кнопки
+        if case .special(let type) = configuration.type, let symbolName = type.sfSymbolName {
+            // Используем SF Symbol
+            primaryLabel.isHidden = true
+            primaryImageView.isHidden = false
+            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
         }
-        
-        primaryLabel.text = text
+        // Проверяем, есть ли SF Symbol для модификатора
+        else if case .modifier(let type) = configuration.type, let symbolName = type.sfSymbolName {
+            // Используем SF Symbol (учитываем активное состояние через setModifierActive)
+            primaryLabel.isHidden = true
+            primaryImageView.isHidden = false
+            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+        }
+        // Проверяем, есть ли SF Symbol для переключателя раскладки
+        else if case .layoutSwitch(let layout) = configuration.type, let symbolName = layout.sfSymbolName {
+            // Используем SF Symbol
+            primaryLabel.isHidden = true
+            primaryImageView.isHidden = false
+            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
+        }
+        // Используем текст
+        else {
+            primaryLabel.isHidden = false
+            primaryImageView.isHidden = true
+
+            let text: String
+            switch configuration.type {
+            case .character(let char):
+                text = uppercase ? char.uppercased() : char.lowercased()
+            default:
+                text = configuration.type.displayText
+            }
+
+            primaryLabel.text = text
+        }
     }
     
     // MARK: - Theme
@@ -436,11 +562,14 @@ final class KeyboardKeyView: UIView {
     func applyTheme(_ theme: KeyboardTheme) {
         self.theme = theme
         updateBackgroundColor()
-        
+
         // Текст
         primaryLabel.textColor = theme.keyTextColor
         secondaryLabel.textColor = theme.keySecondaryTextColor
-        
+
+        // SF Symbol цвет
+        primaryImageView.tintColor = theme.keyTextColor
+
         // Тень
         layer.shadowColor = theme.keyShadowColor.cgColor
         layer.shadowOffset = CGSize(width: 0, height: KeyboardMetrics.keyShadowOffsetY)

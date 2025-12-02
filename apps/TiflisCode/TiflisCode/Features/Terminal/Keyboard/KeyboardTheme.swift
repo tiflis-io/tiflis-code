@@ -45,8 +45,8 @@ struct KeyboardMetrics {
     /// Отступ сверху клавиатуры
     static let topPadding: CGFloat = 6
 
-    /// Отступ снизу клавиатуры (до safe area)
-    static let bottomPadding: CGFloat = 3
+    /// Отступ снизу клавиатуры (до safe area) - increased for rounded screens
+    static let bottomPadding: CGFloat = 8
 
     // MARK: - Тени
 
@@ -151,20 +151,64 @@ struct KeyboardTheme {
     }
 }
 
+// MARK: - Keyboard Language
+
+/// Языки клавиатуры
+enum KeyboardLanguage: String, CaseIterable {
+    case english = "en"
+    case russian = "ru"
+    case georgian = "ka"
+
+    /// Название языка для UI
+    var displayName: String {
+        switch self {
+        case .english: return "English"
+        case .russian: return "Русский"
+        case .georgian: return "ქართული"
+        }
+    }
+
+    /// Эмодзи флаг для визуального отображения
+    var flag: String {
+        switch self {
+        case .english: return "🇺🇸"
+        case .russian: return "🇷🇺"
+        case .georgian: return "🇬🇪"
+        }
+    }
+
+    /// Следующий язык в цикле
+    var next: KeyboardLanguage {
+        let all = KeyboardLanguage.allCases
+        guard let currentIndex = all.firstIndex(of: self) else { return .english }
+        let nextIndex = (currentIndex + 1) % all.count
+        return all[nextIndex]
+    }
+}
+
 // MARK: - Keyboard Layout
 
 /// Типы раскладки клавиатуры
 enum KeyboardLayout {
-    case letters      // Буквенная раскладка (QWERTY)
-    case numbers      // Цифры и основные символы  
+    case letters      // Буквенная раскладка (QWERTY/ЙЦУКЕН/ჯერუპ)
+    case numbers      // Цифры и основные символы
     case symbols      // Дополнительные символы
-    
+
     /// Текст для кнопки переключения на эту раскладку
     var switchButtonTitle: String {
         switch self {
-        case .letters: return "ABC"
-        case .numbers: return "123"
+        case .letters: return ""  // Uses SF Symbol
+        case .numbers: return ""  // Uses SF Symbol
         case .symbols: return "#+="
+        }
+    }
+
+    /// SF Symbol name for layout switch button
+    var sfSymbolName: String? {
+        switch self {
+        case .letters: return "textformat.abc"
+        case .numbers: return "textformat.123"
+        default: return nil
         }
     }
 }
