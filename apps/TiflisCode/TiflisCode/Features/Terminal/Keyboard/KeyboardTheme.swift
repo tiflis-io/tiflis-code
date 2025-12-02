@@ -182,22 +182,36 @@ enum KeyboardLanguage: String, CaseIterable {
     static func availableLanguages() -> [KeyboardLanguage] {
         // Get system keyboard language identifiers
         let systemLanguages = UserDefaults.standard.object(forKey: "AppleKeyboards") as? [String] ?? []
+
+        print("🌐 System keyboards raw: \(systemLanguages)")
+
         let systemLanguageCodes = systemLanguages.compactMap { keyboard -> String? in
             // Extract language code from keyboard identifier (e.g., "en_US@sw=QWERTY" -> "en")
             let components = keyboard.split(separator: "_")
-            return components.first.map(String.init)
+            let code = components.first.map(String.init)
+            print("   Keyboard '\(keyboard)' -> code: '\(code ?? "nil")'")
+            return code
         }
+
+        print("🌐 Extracted language codes: \(systemLanguageCodes)")
+        print("🌐 App supported languages: \(KeyboardLanguage.allCases.map { "\($0.displayName) (\($0.rawValue))" })")
 
         // Filter app languages to only those in system languages
         var available = KeyboardLanguage.allCases.filter { language in
-            systemLanguageCodes.contains(language.rawValue)
+            let match = systemLanguageCodes.contains(language.rawValue)
+            print("   Checking \(language.displayName) (\(language.rawValue)): \(match ? "✅ MATCH" : "❌ no match")")
+            return match
         }
+
+        print("🌐 Matched languages: \(available.map { $0.displayName })")
 
         // English must always be available (fallback)
         if !available.contains(.english) {
+            print("🌐 English not found in system, adding as fallback")
             available.insert(.english, at: 0)
         }
 
+        print("🌐 Final available languages: \(available.map { $0.displayName })")
         return available.isEmpty ? [.english] : available
     }
 
