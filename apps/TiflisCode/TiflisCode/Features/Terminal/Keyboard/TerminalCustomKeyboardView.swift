@@ -470,14 +470,17 @@ final class TerminalCustomKeyboardView: UIView {
         leftSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         rowStack.addArrangedSubview(leftSpacer)
 
-        // Globe button (language switch) - 60pt (20% larger)
+        // Globe button (language switch) - 80pt (33% larger for better touch target and spacing)
         let globeConfig = KeyConfiguration(type: .special(.languageSwitch))
         let globeButton = KeyboardKeyView(configuration: globeConfig)
         globeButton.delegate = self
         globeButton.isBottomRowButton = true  // Transparent background
         globeButton.applyTheme(theme)
+        globeButton.updateDisplayText()  // Re-render icon with correct size after setting isBottomRowButton
         globeButton.translatesAutoresizingMaskIntoConstraints = false
-        let globeWidthConstraint = globeButton.widthAnchor.constraint(equalToConstant: 60)
+        // Hide globe button if only one language available (nothing to switch)
+        globeButton.isHidden = availableLanguages.count <= 1
+        let globeWidthConstraint = globeButton.widthAnchor.constraint(equalToConstant: 80)
         globeWidthConstraint.priority = .required
         globeWidthConstraint.isActive = true
         globeButton.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -491,15 +494,16 @@ final class TerminalCustomKeyboardView: UIView {
         middleSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         rowStack.addArrangedSubview(middleSpacer)
 
-        // Microphone button (voice input) - 60pt (20% larger)
+        // Microphone button (voice input) - 80pt (33% larger for better touch target and spacing)
         let micConfig = KeyConfiguration(type: .special(.microphone))
         let micButton = KeyboardKeyView(configuration: micConfig)
         micButton.delegate = self
         micButton.isBottomRowButton = true  // Transparent background
         micButton.applyTheme(theme)
+        micButton.updateDisplayText()  // Re-render icon with correct size after setting isBottomRowButton
         micButton.translatesAutoresizingMaskIntoConstraints = false
-        micButton.isHidden = true  // Hidden but not removed (for future voice input feature)
-        let micWidthConstraint = micButton.widthAnchor.constraint(equalToConstant: 60)
+        micButton.isHidden = true  // Hidden (for future voice input feature)
+        let micWidthConstraint = micButton.widthAnchor.constraint(equalToConstant: 80)
         micWidthConstraint.priority = .required
         micWidthConstraint.isActive = true
         micButton.setContentCompressionResistancePriority(.required, for: .horizontal)
@@ -513,10 +517,11 @@ final class TerminalCustomKeyboardView: UIView {
         rightSpacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         rowStack.addArrangedSubview(rightSpacer)
 
-        // Make middle spacer 1.5x wider than side spacers
+        // iOS standard: symmetric layout with equal small side spacers and large middle spacer
+        // Left and right spacers are equal (small), middle spacer is much larger
         NSLayoutConstraint.activate([
-            middleSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor, multiplier: 1.5),
-            rightSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor)
+            rightSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor),  // Symmetric: left = right
+            middleSpacer.widthAnchor.constraint(equalTo: leftSpacer.widthAnchor, multiplier: 4.0)  // Middle is 4x larger
         ])
 
         return rowStack

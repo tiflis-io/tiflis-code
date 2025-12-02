@@ -267,10 +267,23 @@ final class KeyboardKeyView: UIView {
     private var isModifierActive = false
 
     /// Flag to indicate this is a bottom row button (transparent background)
-    var isBottomRowButton = false
-    
+    var isBottomRowButton = false {
+        didSet {
+            if isBottomRowButton {
+                // Update icon size constraints for bottom row buttons (1.2x larger)
+                imageWidthConstraint?.constant = 26  // 20 * 1.3 for better visibility
+                imageHeightConstraint?.constant = 26
+            }
+        }
+    }
+
+    // MARK: - Constraints
+
+    private var imageWidthConstraint: NSLayoutConstraint?
+    private var imageHeightConstraint: NSLayoutConstraint?
+
     // MARK: - UI Components
-    
+
     /// Основная кнопка с фоном и тенью
     private let backgroundView: UIView = {
         let view = UIView()
@@ -353,11 +366,14 @@ final class KeyboardKeyView: UIView {
         ])
 
         // Констрейнты для SF Symbol (та же позиция что и текст)
+        imageWidthConstraint = primaryImageView.widthAnchor.constraint(equalToConstant: 20)
+        imageHeightConstraint = primaryImageView.heightAnchor.constraint(equalToConstant: 20)
+
         NSLayoutConstraint.activate([
             primaryImageView.centerXAnchor.constraint(equalTo: backgroundView.centerXAnchor),
             primaryImageView.centerYAnchor.constraint(equalTo: backgroundView.centerYAnchor),
-            primaryImageView.widthAnchor.constraint(equalToConstant: 20),
-            primaryImageView.heightAnchor.constraint(equalToConstant: 20)
+            imageWidthConstraint!,
+            imageHeightConstraint!
         ])
 
         // Констрейнты для вторичного текста
@@ -532,7 +548,9 @@ final class KeyboardKeyView: UIView {
             // Используем SF Symbol
             primaryLabel.isHidden = true
             primaryImageView.isHidden = false
-            let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
+            // Bottom row buttons (globe, mic) get 1.2x larger icons: 18 * 1.2 = 21.6
+            let pointSize: CGFloat = isBottomRowButton ? 21.6 : 18
+            let config = UIImage.SymbolConfiguration(pointSize: pointSize, weight: .regular)
             primaryImageView.image = UIImage(systemName: symbolName, withConfiguration: config)
         }
         // Проверяем, есть ли SF Symbol для модификатора
@@ -636,8 +654,12 @@ final class KeyboardKeyView: UIView {
         primaryLabel.textColor = theme.keyTextColor
         secondaryLabel.textColor = theme.keySecondaryTextColor
 
-        // SF Symbol цвет
-        primaryImageView.tintColor = theme.keyTextColor
+        // SF Symbol цвет - semi-transparent for bottom row buttons
+        if isBottomRowButton {
+            primaryImageView.tintColor = theme.keyTextColor.withAlphaComponent(0.5)
+        } else {
+            primaryImageView.tintColor = theme.keyTextColor
+        }
 
         // Тень
         layer.shadowColor = theme.keyShadowColor.cgColor
@@ -650,7 +672,8 @@ final class KeyboardKeyView: UIView {
         // Bottom row buttons are always transparent
         if isBottomRowButton {
             backgroundView.backgroundColor = .clear
-            primaryImageView.tintColor = theme.keyTextColor
+            // Bottom row icons are semi-transparent (0.5 alpha) matching iOS standard
+            primaryImageView.tintColor = theme.keyTextColor.withAlphaComponent(0.5)
             layer.shadowOpacity = 0  // No shadow for transparent buttons
             return
         }
