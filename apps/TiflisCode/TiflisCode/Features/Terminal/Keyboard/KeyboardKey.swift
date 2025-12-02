@@ -590,14 +590,14 @@ final class KeyboardKeyView: UIView {
         switch firstChar {
         // Row 1: standard Georgian keyboard shift alternatives
         case "ქ": return "ჩ"
-        case "წ": return "ძ"
-        case "ე": return "ჱ"
+        case "წ": return "ჯ"
+        case "ე": return "ე"  // no alternative
         case "რ": return "ღ"
         case "ტ": return "თ"
         case "ყ": return "ყ"  // no alternative
         case "უ": return "უ"  // no alternative
         case "ი": return "ი"  // no alternative
-        case "ო": return "ჲ"
+        case "ო": return "ო"  // no alternative
         case "პ": return "ჟ"
 
         // Row 2
@@ -607,18 +607,18 @@ final class KeyboardKeyView: UIView {
         case "ფ": return "ფ"  // no alternative
         case "გ": return "გ"  // no alternative
         case "ჰ": return "ჰ"  // no alternative
-        case "ჯ": return "ჯ"  // no alternative
+        case "ჯ": return "ჭ"
         case "კ": return "კ"  // no alternative
         case "ლ": return "ლ"  // no alternative
 
         // Row 3
-        case "ზ": return "ზ"  // no alternative
+        case "ზ": return "ძ"
         case "ხ": return "ხ"  // no alternative
         case "ც": return "წ"
         case "ვ": return "ვ"  // no alternative
         case "ბ": return "ბ"  // no alternative
         case "ნ": return "ნ"  // no alternative
-        case "მ": return "ჭ"
+        case "მ": return "მ"  // no alternative
 
         // Non-Georgian letters - use standard uppercase
         default:

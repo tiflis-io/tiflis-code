@@ -249,14 +249,14 @@ struct ModifierState {
             switch character {
             // Row 1: standard Georgian keyboard shift alternatives
             case "ქ": result = "ჩ"
-            case "წ": result = "ძ"
-            case "ე": result = "ჱ"
+            case "წ": result = "ჯ"
+            case "ე": result = "ე"  // no alternative
             case "რ": result = "ღ"
             case "ტ": result = "თ"
             case "ყ": result = "ყ"  // no alternative
             case "უ": result = "უ"  // no alternative
             case "ი": result = "ი"  // no alternative
-            case "ო": result = "ჲ"
+            case "ო": result = "ო"  // no alternative
             case "პ": result = "ჟ"
 
             // Row 2
@@ -266,18 +266,18 @@ struct ModifierState {
             case "ფ": result = "ფ"  // no alternative
             case "გ": result = "გ"  // no alternative
             case "ჰ": result = "ჰ"  // no alternative
-            case "ჯ": result = "ჯ"  // no alternative
+            case "ჯ": result = "ჭ"
             case "კ": result = "კ"  // no alternative
             case "ლ": result = "ლ"  // no alternative
 
             // Row 3
-            case "ზ": result = "ზ"  // no alternative
+            case "ზ": result = "ძ"
             case "ხ": result = "ხ"  // no alternative
             case "ც": result = "წ"
             case "ვ": result = "ვ"  // no alternative
             case "ბ": result = "ბ"  // no alternative
             case "ნ": result = "ნ"  // no alternative
-            case "მ": result = "ჭ"
+            case "მ": result = "მ"  // no alternative
 
             // Non-Georgian letters - use standard uppercase
             default:
