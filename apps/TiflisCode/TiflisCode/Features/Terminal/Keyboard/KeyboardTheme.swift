@@ -242,36 +242,73 @@ struct ModifierState {
     /// Применить модификаторы к символу
     func apply(to character: Character) -> String {
         var result = String(character)
-        
+
         // Преобразование регистра
         if isUppercase {
-            if character.isLetter {
-                result = character.uppercased()
-            } else {
-                // Символы над цифрами при Shift
-                switch character {
-                case "1": result = "!"
-                case "2": result = "@"
-                case "3": result = "#"
-                case "4": result = "$"
-                case "5": result = "%"
-                case "6": result = "^"
-                case "7": result = "&"
-                case "8": result = "*"
-                case "9": result = "("
-                case "0": result = ")"
-                case "-": result = "_"
-                case "=": result = "+"
-                case "[": result = "{"
-                case "]": result = "}"
-                case "\\": result = "|"
-                case ";": result = ":"
-                case "'": result = "\""
-                case ",": result = "<"
-                case ".": result = ">"
-                case "/": result = "?"
-                case "`": result = "~"
-                default: break
+            // Georgian letters - special shift mapping (no uppercase in Georgian)
+            switch character {
+            // Row 1: standard Georgian keyboard shift alternatives
+            case "ქ": result = "ჩ"
+            case "წ": result = "ძ"
+            case "ე": result = "ჱ"
+            case "რ": result = "ღ"
+            case "ტ": result = "თ"
+            case "ყ": result = "ყ"  // no alternative
+            case "უ": result = "უ"  // no alternative
+            case "ი": result = "ი"  // no alternative
+            case "ო": result = "ჲ"
+            case "პ": result = "ჟ"
+
+            // Row 2
+            case "ა": result = "ა"  // no alternative
+            case "ს": result = "შ"
+            case "დ": result = "დ"  // no alternative
+            case "ფ": result = "ფ"  // no alternative
+            case "გ": result = "გ"  // no alternative
+            case "ჰ": result = "ჰ"  // no alternative
+            case "ჯ": result = "ჯ"  // no alternative
+            case "კ": result = "კ"  // no alternative
+            case "ლ": result = "ლ"  // no alternative
+
+            // Row 3
+            case "ზ": result = "ზ"  // no alternative
+            case "ხ": result = "ხ"  // no alternative
+            case "ც": result = "წ"
+            case "ვ": result = "ვ"  // no alternative
+            case "ბ": result = "ბ"  // no alternative
+            case "ნ": result = "ნ"  // no alternative
+            case "მ": result = "ჭ"
+
+            // Non-Georgian letters - use standard uppercase
+            default:
+                if character.isLetter {
+                    result = character.uppercased()
+                } else {
+                    // Символы над цифрами при Shift
+                    switch character {
+                    case "1": result = "!"
+                    case "2": result = "@"
+                    case "3": result = "#"
+                    case "4": result = "$"
+                    case "5": result = "%"
+                    case "6": result = "^"
+                    case "7": result = "&"
+                    case "8": result = "*"
+                    case "9": result = "("
+                    case "0": result = ")"
+                    case "-": result = "_"
+                    case "=": result = "+"
+                    case "[": result = "{"
+                    case "]": result = "}"
+                    case "\\": result = "|"
+                    case ";": result = ":"
+                    case "'": result = "\""
+                    case ",": result = "<"
+                    case ".": result = ">"
+                    case "/": result = "?"
+                    case "`": result = "~"
+                    default: break
+                    }
                 }
             }
         } else if character.isLetter {

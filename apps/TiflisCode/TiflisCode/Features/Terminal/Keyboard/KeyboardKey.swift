@@ -568,7 +568,12 @@ final class KeyboardKeyView: UIView {
             let text: String
             switch configuration.type {
             case .character(let char):
-                text = uppercase ? char.uppercased() : char.lowercased()
+                // Apply Georgian shift mapping if needed
+                if uppercase {
+                    text = applyShiftMapping(to: char)
+                } else {
+                    text = char.lowercased()
+                }
             default:
                 text = configuration.type.displayText
             }
@@ -576,7 +581,51 @@ final class KeyboardKeyView: UIView {
             primaryLabel.text = text
         }
     }
-    
+
+    /// Apply shift mapping for Georgian and other special characters
+    private func applyShiftMapping(to char: String) -> String {
+        guard let firstChar = char.first else { return char }
+
+        // Georgian letters - special shift mapping (no uppercase in Georgian)
+        switch firstChar {
+        // Row 1: standard Georgian keyboard shift alternatives
+        case "ქ": return "ჩ"
+        case "წ": return "ძ"
+        case "ე": return "ჱ"
+        case "რ": return "ღ"
+        case "ტ": return "თ"
+        case "ყ": return "ყ"  // no alternative
+        case "უ": return "უ"  // no alternative
+        case "ი": return "ი"  // no alternative
+        case "ო": return "ჲ"
+        case "პ": return "ჟ"
+
+        // Row 2
+        case "ა": return "ა"  // no alternative
+        case "ს": return "შ"
+        case "დ": return "დ"  // no alternative
+        case "ფ": return "ფ"  // no alternative
+        case "გ": return "გ"  // no alternative
+        case "ჰ": return "ჰ"  // no alternative
+        case "ჯ": return "ჯ"  // no alternative
+        case "კ": return "კ"  // no alternative
+        case "ლ": return "ლ"  // no alternative
+
+        // Row 3
+        case "ზ": return "ზ"  // no alternative
+        case "ხ": return "ხ"  // no alternative
+        case "ც": return "წ"
+        case "ვ": return "ვ"  // no alternative
+        case "ბ": return "ბ"  // no alternative
+        case "ნ": return "ნ"  // no alternative
+        case "მ": return "ჭ"
+
+        // Non-Georgian letters - use standard uppercase
+        default:
+            return char.uppercased()
+        }
+    }
+
     // MARK: - Theme
     
     func applyTheme(_ theme: KeyboardTheme) {
