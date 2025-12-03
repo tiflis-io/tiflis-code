@@ -202,6 +202,9 @@ final class TerminalViewModel: ObservableObject {
                 } else {
                     // Update terminal state to disconnected
                     self.terminalState = .disconnected
+                    // Reset subscription flag - server loses subscription on disconnect
+                    // This ensures we re-subscribe (not just recover) on reconnect
+                    self.isSubscribed = false
                 }
             }
             .store(in: &cancellables)
