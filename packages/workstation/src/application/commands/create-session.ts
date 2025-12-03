@@ -14,7 +14,7 @@ import {
   ProjectNotFoundError,
   SessionLimitReachedError,
 } from '../../domain/errors/domain-errors.js';
-import { SESSION_CONFIG, DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE } from '../../config/constants.js';
+import { SESSION_CONFIG } from '../../config/constants.js';
 import type { SessionType } from '../../domain/entities/session.js';
 import type { SessionCreatedMessage, ResponseMessage } from '../../protocol/messages.js';
 
