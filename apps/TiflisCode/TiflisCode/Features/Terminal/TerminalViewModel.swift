@@ -730,6 +730,12 @@ final class TerminalViewModel: ObservableObject {
             return
         }
 
+        // Detect clear screen sequences before feeding
+        // ESC[2J - Erase Display, ESC[3J - Erase Scrollback, ESC c - Full Reset
+        let hasClearSequence = content.contains("\u{1b}[2J") ||
+                               content.contains("\u{1b}[3J") ||
+                               content.contains("\u{1b}c")
+
         // Feed directly to TerminalView (proper SwiftTerm pattern)
         // Wrap in safety check to handle potential SwiftTerm crashes with malformed escape sequences
         // This is especially important for TUI applications like htop that send complex sequences
@@ -757,6 +763,12 @@ final class TerminalViewModel: ObservableObject {
             }
         } else {
             terminalView.feed(byteArray: bytes)
+        }
+
+        // After clear screen, scroll to bottom to show cursor position
+        // SwiftTerm doesn't auto-scroll after ESC[2J, leaving user viewing scrollback
+        if hasClearSequence {
+            scrollTerminalToBottom()
         }
 
         #if DEBUG
@@ -996,14 +1008,36 @@ final class TerminalViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Scroll Management
+
+    /// Scrolls the terminal view to the bottom to show the cursor position
+    /// Called after clear screen sequences to ensure user sees the prompt
+    private func scrollTerminalToBottom() {
+        guard let terminalView = swiftTermView else { return }
+
+        // TerminalView is a UIScrollView subclass
+        // Calculate the bottom offset based on content size and bounds
+        let bottomOffset = max(0, terminalView.contentSize.height - terminalView.bounds.height)
+        let newOffset = CGPoint(x: 0, y: bottomOffset)
+
+        // Only scroll if we're not already at the bottom
+        if abs(terminalView.contentOffset.y - bottomOffset) > 1 {
+            terminalView.setContentOffset(newOffset, animated: false)
+
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Scrolled to bottom after clear: offset=\(bottomOffset)")
+            #endif
+        }
+    }
+
     // MARK: - First Responder Management
-    
+
     /// Dismisses the keyboard by resigning first responder
     /// Called when drawer opens to hide keyboard
     func resignFirstResponder() {
         _ = swiftTermView?.resignFirstResponder()
     }
-    
+
     /// Shows the keyboard by becoming first responder
     /// Called when drawer closes to restore keyboard input
     func becomeFirstResponder() {

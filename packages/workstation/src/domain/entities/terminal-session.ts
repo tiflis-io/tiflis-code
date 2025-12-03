@@ -219,12 +219,50 @@ export class TerminalSession extends Session {
   }
 
   /**
+   * Detects if content contains a clear screen escape sequence.
+   * Clears the output buffer when detected to prevent replay issues.
+   *
+   * Clear sequences detected:
+   * - ESC[2J - Erase Display (clear entire screen)
+   * - ESC[3J - Erase Scrollback (clear scrollback buffer)
+   * - ESC c  - Full Reset (RIS)
+   */
+  private detectAndHandleClearScreen(content: string): void {
+    // Check for clear screen sequences
+    // \x1b[2J - Erase Display
+    // \x1b[3J - Erase Scrollback
+    // \x1bc   - Full Reset (RIS)
+    const hasClearSequence =
+      content.includes('\x1b[2J') ||
+      content.includes('\x1b[3J') ||
+      content.includes('\x1bc');
+
+    if (hasClearSequence) {
+      this.clearOutputBuffer();
+    }
+  }
+
+  /**
+   * Clears the output buffer.
+   * Called when clear screen sequence is detected to prevent replay of cleared content.
+   */
+  clearOutputBuffer(): void {
+    this._outputBuffer = [];
+    this._bufferIndex = 0;
+    // Note: We don't reset _sequenceNumber to maintain monotonic ordering
+  }
+
+  /**
    * Adds output to in-memory buffer (circular buffer) with auto-assigned sequence number.
    * When buffer is full, oldest messages are evicted.
+   * Automatically clears buffer when clear screen sequence is detected.
    * @param content The raw terminal output content
    * @returns The created message with assigned sequence number
    */
   addOutputToBuffer(content: string): TerminalOutputMessage {
+    // Detect clear screen and reset buffer if needed
+    this.detectAndHandleClearScreen(content);
+
     const message: TerminalOutputMessage = {
       content_type: 'terminal',
       content,
