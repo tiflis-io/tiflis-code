@@ -4,7 +4,7 @@
 
 > **⚠️ CRITICAL SECURITY NOTE:** This implementation includes `NSAllowsArbitraryLoads = true` in `Info.plist` for local development. **This MUST be removed before production deployment.** See [Security Considerations](#security-considerations) section for details.
 
-> **✅ Status:** Fully functional - connection, authentication, heartbeat, and reconnection all working. Last updated: January 30, 2025.
+> **✅ Status:** Fully functional - connection, authentication, heartbeat, and reconnection all working. Last updated: December 3, 2025.
 
 ## Overview
 
@@ -12,13 +12,14 @@ This document describes the implementation of the WebSocket connection feature t
 
 ## Implementation Date
 
-January 2025
+January 2025 (last updated: December 2025)
 
 ## Update History
 
 ### January 30, 2025 - Workstation Status Tracking
 
 **New Feature:**
+
 1. **Workstation Status Tracking:** Added separate tracking for workstation online/offline status
    - `ConnectionService` now publishes `workstationOnline: Bool` property
    - Updated via `workstationDidGoOffline` and `workstationDidComeOnline` delegate methods
@@ -30,6 +31,7 @@ January 2025
 ### January 30, 2025 - Heartbeat Refactoring and Architecture Improvements
 
 **Major Improvements:**
+
 1. **Task-Based Heartbeat:** Replaced `Timer`-based heartbeat with `Task.sleep`-based periodic pings
    - More reliable in async contexts (no RunLoop dependency)
    - Better cancellation handling
@@ -49,6 +51,7 @@ January 2025
    - Eliminated data race warnings
 
 **Fixed Issues:**
+
 1. **Connection Timeout After Auth:** Fixed connection closing after authentication by refactoring message listening
    - `listenForMessages()` now uses `task.receive()` directly (no timeout)
    - `receiveMessage()` only used for connection setup with explicit timeouts
@@ -61,6 +64,7 @@ January 2025
 ### January 29, 2025 - Bug Fixes and Improvements
 
 **Fixed Issues:**
+
 1. **URL Normalization:** Fixed to not add default ports (80/443) for URLs with paths (e.g., `/ws`), as these are service-specific and should include the port explicitly
 2. **Continuation Leaks:** Fixed Swift task continuation leaks in `waitForConnection()` by ensuring continuations are always resumed, even on connection close
 3. **Workstation Offline Handling:** Added proper error handling for workstation offline scenarios with `workstationOffline` error type
@@ -69,6 +73,7 @@ January 2025
 6. **Code Quality:** Extracted helper functions for better maintainability and added comprehensive error handling
 
 **Improvements:**
+
 - Added extensive logging throughout connection flow for debugging
 - Improved error messages with actionable guidance
 - Added timeout handling for message receiving operations
@@ -184,42 +189,44 @@ The implementation follows the project's **MVVM + Services** pattern with proper
     4. Wait for connection via continuation (delegate callback)
     5. Send `connect` message to tunnel
     6. Wait for `connected` response
+
 7. Send `auth` message to workstation (via tunnel)
 8. Workstation processes auth message and sends `auth.success` response
 9. Tunnel forwards response to client
 10. Client receives `auth.success` and completes authentication
 11. Start heartbeat mechanism
-  - **URL Normalization:**
-    - Converts `http://` → `ws://` and `https://` → `wss://`
-    - Only adds default ports (80 for `ws://`, 443 for `wss://`) if port is missing AND no path is present
-    - URLs with paths (like `/ws`) are assumed to be service-specific and should include the port explicitly
-    - Validates WebSocket URL format
-    - Logs warnings when port is missing to guide users
-  - **Heartbeat:**
-    - **Task-Based Implementation:** Uses `Task.sleep` for periodic pings (no Timer/RunLoop dependency)
-    - Sends initial ping immediately after authentication
-    - Sends `ping` every 20 seconds using async task loop
-    - Tracks last `pong` timestamp
-    - **Pong Timeout:** Uses `Task`-based timeout (30 seconds) instead of Timer
-    - Marks connection stale if no `pong` received within 30 seconds
-    - Automatically reconnects on stale connection
-    - Properly cancels all tasks on disconnection
-  - **Reconnection:**
-    - Exponential backoff: 1s → 2s → 4s → ... → 30s max
-    - Automatic reconnection on disconnect or stale connection
-    - **Smart Reconnection:** Skips reconnection attempts when workstation is offline (user needs to start workstation first)
-    - Restores subscriptions after reconnect
-    - Prevents multiple simultaneous connection attempts with `isConnecting` flag
-  - **Message Handling:**
-    - **Connection Setup:** Uses `receiveMessage()` with 30s timeout for initial connection/auth
-    - **Ongoing Listening:** Uses `task.receive()` directly (no timeout) after authentication
-    - Uses `Data` (Sendable) in task groups to avoid concurrency issues
-    - Routes to delegate callbacks (all dispatched to main actor)
-    - Handles `pong` responses for heartbeat (cancels pong timeout task)
-    - Handles `connection.workstation_offline/online` events
-    - Handles error messages during auth flow (workstation offline, tunnel not found)
-    - **Timestamp Logging:** All log messages include human-readable timestamps `[HH:mm:ss.SSS]`
-    - Comprehensive logging at each step for debugging
+
+- **URL Normalization:**
+  - Converts `http://` → `ws://` and `https://` → `wss://`
+  - Only adds default ports (80 for `ws://`, 443 for `wss://`) if port is missing AND no path is present
+  - URLs with paths (like `/ws`) are assumed to be service-specific and should include the port explicitly
+  - Validates WebSocket URL format
+  - Logs warnings when port is missing to guide users
+- **Heartbeat:**
+  - **Task-Based Implementation:** Uses `Task.sleep` for periodic pings (no Timer/RunLoop dependency)
+  - Sends initial ping immediately after authentication
+  - Sends `ping` every 20 seconds using async task loop
+  - Tracks last `pong` timestamp
+  - **Pong Timeout:** Uses `Task`-based timeout (30 seconds) instead of Timer
+  - Marks connection stale if no `pong` received within 30 seconds
+  - Automatically reconnects on stale connection
+  - Properly cancels all tasks on disconnection
+- **Reconnection:**
+  - Exponential backoff: 1s → 2s → 4s → ... → 30s max
+  - Automatic reconnection on disconnect or stale connection
+  - **Smart Reconnection:** Skips reconnection attempts when workstation is offline (user needs to start workstation first)
+  - Restores subscriptions after reconnect
+  - Prevents multiple simultaneous connection attempts with `isConnecting` flag
+- **Message Handling:**
+  - **Connection Setup:** Uses `receiveMessage()` with 30s timeout for initial connection/auth
+  - **Ongoing Listening:** Uses `task.receive()` directly (no timeout) after authentication
+  - Uses `Data` (Sendable) in task groups to avoid concurrency issues
+  - Routes to delegate callbacks (all dispatched to main actor)
+  - Handles `pong` responses for heartbeat (cancels pong timeout task)
+  - Handles `connection.workstation_offline/online` events
+  - Handles error messages during auth flow (workstation offline, tunnel not found)
+  - **Timestamp Logging:** All log messages include human-readable timestamps `[HH:mm:ss.SSS]`
+  - Comprehensive logging at each step for debugging
 
 ### 6. Connection Service
 
@@ -251,6 +258,7 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 **File:** `apps/TiflisCode/TiflisCode/App/TiflisCodeApp.swift`
 
 **Changes:**
+
 - Added `@AppStorage("tunnelId")` for tunnel ID persistence
 - Added `@Published var workstationOnline: Bool` to track workstation status separately
 - Injected `ConnectionService` as dependency (with default implementation)
@@ -262,20 +270,21 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 - Updated `hasConnectionConfig` to check both `tunnelURL` and `tunnelId`
 
 **Dependency Injection:**
+
 ```swift
 init(connectionService: ConnectionServicing? = nil) {
     // Create services with default implementations
     let keychainManager = KeychainManager()
     let deviceIDManager = DeviceIDManager()
     let webSocketClient = WebSocketClient()
-    
+
     // Inject or create connection service
     self.connectionService = connectionService ?? ConnectionService(
         webSocketClient: webSocketClient,
         keychainManager: keychainManager,
         deviceIDManager: deviceIDManager
     )
-    
+
     // Observe connection state
     observeConnectionState()
 }
@@ -286,6 +295,7 @@ init(connectionService: ConnectionServicing? = nil) {
 **File:** `apps/TiflisCode/TiflisCode/Features/Settings/SettingsView.swift`
 
 **Changes:**
+
 - Removed local `@State private var authKey`
 - Added `KeychainManager` instance for secure storage
 - Updated `handleMagicLink()` to:
@@ -299,18 +309,20 @@ init(connectionService: ConnectionServicing? = nil) {
 **File:** `apps/TiflisCode/TiflisCode/Resources/Info.plist`
 
 **Changes:**
+
 - Added `NSAppTransportSecurity` exception to allow HTTP/WebSocket connections for local development
 
 > **⚠️ CRITICAL SECURITY WARNING:**
-> 
+>
 > The `NSAllowsArbitraryLoads = true` setting **MUST be removed before production deployment**. This setting disables App Transport Security (ATS) and allows unencrypted HTTP/WebSocket connections, which is a **serious security vulnerability**.
-> 
+>
 > **Before production:**
+>
 > 1. Remove the entire `NSAppTransportSecurity` dictionary from `Info.plist`
 > 2. Ensure all tunnel URLs use `wss://` (secure WebSocket over TLS)
 > 3. Verify TLS certificates are properly configured on the tunnel server
 > 4. Test that connections work with ATS enabled (default iOS behavior)
-> 
+>
 > **Failure to remove this setting will result in App Store rejection and exposes users to man-in-the-middle attacks.**
 
 ## Connection Flow
@@ -389,6 +401,7 @@ If not connected:
 ```
 
 **Key Implementation Details:**
+
 - **Task-Based:** Uses `Task.sleep` instead of `Timer` for better async integration
 - **Initial Ping:** Sends ping immediately after authentication to keep connection alive
 - **Cancellation:** All tasks properly cancelled on disconnection via `stopHeartbeat()`
@@ -435,6 +448,7 @@ If failed:
 ### Connection Messages
 
 **Mobile → Tunnel:**
+
 ```json
 {
   "type": "connect",
@@ -448,6 +462,7 @@ If failed:
 ```
 
 **Tunnel → Mobile:**
+
 ```json
 {
   "type": "connected",
@@ -461,6 +476,7 @@ If failed:
 ### Authentication Messages
 
 **Mobile → Workstation (via Tunnel):**
+
 ```json
 {
   "type": "auth",
@@ -472,6 +488,7 @@ If failed:
 ```
 
 **Workstation → Mobile (via Tunnel):**
+
 ```json
 {
   "type": "auth.success",
@@ -488,6 +505,7 @@ If failed:
 ### Heartbeat Messages
 
 **Mobile → Tunnel:**
+
 ```json
 {
   "type": "ping",
@@ -496,6 +514,7 @@ If failed:
 ```
 
 **Tunnel → Mobile:**
+
 ```json
 {
   "type": "pong",
@@ -507,13 +526,13 @@ If failed:
 
 ### Actor Isolation
 
-| Component | Actor Isolation | Reason |
-|-----------|----------------|--------|
-| `DeviceIDManager` | `@MainActor` | Accesses `UIDevice.current` (main actor isolated) |
-| `ConnectionService` | `@MainActor` | Uses `@Published` properties, manages UI state |
-| `WebSocketClient` | Non-isolated | Network operations on background threads |
-| `WebSocketClientDelegate` | `@MainActor` | All callbacks dispatched to main actor |
-| `ConnectionServicing` | `@MainActor` | Protocol matches implementation |
+| Component                 | Actor Isolation | Reason                                            |
+| ------------------------- | --------------- | ------------------------------------------------- |
+| `DeviceIDManager`         | `@MainActor`    | Accesses `UIDevice.current` (main actor isolated) |
+| `ConnectionService`       | `@MainActor`    | Uses `@Published` properties, manages UI state    |
+| `WebSocketClient`         | Non-isolated    | Network operations on background threads          |
+| `WebSocketClientDelegate` | `@MainActor`    | All callbacks dispatched to main actor            |
+| `ConnectionServicing`     | `@MainActor`    | Protocol matches implementation                   |
 
 ### Sendable Safety
 
@@ -539,6 +558,7 @@ await MainActor.run {
 ```
 
 This ensures:
+
 - UI updates happen on main thread
 - No data races when accessing `@Published` properties
 - Consistent actor isolation throughout the call chain
@@ -569,13 +589,13 @@ The continuation is also resumed in the `didCloseWith` delegate method to handle
 
 The `normalizeWebSocketURL()` function handles various URL formats:
 
-| Input | Output | Notes |
-|-------|--------|-------|
-| `http://192.168.1.112/ws` | `ws://192.168.1.112/ws` | Converts http→ws, **does NOT add port** (path present) |
-| `https://example.com/ws` | `wss://example.com/ws` | Converts https→wss, **does NOT add port** (path present) |
-| `ws://192.168.1.112:3001/ws` | `ws://192.168.1.112:3001/ws` | No change (port already specified) |
-| `ws://192.168.1.112` | `ws://192.168.1.112:80` | Adds default port 80 (no path) |
-| `wss://example.com` | `wss://example.com:443` | Adds default port 443 (no path) |
+| Input                        | Output                       | Notes                                                    |
+| ---------------------------- | ---------------------------- | -------------------------------------------------------- |
+| `http://192.168.1.112/ws`    | `ws://192.168.1.112/ws`      | Converts http→ws, **does NOT add port** (path present)   |
+| `https://example.com/ws`     | `wss://example.com/ws`       | Converts https→wss, **does NOT add port** (path present) |
+| `ws://192.168.1.112:3001/ws` | `ws://192.168.1.112:3001/ws` | No change (port already specified)                       |
+| `ws://192.168.1.112`         | `ws://192.168.1.112:80`      | Adds default port 80 (no path)                           |
+| `wss://example.com`          | `wss://example.com:443`      | Adds default port 443 (no path)                          |
 
 **Important:** URLs with paths (like `/ws`) are assumed to be service-specific endpoints and should include the port explicitly. The tunnel server typically runs on port 3001, so URLs should be: `ws://host:3001/ws`.
 
@@ -656,16 +676,19 @@ Automatic reconnection scheduled (if credentials available)
 > **⚠️ CRITICAL:** The `NSAllowsArbitraryLoads = true` setting in `Info.plist` **MUST be removed before production**.
 
 **Development:**
+
 - `NSAllowsArbitraryLoads = true` allows HTTP/WS connections for local testing
 - This is acceptable for development only
 
 **Production:**
+
 - **MUST remove** `NSAppTransportSecurity` dictionary entirely from `Info.plist`
 - **MUST use** `wss://` (secure WebSocket over TLS) for all connections
 - **MUST have** valid TLS certificates on tunnel server
 - **MUST test** that connections work with ATS enabled (default iOS behavior)
 
 **Security Impact:**
+
 - Leaving `NSAllowsArbitraryLoads = true` in production:
   - Exposes all network traffic to man-in-the-middle attacks
   - Violates iOS security best practices
@@ -734,10 +757,12 @@ When a mobile client sends an `auth` message through the tunnel:
 The WebSocket client includes comprehensive logging with **human-readable timestamps**:
 
 **Log Format:**
+
 - All log messages are prefixed with timestamp: `[HH:mm:ss.SSS]`
 - Example: `[22:27:29.556] 🔌 WebSocket: Connecting to ws://192.168.1.112:3001/ws`
 
 **Log Categories:**
+
 - `🔌 WebSocket: Connecting to...` - Connection attempts
 - `✅ WebSocket: Connection opened successfully` - Connection established
 - `📤 WebSocket: Sending connect message...` - Message sending
@@ -751,6 +776,7 @@ The WebSocket client includes comprehensive logging with **human-readable timest
 - `🛑 WebSocket: Ping task ended` - Heartbeat cancellation
 
 **Implementation:**
+
 - Static `log(_:)` method for consistent formatting
 - Static `timestamp` computed property using `DateFormatter`
 - All logging centralized through `WebSocketClient.log()` helper
@@ -758,6 +784,7 @@ The WebSocket client includes comprehensive logging with **human-readable timest
 ### Server-Side Logging
 
 Workstation server logs:
+
 - Auth message processing
 - Authentication results
 - Error responses
@@ -768,4 +795,3 @@ Workstation server logs:
 - **PROTOCOL.md** - Complete WebSocket protocol specification
 - **docs/MOBILE_APP_LOGIC.md** - Mobile app architecture and UI patterns
 - **CLAUDE.md** - Project architecture and development guidelines
-
