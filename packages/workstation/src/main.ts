@@ -95,7 +95,7 @@ function handleTunnelMessage(
   try {
     const data: unknown = JSON.parse(rawMessage);
     const messageType = getMessageType(data);
-    
+
     if (!messageType) {
       logger.warn({ message: rawMessage.slice(0, 100) }, 'No message type in tunnel message');
       return;
@@ -457,17 +457,41 @@ async function bootstrap(): Promise<void> {
     },
 
     'supervisor.terminate_session': async (socket, message) => {
-      if (!terminateSession || !messageBroadcaster) return;
       const terminateMessage = message as {
         id: string;
         payload: { session_id: string };
       };
-      const result = await terminateSession.execute({
-        requestId: terminateMessage.id,
-        sessionId: terminateMessage.payload.session_id,
-      });
-      socket.send(JSON.stringify(result.response));
-      messageBroadcaster.broadcastToAll(JSON.stringify(result.broadcast));
+
+      if (!terminateSession || !messageBroadcaster) {
+        socket.send(JSON.stringify({
+          type: 'error',
+          id: terminateMessage.id,
+          payload: {
+            code: 'INTERNAL_ERROR',
+            message: 'Server not ready to process terminate requests',
+          },
+        }));
+        return;
+      }
+
+      try {
+        const result = await terminateSession.execute({
+          requestId: terminateMessage.id,
+          sessionId: terminateMessage.payload.session_id,
+        });
+        socket.send(JSON.stringify(result.response));
+        messageBroadcaster.broadcastToAll(JSON.stringify(result.broadcast));
+      } catch (error) {
+        logger.error({ error, sessionId: terminateMessage.payload.session_id }, 'Failed to terminate session');
+        socket.send(JSON.stringify({
+          type: 'error',
+          id: terminateMessage.id,
+          payload: {
+            code: error instanceof DomainError ? error.code : 'INTERNAL_ERROR',
+            message: error instanceof Error ? error.message : 'Failed to terminate session',
+          },
+        }));
+      }
     },
 
     'session.subscribe': (socket, message) => {

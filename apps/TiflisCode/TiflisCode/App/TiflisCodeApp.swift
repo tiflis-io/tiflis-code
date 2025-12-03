@@ -263,10 +263,10 @@ final class AppState: ObservableObject {
     
     private func handleSessionTerminatedMessage(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else { return }
-        
+
         // Remove terminated session
         sessions.removeAll { $0.id == sessionId }
-        
+
         // If it was selected, switch to supervisor
         if selectedSessionId == sessionId {
             selectedSessionId = "supervisor"
@@ -501,12 +501,15 @@ final class AppState: ObservableObject {
     }
     
     func terminateSession(_ session: Session, silent: Bool = false) {
+        print("🔴 AppState.terminateSession called for session: \(session.id), type: \(session.type), silent: \(silent)")
+
         // Don't allow terminating supervisor session
         guard session.type != .supervisor else {
             print("⚠️ AppState: Cannot terminate supervisor session")
             return
         }
 
+        print("🔴 AppState: Removing session from local state")
         // Remove session from local state immediately for responsive UI
         sessions.removeAll { $0.id == session.id }
         if selectedSessionId == session.id {
@@ -529,8 +532,11 @@ final class AppState: ObservableObject {
     }
 
     private func terminateSessionOnBackend(sessionId: String) async {
-        guard connectionState == .connected else {
-            print("⚠️ AppState: Not connected, session terminated locally only")
+        // Use connectionService.connectionState directly for most up-to-date state
+        let serviceState = connectionService.connectionState
+        print("🔴 AppState.terminateSessionOnBackend called for session: \(sessionId), appState.connectionState: \(connectionState), service.connectionState: \(serviceState)")
+        guard serviceState == .connected else {
+            print("⚠️ AppState: Not connected (service: \(serviceState)), session terminated locally only")
             return
         }
 
