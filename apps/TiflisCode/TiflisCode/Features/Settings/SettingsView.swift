@@ -330,57 +330,6 @@ private struct MagicLinkPayload: Codable {
     let key: String
 }
 
-/// QR code scanner view
-/// Note: This is a placeholder. The actual implementation will use AVFoundation.
-struct QRScannerView: View {
-    let onScan: (String) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 24) {
-                Image(systemName: "qrcode.viewfinder")
-                    .font(.system(size: 100))
-                    .foregroundStyle(.secondary)
-                
-                Text("Point your camera at a QR code")
-                    .font(.headline)
-                
-                Text("The QR code should be displayed on your workstation's terminal when you run the workstation server.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                
-                // Mock scan button for preview
-                Button("Simulate Scan") {
-                    // Generate base64-encoded payload for preview
-                    let payload = MagicLinkPayload(
-                        tunnel_id: "Z6q62aKz-F96",
-                        url: "wss://tunnel.tiflis.io/ws",
-                        key: "demo-key"
-                    )
-                    if let jsonData = try? JSONEncoder().encode(payload),
-                       let base64Data = jsonData.base64EncodedString().addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
-                        onScan("tiflis://connect?data=\(base64Data)")
-                    }
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            .padding()
-            .navigationTitle("Scan QR Code")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-            }
-        }
-    }
-}
-
 // MARK: - Preview
 
 #Preview {

@@ -9,6 +9,7 @@ import { getEnv } from './config/env.js';
 import { getWorkstationVersion, getProtocolVersion } from './config/constants.js';
 import { createLogger } from './infrastructure/logging/pino-logger.js';
 import { registerHealthRoute } from './infrastructure/http/health-route.js';
+import { registerConnectionInfoRoute } from './infrastructure/http/connection-info-route.js';
 import { initDatabase, closeDatabase } from './infrastructure/persistence/database/client.js';
 import { InMemoryClientRegistry } from './infrastructure/persistence/in-memory-registry.js';
 import { WorkstationMetadataRepository } from './infrastructure/persistence/repositories/workstation-metadata-repository.js';
@@ -21,6 +22,7 @@ import { AuthKey } from './domain/value-objects/auth-key.js';
 import { SessionId } from './domain/value-objects/session-id.js';
 import type { ChatMessage } from './domain/value-objects/chat-message.js';
 import { isTerminalSession } from './domain/entities/terminal-session.js';
+import QRCode from 'qrcode';
 import { AuthenticateClientUseCase } from './application/commands/authenticate-client.js';
 import { CreateSessionUseCase } from './application/commands/create-session.js';
 import { TerminateSessionUseCase } from './application/commands/terminate-session.js';
@@ -539,7 +541,7 @@ async function bootstrap(): Promise<void> {
       return Promise.resolve();
     },
 
-    'session.resize': (_socket, message) => {
+    'session.resize': (socket, message) => {
       const resizeMessage = message as {
         session_id: string;
         payload: { cols: number; rows: number };
@@ -548,11 +550,28 @@ async function bootstrap(): Promise<void> {
         const sessionId = new SessionId(resizeMessage.session_id);
         const session = sessionManager.getSession(sessionId);
         if (session?.type === 'terminal') {
-          ptyManager.resize(
+          // Get device ID from socket for master check
+          const client = clientRegistry.getBySocket(socket);
+          const deviceId = client?.deviceId.value;
+
+          const result = ptyManager.resize(
             session as Parameters<typeof ptyManager.resize>[0],
             resizeMessage.payload.cols,
-            resizeMessage.payload.rows
+            resizeMessage.payload.rows,
+            deviceId
           );
+
+          // Send resize result back to client
+          socket.send(JSON.stringify({
+            type: 'session.resized',
+            session_id: resizeMessage.session_id,
+            payload: {
+              success: result.success,
+              cols: result.cols,
+              rows: result.rows,
+              reason: result.reason,
+            },
+          }));
         }
       } catch {
         // Invalid session ID
@@ -726,12 +745,24 @@ async function bootstrap(): Promise<void> {
         
         // Also print to console for easy copy-paste (using logger for consistency)
         logger.info({ magicLink }, '📱 Magic Link for Mobile App');
+
+        // Print QR code to terminal for easy scanning
         // eslint-disable-next-line no-console
-        console.log('\n📱 Magic Link for Mobile App:');
-        // eslint-disable-next-line no-console
-        console.log(magicLink);
-        // eslint-disable-next-line no-console
-        console.log('\n');
+        console.log('\n📱 Scan QR Code to Connect:\n');
+        QRCode.toString(magicLink, { type: 'terminal', small: true }, (err, qr) => {
+          if (!err && qr) {
+            // eslint-disable-next-line no-console
+            console.log(qr);
+          }
+          // eslint-disable-next-line no-console
+          console.log(`🎨 Branded QR: http://${env.HOST}:${env.PORT}/connection-info/qr`);
+          // eslint-disable-next-line no-console
+          console.log('📱 Magic Link:');
+          // eslint-disable-next-line no-console
+          console.log(magicLink);
+          // eslint-disable-next-line no-console
+          console.log('\n');
+        });
       },
       onDisconnected: () => {
         logger.warn('Disconnected from tunnel');
@@ -840,6 +871,17 @@ async function bootstrap(): Promise<void> {
     {
       sessionManager,
       clientRegistry,
+      isTunnelConnected: () => tunnelClient.isConnected,
+    }
+  );
+
+  // Register connection info routes (magic link + QR code)
+  registerConnectionInfoRoute(
+    app,
+    { authKey: env.WORKSTATION_AUTH_KEY, version: workstationVersion },
+    {
+      getTunnelId: () => tunnelClient.getTunnelId(),
+      getPublicUrl: () => tunnelClient.getPublicUrl(),
       isTunnelConnected: () => tunnelClient.isConnected,
     }
   );

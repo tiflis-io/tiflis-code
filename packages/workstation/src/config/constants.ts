@@ -65,6 +65,12 @@ export const SESSION_CONFIG = {
   /** Default terminal rows */
   DEFAULT_TERMINAL_ROWS: 24,
 
+  /** Minimum terminal rows (ensures proper display in TUI apps like htop, vim) */
+  MIN_TERMINAL_ROWS: 24,
+
+  /** Minimum terminal columns */
+  MIN_TERMINAL_COLS: 40,
+
   /** Message history limit for replay */
   MESSAGE_HISTORY_LIMIT: 100,
 

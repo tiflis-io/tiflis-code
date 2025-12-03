@@ -176,6 +176,13 @@ export interface SessionSubscribeMessage {
 export interface SessionSubscribedMessage {
   type: 'session.subscribed';
   session_id: string;
+  payload?: {
+    /** Whether this client is the master (controls terminal size) */
+    is_master?: boolean;
+    /** Current terminal size (for terminal sessions) */
+    cols?: number;
+    rows?: number;
+  };
 }
 
 /**
@@ -234,6 +241,22 @@ export interface SessionResizeMessage {
   payload: {
     cols: number;
     rows: number;
+  };
+}
+
+/**
+ * Workstation → Mobile: Terminal resize result
+ */
+export interface SessionResizedMessage {
+  type: 'session.resized';
+  session_id: string;
+  payload: {
+    success: boolean;
+    /** Actual terminal size after resize (may differ from requested due to min constraints) */
+    cols: number;
+    rows: number;
+    /** Reason for rejection if not successful */
+    reason?: 'not_master' | 'inactive';
   };
 }
 
@@ -413,6 +436,7 @@ export type OutgoingClientMessage =
   | SessionTerminatedMessage
   | SessionSubscribedMessage
   | SessionUnsubscribedMessage
+  | SessionResizedMessage
   | SessionOutputMessage
   | SessionErrorMessage
   | SessionReplayDataMessage;

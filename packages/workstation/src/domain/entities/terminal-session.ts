@@ -6,6 +6,7 @@
 
 import { Session, type BaseSessionProps } from './session.js';
 import type { IPty } from 'node-pty';
+import { SESSION_CONFIG } from '../../config/constants.js';
 
 /**
  * Terminal output message stored in buffer.
@@ -44,8 +45,22 @@ export interface TerminalSessionProps extends Omit<BaseSessionProps, 'type'> {
 export type TerminalOutputCallback = (data: string) => void;
 
 /**
+ * Result of a resize operation.
+ */
+export interface ResizeResult {
+  success: boolean;
+  reason?: 'not_master' | 'inactive';
+  cols: number;
+  rows: number;
+}
+
+/**
  * Entity representing a PTY terminal session.
  * Provides direct shell access to the workstation.
+ *
+ * Terminal size is controlled by the "master" client - the first device to subscribe.
+ * Other clients receive the terminal output but cannot change its size.
+ * This prevents resize storms when multiple devices are connected.
  */
 export class TerminalSession extends Session {
   private _pty: IPty;
@@ -56,6 +71,7 @@ export class TerminalSession extends Session {
   private _bufferSize: number;
   private _bufferIndex = 0; // For circular buffer
   private _sequenceNumber = 0; // Monotonically increasing sequence counter
+  private _masterDeviceId: string | null = null; // First subscriber becomes master
 
   constructor(props: TerminalSessionProps & { bufferSize?: number }) {
     super({ ...props, type: 'terminal' });
@@ -87,6 +103,42 @@ export class TerminalSession extends Session {
    */
   get currentSequence(): number {
     return this._sequenceNumber;
+  }
+
+  /**
+   * Returns the device ID of the master client (first subscriber).
+   */
+  get masterDeviceId(): string | null {
+    return this._masterDeviceId;
+  }
+
+  /**
+   * Sets the master device ID. Only sets if not already set (first subscriber wins).
+   * @returns true if this device became master, false if master was already set
+   */
+  setMaster(deviceId: string): boolean {
+    if (this._masterDeviceId === null) {
+      this._masterDeviceId = deviceId;
+      return true;
+    }
+    return this._masterDeviceId === deviceId;
+  }
+
+  /**
+   * Checks if the given device is the master for this session.
+   */
+  isMaster(deviceId: string): boolean {
+    return this._masterDeviceId === deviceId;
+  }
+
+  /**
+   * Clears the master if it matches the given device ID.
+   * Called when the master device unsubscribes.
+   */
+  clearMasterIfMatch(deviceId: string): void {
+    if (this._masterDeviceId === deviceId) {
+      this._masterDeviceId = null;
+    }
   }
 
   /**
@@ -137,15 +189,33 @@ export class TerminalSession extends Session {
 
   /**
    * Resizes the terminal.
+   * Only the master device can resize. Minimum constraints are enforced.
+   * @param cols Requested columns
+   * @param rows Requested rows
+   * @param deviceId Device requesting the resize
+   * @returns Result indicating success/failure and actual size
    */
-  resize(cols: number, rows: number): void {
+  resize(cols: number, rows: number, deviceId?: string): ResizeResult {
     if (!this.isActive) {
-      return;
+      return { success: false, reason: 'inactive', cols: this._cols, rows: this._rows };
     }
-    this._cols = cols;
-    this._rows = rows;
-    this._pty.resize(cols, rows);
+
+    // If deviceId is provided, check if it's the master
+    // If no master is set yet, any device can resize (backward compatibility)
+    if (deviceId && this._masterDeviceId && !this.isMaster(deviceId)) {
+      return { success: false, reason: 'not_master', cols: this._cols, rows: this._rows };
+    }
+
+    // Apply minimum constraints to ensure proper TUI app display
+    const actualCols = Math.max(cols, SESSION_CONFIG.MIN_TERMINAL_COLS);
+    const actualRows = Math.max(rows, SESSION_CONFIG.MIN_TERMINAL_ROWS);
+
+    this._cols = actualCols;
+    this._rows = actualRows;
+    this._pty.resize(actualCols, actualRows);
     this.recordActivity();
+
+    return { success: true, cols: actualCols, rows: actualRows };
   }
 
   /**

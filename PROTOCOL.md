@@ -442,7 +442,13 @@ Supervisor manages session lifecycle. Project/workspace management is done throu
 // Confirmation
 {
   type: "session.subscribed",
-  session_id: string
+  session_id: string,
+  payload?: {
+    // For terminal sessions only:
+    is_master?: boolean,  // Whether this client controls terminal size
+    cols?: number,        // Current terminal columns
+    rows?: number         // Current terminal rows
+  }
 }
 
 // Unsubscribe
@@ -457,6 +463,15 @@ Supervisor manages session lifecycle. Project/workspace management is done throu
   session_id: string
 }
 ```
+
+#### Terminal Session Master Client
+
+For terminal sessions, the **first subscriber becomes the "master"** and controls the terminal size:
+
+- **Master client**: Can resize the terminal. Resize requests are accepted.
+- **Non-master clients**: Cannot resize. Receive the current terminal size in `session.subscribed` and should sync their local terminal to match.
+
+When the master unsubscribes, the next client to subscribe becomes the new master.
 
 ### 5.2 Execute Command
 
@@ -506,6 +521,7 @@ Unified command for text and audio input with optional TTS output.
 ### 5.4 Terminal Resize (PTY sessions only)
 
 ```typescript
+// Request
 {
   type: "session.resize",
   session_id: string,
@@ -514,7 +530,26 @@ Unified command for text and audio input with optional TTS output.
     rows: number
   }
 }
+
+// Response
+{
+  type: "session.resized",
+  session_id: string,
+  payload: {
+    success: boolean,
+    cols: number,         // Actual terminal columns (may differ due to min constraints)
+    rows: number,         // Actual terminal rows (may differ due to min constraints)
+    reason?: "not_master" | "inactive"  // Present if success=false
+  }
+}
 ```
+
+#### Resize Constraints
+
+- **Minimum size**: 40 columns × 24 rows (ensures proper TUI app display)
+- **Master only**: Only the master client can resize the terminal
+- If a non-master client attempts resize, `success=false` with `reason="not_master"` is returned
+- The response always contains the actual terminal size (useful for clients to sync)
 
 ---
 
@@ -729,8 +764,9 @@ function handleTerminalOutput(payload) {
 | `sync.state` | State sync data |
 | `session.created` | Session was created |
 | `session.terminated` | Session was terminated |
-| `session.subscribed` | Subscribed to session |
+| `session.subscribed` | Subscribed to session (includes `is_master`, `cols`, `rows` for terminals) |
 | `session.unsubscribed` | Unsubscribed from session |
+| `session.resized` | Terminal resize result (success/failure, actual size) |
 | `session.output` | Session output (agent/terminal/transcription), includes `sequence` for terminal |
 | `session.error` | Session error |
 | `session.replay.data` | Replayed messages with sequence metadata |

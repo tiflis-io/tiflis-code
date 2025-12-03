@@ -10,6 +10,7 @@ import type { SessionManager } from '../../domain/ports/session-manager.js';
 import { DeviceId } from '../../domain/value-objects/device-id.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
 import { SessionNotFoundError } from '../../domain/errors/domain-errors.js';
+import { isTerminalSession } from '../../domain/entities/terminal-session.js';
 import type {
   SessionSubscribedMessage,
   SessionUnsubscribedMessage,
@@ -35,6 +36,7 @@ export class SubscriptionService {
 
   /**
    * Subscribes a client to a session.
+   * For terminal sessions, the first subscriber becomes the "master" and controls terminal size.
    */
   subscribe(deviceId: string, sessionId: string): SessionSubscribedMessage {
     const device = new DeviceId(deviceId);
@@ -54,20 +56,37 @@ export class SubscriptionService {
 
     // Subscribe
     const isNew = client.subscribe(session);
-    
+
+    // For terminal sessions, set master (first subscriber wins)
+    let isMaster = false;
+    let cols: number | undefined;
+    let rows: number | undefined;
+
+    if (isTerminalSession(sessionEntity)) {
+      isMaster = sessionEntity.setMaster(deviceId);
+      cols = sessionEntity.cols;
+      rows = sessionEntity.rows;
+    }
+
     this.logger.debug(
-      { deviceId, sessionId, isNew },
+      { deviceId, sessionId, isNew, isMaster },
       'Client subscribed to session'
     );
 
     return {
       type: 'session.subscribed',
       session_id: sessionId,
+      payload: isTerminalSession(sessionEntity) ? {
+        is_master: isMaster,
+        cols,
+        rows,
+      } : undefined,
     };
   }
 
   /**
    * Unsubscribes a client from a session.
+   * If this client was the master of a terminal session, the master is cleared.
    */
   unsubscribe(deviceId: string, sessionId: string): SessionUnsubscribedMessage {
     const device = new DeviceId(deviceId);
@@ -81,7 +100,13 @@ export class SubscriptionService {
 
     // Unsubscribe
     client.unsubscribe(session);
-    
+
+    // For terminal sessions, clear master if this device was master
+    const sessionEntity = this.deps.sessionManager.getSession(session);
+    if (sessionEntity && isTerminalSession(sessionEntity)) {
+      sessionEntity.clearMasterIfMatch(deviceId);
+    }
+
     this.logger.debug(
       { deviceId, sessionId },
       'Client unsubscribed from session'

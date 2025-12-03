@@ -74,6 +74,15 @@ final class TerminalViewModel: ObservableObject {
     // Track known session IDs (temp and real) to handle session ID updates
     private var knownSessionIds: Set<String> = []
 
+    // MARK: - Master Client State
+
+    /// Whether this client is the master for the terminal session (controls size)
+    /// First subscriber becomes master. Non-master clients receive output but can't resize.
+    private var isMaster = false
+
+    /// Server's authoritative terminal size. Non-master clients should use this.
+    private var serverTerminalSize: (cols: Int, rows: Int)?
+
     // MARK: - Sequence Tracking (for deduplication and gap detection)
 
     /// Last received sequence number (for deduplication)
@@ -222,6 +231,10 @@ final class TerminalViewModel: ObservableObject {
         replayBuffer.removeAll()
         isInReplayMode = true  // Enter replay mode until we load history
 
+        // Reset master state - will be set by server response
+        isMaster = false
+        serverTerminalSize = nil
+
         let message: [String: Any] = [
             "type": "session.subscribe",
             "session_id": session.id
@@ -285,6 +298,10 @@ final class TerminalViewModel: ObservableObject {
         isInReplayMode = false
         replayBuffer.removeAll()
         pendingFeedBuffer.removeAll()
+
+        // Reset master state
+        isMaster = false
+        serverTerminalSize = nil
 
         // Send unsubscribe message to server
         let message: [String: Any] = [
@@ -395,6 +412,10 @@ final class TerminalViewModel: ObservableObject {
             handleOutputMessage(message)
         case "session.replay.data":
             handleReplayMessage(message)
+        case "session.subscribed":
+            handleSubscribedMessage(message)
+        case "session.resized":
+            handleResizedMessage(message)
         case "session.terminated":
             handleSessionTerminated(message)
         case "error":
@@ -449,7 +470,88 @@ final class TerminalViewModel: ObservableObject {
             isSubscribed = false
         }
     }
-    
+
+    /// Handles subscription confirmation with master status and terminal size
+    private func handleSubscribedMessage(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              sessionId == session.id || knownSessionIds.contains(sessionId) else {
+            return
+        }
+
+        // Extract payload with master status and terminal size
+        if let payload = message["payload"] as? [String: Any] {
+            isMaster = payload["is_master"] as? Bool ?? false
+
+            // Store server's terminal size
+            if let cols = payload["cols"] as? Int, let rows = payload["rows"] as? Int {
+                serverTerminalSize = (cols: cols, rows: rows)
+
+                // If not master, sync local terminal to server size
+                if !isMaster {
+                    terminalSize = (cols: cols, rows: rows)
+                    threadSafeTerminalSize = (cols: cols, rows: rows)
+
+                    // Update TerminalView if available
+                    if let terminalView = swiftTermView {
+                        terminalView.resize(cols: cols, rows: rows)
+                    }
+                }
+            }
+        }
+
+        #if DEBUG
+        print("[TerminalVM:\(session.id.prefix(8))] Subscribed: isMaster=\(isMaster), serverSize=\(String(describing: serverTerminalSize))")
+        #endif
+    }
+
+    /// Handles resize result from server
+    private func handleResizedMessage(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              sessionId == session.id || knownSessionIds.contains(sessionId) else {
+            return
+        }
+
+        guard let payload = message["payload"] as? [String: Any],
+              let success = payload["success"] as? Bool,
+              let cols = payload["cols"] as? Int,
+              let rows = payload["rows"] as? Int else {
+            return
+        }
+
+        // Update server terminal size
+        serverTerminalSize = (cols: cols, rows: rows)
+
+        if success {
+            // Server accepted resize, update local state
+            terminalSize = (cols: cols, rows: rows)
+            threadSafeTerminalSize = (cols: cols, rows: rows)
+
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Resize accepted: \(cols)×\(rows)")
+            #endif
+        } else {
+            // Server rejected resize (we're not master), sync to server size
+            let reason = payload["reason"] as? String
+
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Resize rejected: reason=\(reason ?? "unknown"), using server size \(cols)×\(rows)")
+            #endif
+
+            // Update local terminal to match server size
+            terminalSize = (cols: cols, rows: rows)
+            threadSafeTerminalSize = (cols: cols, rows: rows)
+
+            if let terminalView = swiftTermView {
+                terminalView.resize(cols: cols, rows: rows)
+            }
+
+            // We're not master anymore (or never were)
+            if reason == "not_master" {
+                isMaster = false
+            }
+        }
+    }
+
     private func handleOutputMessage(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else {
             return

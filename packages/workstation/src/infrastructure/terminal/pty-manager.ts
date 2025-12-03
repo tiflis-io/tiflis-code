@@ -8,7 +8,7 @@ import * as pty from 'node-pty';
 import { nanoid } from 'nanoid';
 import type { Logger } from 'pino';
 import type { TerminalManager } from '../../domain/ports/session-manager.js';
-import { TerminalSession } from '../../domain/entities/terminal-session.js';
+import { TerminalSession, type ResizeResult } from '../../domain/entities/terminal-session.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
 import { getEnv } from '../../config/env.js';
 
@@ -86,13 +86,26 @@ export class PtyManager implements TerminalManager {
 
   /**
    * Resizes a terminal session.
+   * @param session Terminal session to resize
+   * @param cols Requested columns
+   * @param rows Requested rows
+   * @param deviceId Device requesting the resize (for master check)
+   * @returns Result indicating success/failure and actual size
    */
-  resize(session: TerminalSession, cols: number, rows: number): void {
-    session.resize(cols, rows);
-    this.logger.debug(
-      { sessionId: session.id.value, cols, rows },
-      'Terminal resized'
-    );
+  resize(session: TerminalSession, cols: number, rows: number, deviceId?: string): ResizeResult {
+    const result = session.resize(cols, rows, deviceId);
+    if (result.success) {
+      this.logger.debug(
+        { sessionId: session.id.value, cols: result.cols, rows: result.rows, deviceId },
+        'Terminal resized'
+      );
+    } else {
+      this.logger.debug(
+        { sessionId: session.id.value, reason: result.reason, deviceId, master: session.masterDeviceId },
+        'Terminal resize rejected'
+      );
+    }
+    return result;
   }
 }
 

@@ -39,6 +39,7 @@
 		7B167969FE14DD38AD0387B4 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
 		7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45A48D49667369980A068E8 /* TerminalView.swift */; };
 		82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */; };
+		QRSCAN001BUILDFILE00000001 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = QRSCAN001FILEREF000000001 /* QRScannerView.swift */; };
 		A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
 		A61CAD060921D84F841049E2 /* WebSocketClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */; };
 		A835864D0D6231AB02C5A71B /* TerminalContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20190820F4474054253D38F /* TerminalContentView.swift */; };
@@ -125,6 +126,7 @@
 		D20190820F4474054253D38F /* TerminalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalContentView.swift; sourceTree = "<group>"; };
 		D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionIndicator.swift; sourceTree = "<group>"; };
+		QRSCAN001FILEREF000000001 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		DD369F38E321907820448CEA /* ConnectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionService.swift; sourceTree = "<group>"; };
 		DE5PU9GL4RJCN0SCVNXLXV31 /* SessionLostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLostView.swift; sourceTree = "<group>"; };
 		E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
@@ -228,6 +230,7 @@
 			isa = PBXGroup;
 			children = (
 				DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */,
+				QRSCAN001FILEREF000000001 /* QRScannerView.swift */,
 			);
 			path = Common;
 			sourceTree = "<group>";
@@ -610,6 +613,7 @@
 				6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */,
 				E16803E23F9EF5B26E9F5397 /* Color+Extensions.swift in Sources */,
 				82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */,
+				QRSCAN001BUILDFILE00000001 /* QRScannerView.swift in Sources */,
 				1AA46119450009A543FBD9D1 /* ConnectionService.swift in Sources */,
 				0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */,
 				C858E0EBC178B965250B2FF0 /* ContentView.swift in Sources */,
