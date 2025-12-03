@@ -19,49 +19,46 @@ struct TerminalContentView: UIViewRepresentable {
     
     func makeUIView(context: Context) -> TerminalViewUIKit {
         let view = TerminalViewUIKit()
-        
+
         // Set terminal view in view model and configure delegate
         // This sets up terminalDelegate to receive input events
         viewModel.setTerminalView(view.getTerminalView())
-        
+
         // Start display updates when view is created
         view.startDisplayUpdates()
-        
+
+        // Schedule initial size update after view is laid out
+        // This ensures the terminal gets correct dimensions immediately
+        DispatchQueue.main.async {
+            if view.bounds.width > 0, view.bounds.height > 0 {
+                view.updateSize()
+                context.coordinator.previousSize = view.bounds.size
+            }
+        }
+
         return view
     }
     
     func updateUIView(_ uiView: TerminalViewUIKit, context: Context) {
         let currentSize = uiView.bounds.size
-        
+
         // Read previous size into local variable before any checks
         // This avoids accessing coordinator during view update
         let previousSize = context.coordinator.previousSize
-        
+
         // Only update size if bounds actually changed
         guard currentSize != previousSize, currentSize.width > 0, currentSize.height > 0 else {
             return
         }
-        
-        // Update terminal size when view size changes
-        uiView.updateSize()
-        
-        // Notify view model of size change
-        // Defer to avoid publishing changes during view update
-        // Size calculation is now done in TerminalViewUIKit.updateSize() using actual font metrics
-        // We still need to calculate here for the ViewModel, but we'll use the same approach
-        // For now, use approximate values - the actual resize happens in updateSize()
-        let cols = max(1, Int(currentSize.width / 8))
-        let rows = max(1, Int(currentSize.height / 16))
-        
+
         // Store size for next comparison
-        let sizeToStore = currentSize
-        
-        // Defer both coordinator update and view model call outside of view update cycle
-        Task { @MainActor in
-            // Update coordinator's previous size after view update completes
-            context.coordinator.previousSize = sizeToStore
-            viewModel.resizeTerminal(cols: cols, rows: rows)
-        }
+        context.coordinator.previousSize = currentSize
+
+        // Update terminal size when view size changes
+        // This triggers SwiftTerm's sizeChanged delegate callback with correct dimensions
+        // The ViewModel is notified via sizeChanged(source:newCols:newRows:) delegate method
+        // Do NOT call viewModel.resizeTerminal() here - it would use wrong hardcoded metrics
+        uiView.updateSize()
     }
     
     static func dismantleUIView(_ uiView: TerminalViewUIKit, coordinator: Coordinator) {

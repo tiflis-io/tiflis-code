@@ -7,7 +7,7 @@
 //
 
 import SwiftUI
-import AVFoundation
+@preconcurrency import AVFoundation
 
 /// Camera-based QR code scanner view using AVFoundation.
 /// Scans for QR codes and returns the decoded string via callback.

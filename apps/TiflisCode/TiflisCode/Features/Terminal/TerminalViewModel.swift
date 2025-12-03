@@ -102,7 +102,25 @@ final class TerminalViewModel: ObservableObject {
     // Thread-safe terminal size for nonisolated delegate access
     // Updated from main actor, read from nonisolated context
     nonisolated(unsafe) private var threadSafeTerminalSize: (cols: Int, rows: Int) = (80, 24)
-    
+
+    // MARK: - Resize Debouncing
+
+    /// Debounce task for resize operations
+    /// Prevents resize storms when keyboard height changes rapidly (e.g., switching keyboards)
+    private var resizeDebounceTask: Task<Void, Never>?
+
+    /// Pending resize dimensions (used during debounce)
+    private var pendingResize: (cols: Int, rows: Int)?
+
+    /// Debounce interval for resize operations (150ms balances responsiveness with stability)
+    private let resizeDebounceInterval: Duration = .milliseconds(150)
+
+    /// Timestamp of last resize sent to server (for debounce logic)
+    private var lastResizeSentTime: Date?
+
+    /// Minimum interval between server resizes (first resize is always immediate)
+    private let minResizeInterval: TimeInterval = 0.15
+
     // Performance monitoring (development only)
     #if DEBUG
     private var feedOperationCount: Int = 0
@@ -290,6 +308,12 @@ final class TerminalViewModel: ObservableObject {
         // Mark as unsubscribed FIRST to prevent any further message processing
         isSubscribed = false
 
+        // Cancel any pending resize operation
+        resizeDebounceTask?.cancel()
+        resizeDebounceTask = nil
+        pendingResize = nil
+        lastResizeSentTime = nil  // Reset so next subscription gets immediate resize
+
         // Clear terminal view reference to prevent feeding to disposed view
         swiftTermView = nil
 
@@ -347,42 +371,85 @@ final class TerminalViewModel: ObservableObject {
         guard terminalSize.cols != cols || terminalSize.rows != rows else {
             return
         }
-        
-        #if DEBUG
-        let resizeStartTime = Date()
-        #endif
-        
-        // Update Published property (direct assignment to wrapped value)
+
+        // Update local state immediately for responsive UI
         terminalSize = (cols: cols, rows: rows)
-        // Update thread-safe copy for nonisolated delegate access
         threadSafeTerminalSize = (cols: cols, rows: rows)
-        
-        // Update TerminalView's internal terminal size
-        // Use TerminalView's resize method which handles both terminal and view updates
+
+        // Update TerminalView's internal terminal size immediately
         if let terminalView = swiftTermView {
             terminalView.resize(cols: cols, rows: rows)
         }
-        
-        // Send resize message to server
+
+        // Check if this is the first resize or enough time has passed since last resize
+        let now = Date()
+        let shouldSendImmediately: Bool
+        if let lastSent = lastResizeSentTime {
+            shouldSendImmediately = now.timeIntervalSince(lastSent) >= minResizeInterval
+        } else {
+            // First resize - always send immediately
+            shouldSendImmediately = true
+        }
+
+        if shouldSendImmediately {
+            // Cancel any pending debounced resize
+            resizeDebounceTask?.cancel()
+            resizeDebounceTask = nil
+            pendingResize = (cols: cols, rows: rows)
+            sendResizeToServer()
+        } else {
+            // Debounce subsequent rapid resizes to prevent storms during keyboard changes
+            resizeDebounceTask?.cancel()
+            pendingResize = (cols: cols, rows: rows)
+
+            resizeDebounceTask = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: self?.resizeDebounceInterval ?? .milliseconds(150))
+                } catch {
+                    // Task cancelled, another resize is pending
+                    return
+                }
+
+                guard let self = self, !Task.isCancelled else { return }
+
+                // Send the resize to server after debounce period
+                self.sendResizeToServer()
+            }
+        }
+    }
+
+    /// Sends pending resize to server (called after debounce)
+    private func sendResizeToServer() {
+        guard let pending = pendingResize else { return }
+
+        #if DEBUG
+        let resizeStartTime = Date()
+        #endif
+
         let message: [String: Any] = [
             "type": "session.resize",
             "session_id": session.id,
             "payload": [
-                "cols": cols,
-                "rows": rows
+                "cols": pending.cols,
+                "rows": pending.rows
             ]
         ]
-        
+
         do {
             try webSocketClient.sendMessage(message)
+            // Track when resize was sent for debounce logic
+            lastResizeSentTime = Date()
         } catch {
             self.error = "Failed to resize terminal: \(error.localizedDescription)"
         }
-        
+
+        // Clear pending resize after sending
+        pendingResize = nil
+
         #if DEBUG
         let resizeDuration = Date().timeIntervalSince(resizeStartTime)
         lastSizeCalculationTime = Date()
-        print("[TerminalViewModel] Terminal resize: \(cols)×\(rows), \(String(format: "%.3f", resizeDuration * 1000))ms")
+        print("[TerminalViewModel] Terminal resize sent to server: \(pending.cols)×\(pending.rows), \(String(format: "%.3f", resizeDuration * 1000))ms")
         #endif
     }
     
@@ -810,6 +877,19 @@ final class TerminalViewModel: ObservableObject {
                 terminalView.feed(byteArray: Array(showCursorSequence.utf8)[...])
             }
 
+            // After replay completes, check if server size differs from our local size
+            // Only send resize if sizes don't match - this triggers SIGWINCH for TUI app redraw
+            // Avoid unnecessary resize as it can disrupt terminal state (cursor mode, etc.)
+            if let serverSize = serverTerminalSize,
+               (serverSize.cols != terminalSize.cols || serverSize.rows != terminalSize.rows),
+               terminalSize.cols > 0 && terminalSize.rows > 0 {
+                #if DEBUG
+                print("[TerminalViewModel] Size mismatch after replay: server=\(serverSize.cols)x\(serverSize.rows), local=\(terminalSize.cols)x\(terminalSize.rows)")
+                #endif
+                pendingResize = terminalSize
+                sendResizeToServer()
+            }
+
             #if DEBUG
             let replayDuration = Date().timeIntervalSince(replayStartTime)
             print("[TerminalViewModel] Replay complete: last sequence=\(lastReceivedSequence), duration=\(String(format: "%.3f", replayDuration * 1000))ms")
@@ -981,34 +1061,14 @@ extension TerminalViewModel: TerminalViewDelegate {
         }
     }
     
-    /// Called when terminal size changes
+    /// Called when terminal size changes (SwiftTerm delegate callback)
     /// Note: This is called from nonisolated context, so we use Task to access MainActor
+    /// Uses the same debounced resize path as resizeTerminal() to prevent resize storms
     nonisolated func sizeChanged(source: SwiftTerm.TerminalView, newCols: Int, newRows: Int) {
-        // Capture self weakly to avoid retain cycles
-        // Access MainActor-isolated properties via Task
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            
-            // Update our size tracking
-            self.terminalSize = (cols: newCols, rows: newRows)
-            // Update thread-safe copy (nonisolated(unsafe) property can be accessed from MainActor)
-            self.threadSafeTerminalSize = (cols: newCols, rows: newRows)
-            
-            // Send resize message to server
-            let message: [String: Any] = [
-                "type": "session.resize",
-                "session_id": self.session.id,
-                "payload": [
-                    "cols": newCols,
-                    "rows": newRows
-                ]
-            ]
-            
-            do {
-                try self.webSocketClient.sendMessage(message)
-            } catch {
-                self.error = "Failed to resize terminal: \(error.localizedDescription)"
-            }
+            // Delegate to the debounced resize method
+            self.resizeTerminal(cols: newCols, rows: newRows)
         }
     }
     

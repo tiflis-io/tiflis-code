@@ -118,8 +118,7 @@ enum SpecialKeyType: Equatable {
     /// Byte sequence for terminal
     /// - Parameters:
     ///   - modifiers: Current modifier state
-    ///   - applicationCursor: Whether terminal is in application cursor mode (DECCKM)
-    func byteSequence(modifiers: ModifierState = ModifierState(), applicationCursor: Bool = false) -> [UInt8] {
+    func byteSequence(modifiers: ModifierState = ModifierState()) -> [UInt8] {
         switch self {
         case .backspace: return [0x08]
         case .enter: return [0x0D]
@@ -127,11 +126,12 @@ enum SpecialKeyType: Equatable {
         case .tab: return [0x09]
         case .escape: return [0x1B]
         case .delete: return [0x7F]
-        // Arrow keys: ESC [ X (normal) vs ESC O X (application cursor mode)
-        case .arrowUp: return applicationCursor ? [0x1B, 0x4F, 0x41] : [0x1B, 0x5B, 0x41]
-        case .arrowDown: return applicationCursor ? [0x1B, 0x4F, 0x42] : [0x1B, 0x5B, 0x42]
-        case .arrowRight: return applicationCursor ? [0x1B, 0x4F, 0x43] : [0x1B, 0x5B, 0x43]
-        case .arrowLeft: return applicationCursor ? [0x1B, 0x4F, 0x44] : [0x1B, 0x5B, 0x44]
+        // Arrow keys: Always use application cursor mode sequences (ESC O X)
+        // This ensures consistent behavior in TUI apps like htop, vim, etc.
+        case .arrowUp: return [0x1B, 0x4F, 0x41]
+        case .arrowDown: return [0x1B, 0x4F, 0x42]
+        case .arrowRight: return [0x1B, 0x4F, 0x43]
+        case .arrowLeft: return [0x1B, 0x4F, 0x44]
         case .home: return [0x1B, 0x5B, 0x48]
         case .end: return [0x1B, 0x5B, 0x46]
         case .pageUp: return [0x1B, 0x5B, 0x35, 0x7E]

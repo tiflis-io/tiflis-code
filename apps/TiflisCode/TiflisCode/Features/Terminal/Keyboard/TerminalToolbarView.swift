@@ -18,9 +18,6 @@ protocol TerminalToolbarDelegate: AnyObject {
 
     /// Request keyboard dismissal
     func toolbarDidRequestDismiss(_ toolbar: TerminalToolbarView)
-
-    /// Query if terminal is in application cursor mode (for arrow keys)
-    func toolbarApplicationCursorMode(_ toolbar: TerminalToolbarView) -> Bool
 }
 
 // MARK: - Terminal Toolbar View
@@ -190,16 +187,13 @@ final class TerminalToolbarView: UIView {
     private func sendInput(for type: KeyType) {
         let bytes: [UInt8]
 
-        // Query application cursor mode for arrow keys
-        let applicationCursor = delegate?.toolbarApplicationCursorMode(self) ?? false
-
         switch type {
         case .character(let char):
             let processed = modifierState.apply(to: char.first ?? Character(" "))
             bytes = Array(processed.utf8)
 
         case .special(let specialType):
-            bytes = specialType.byteSequence(modifiers: modifierState, applicationCursor: applicationCursor)
+            bytes = specialType.byteSequence(modifiers: modifierState)
 
         case .modifier:
             return
