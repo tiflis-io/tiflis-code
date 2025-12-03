@@ -16,9 +16,8 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     
     // MARK: - Constants
 
-    private let pingInterval: TimeInterval = 20.0 // 20 seconds
+    private let pingInterval: TimeInterval = 15.0 // 15 seconds - more frequent to keep connection alive
     private let pongTimeout: TimeInterval = 30.0 // 30 seconds
-    private let receiveTimeout: TimeInterval = 60.0 // 60 seconds - detect silent disconnects
     private let minReconnectDelay: TimeInterval = 1.0
     private let maxReconnectDelay: TimeInterval = 30.0
     
@@ -684,42 +683,25 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
             }
 
             do {
-                // Use timeout on receive to detect silent disconnects (network switch, carrier change)
-                // Without timeout, task.receive() blocks indefinitely on stale connections
-                WebSocketClient.log("👂 WebSocket: Waiting for message (timeout: \(receiveTimeout)s)...")
+                // No timeout here - we rely on ping/pong mechanism for liveness detection
+                // The pongTimeout task will trigger disconnection if server doesn't respond to pings
+                // This allows idle terminals to stay connected indefinitely
+                let wsMessage = try await task.receive()
 
-                let messageData = try await withThrowingTaskGroup(of: Data.self) { group in
-                    // Task to receive message
-                    group.addTask {
-                        let wsMessage = try await task.receive()
-
-                        switch wsMessage {
-                        case .string(let text):
-                            guard let data = text.data(using: .utf8) else {
-                                throw WebSocketError.invalidMessage
-                            }
-                            return data
-                        case .data(let data):
-                            return data
-                        @unknown default:
-                            throw WebSocketError.invalidMessage
-                        }
+                let messageData: Data
+                switch wsMessage {
+                case .string(let text):
+                    guard let data = text.data(using: .utf8) else {
+                        WebSocketClient.log("❌ WebSocket: Failed to convert string to data")
+                        continue
                     }
-
-                    // Task for timeout - detect silent disconnects
-                    group.addTask { [receiveTimeout] in
-                        try await Task.sleep(for: .seconds(receiveTimeout))
-                        WebSocketClient.log("⏱️ WebSocket: Receive timeout after \(receiveTimeout) seconds - connection may be stale")
-                        throw WebSocketError.connectionClosed
-                    }
-
-                    // Return first completed task and cancel the other
-                    let result = try await group.next()!
-                    group.cancelAll()
-                    return result
+                    messageData = data
+                case .data(let data):
+                    messageData = data
+                @unknown default:
+                    WebSocketClient.log("❌ WebSocket: Unknown message type")
+                    continue
                 }
-
-                WebSocketClient.log("📥 WebSocket: Received raw message")
 
                 // Parse and handle message on main actor to avoid data races
                 await MainActor.run { [messageData] in
@@ -728,8 +710,8 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
                         WebSocketClient.log("❌ WebSocket: Failed to parse message data")
                         return
                     }
-                    // Log message type for debugging
-                    if let messageType = dict["type"] as? String {
+                    // Log message type for debugging (skip pong to reduce noise)
+                    if let messageType = dict["type"] as? String, messageType != "pong" {
                         WebSocketClient.log("📥 WebSocket: Received message type: \(messageType)")
                     }
                     handleReceivedMessage(dict)
@@ -741,7 +723,7 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
                     break
                 }
 
-                // Connection lost or error (including receive timeout)
+                // Connection lost or error
                 // Check if connection is still valid before handling disconnection
                 // This prevents handling errors from already-closed connections
                 await MainActor.run {

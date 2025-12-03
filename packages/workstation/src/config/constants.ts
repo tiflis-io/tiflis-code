@@ -25,8 +25,8 @@ export function getProtocolVersion(): string {
  * Connection timing constants (in milliseconds).
  */
 export const CONNECTION_TIMING = {
-  /** How often to send ping to tunnel (20 seconds) */
-  PING_INTERVAL_MS: 20_000,
+  /** How often to send ping to tunnel (15 seconds - keeps connection alive through proxies) */
+  PING_INTERVAL_MS: 15_000,
 
   /** Max time to wait for pong before considering connection stale (30 seconds) */
   PONG_TIMEOUT_MS: 30_000,
