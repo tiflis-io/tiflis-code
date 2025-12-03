@@ -68,6 +68,7 @@ enum SpecialKeyType: Equatable {
     case dismiss
     case languageSwitch
     case microphone
+    case dash
     case slash
     case tilde
 
@@ -90,6 +91,7 @@ enum SpecialKeyType: Equatable {
         case .dismiss: return ""  // Uses SF Symbol
         case .languageSwitch: return ""  // Uses SF Symbol
         case .microphone: return ""  // Uses SF Symbol
+        case .dash: return "-"
         case .slash: return "/"
         case .tilde: return "~"
         }
@@ -137,6 +139,7 @@ enum SpecialKeyType: Equatable {
         case .dismiss: return []
         case .languageSwitch: return []
         case .microphone: return []  // No terminal bytes (UI action only)
+        case .dash: return [0x2D]  // ASCII -
         case .slash: return [0x2F]  // ASCII /
         case .tilde: return [0x7E]  // ASCII ~
         }
