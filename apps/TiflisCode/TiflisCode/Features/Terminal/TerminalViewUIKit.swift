@@ -490,5 +490,11 @@ extension TerminalViewUIKit: TerminalKeyboardDelegate {
         print("[TerminalViewUIKit] Keyboard dismissal requested")
         #endif
     }
+
+    func keyboardApplicationCursorMode(_ keyboard: TerminalCustomKeyboardView) -> Bool {
+        // Query SwiftTerm's terminal for application cursor mode
+        let terminal = terminalView.getTerminal()
+        return terminal.applicationCursor
+    }
 }
 

@@ -10,14 +10,17 @@ import UIKit
 
 // MARK: - Terminal Keyboard Delegate
 
-/// Делегат для отправки ввода с клавиатуры в терминал
+/// Delegate for sending keyboard input to terminal
 @MainActor
 protocol TerminalKeyboardDelegate: AnyObject {
-    /// Отправить байты в терминал
+    /// Send bytes to terminal
     func keyboard(_ keyboard: TerminalCustomKeyboardView, didSendInput data: Data)
-    
-    /// Запросить закрытие клавиатуры
+
+    /// Request keyboard dismissal
     func keyboardDidRequestDismiss(_ keyboard: TerminalCustomKeyboardView)
+
+    /// Query if terminal is in application cursor mode (for arrow keys)
+    func keyboardApplicationCursorMode(_ keyboard: TerminalCustomKeyboardView) -> Bool
 }
 
 // MARK: - Terminal Custom Keyboard View
@@ -231,8 +234,9 @@ final class TerminalCustomKeyboardView: UIView {
             toolbarStack.bottomAnchor.constraint(equalTo: toolbarView.bottomAnchor, constant: -4)
         ])
         
-        // Кнопки тулбара: Esc, Tab, Ctrl, /, ~, ← ↓ ↑ →, Dismiss
+        // Toolbar buttons: Dismiss, Esc, Tab, Ctrl, /, ~, ← ↓ ↑ →, Backspace
         let toolbarConfigs: [KeyConfiguration] = [
+            KeyConfiguration(type: .special(.dismiss)),
             KeyConfiguration(type: .special(.escape)),
             KeyConfiguration(type: .special(.tab)),
             KeyConfiguration(type: .modifier(.control)),
@@ -242,7 +246,7 @@ final class TerminalCustomKeyboardView: UIView {
             KeyConfiguration(type: .special(.arrowDown)),
             KeyConfiguration(type: .special(.arrowUp)),
             KeyConfiguration(type: .special(.arrowRight)),
-            KeyConfiguration(type: .special(.dismiss))
+            KeyConfiguration(type: .special(.backspace))
         ]
         
         for config in toolbarConfigs {
@@ -728,27 +732,30 @@ final class TerminalCustomKeyboardView: UIView {
     }
     
     // MARK: - Input Processing
-    
+
     private func sendInput(for type: KeyType) {
         let bytes: [UInt8]
-        
+
+        // Query application cursor mode for arrow keys
+        let applicationCursor = delegate?.keyboardApplicationCursorMode(self) ?? false
+
         switch type {
         case .character(let char):
             let processed = modifierState.apply(to: char.first ?? Character(" "))
             bytes = Array(processed.utf8)
-            
+
         case .special(let specialType):
-            bytes = specialType.byteSequence(modifiers: modifierState)
-            
+            bytes = specialType.byteSequence(modifiers: modifierState, applicationCursor: applicationCursor)
+
         case .modifier:
-            // Модификаторы не отправляют байты напрямую
+            // Modifiers don't send bytes directly
             return
-            
+
         case .layoutSwitch:
-            // Переключение раскладки не отправляет байты
+            // Layout switch doesn't send bytes
             return
         }
-        
+
         if !bytes.isEmpty {
             delegate?.keyboard(self, didSendInput: Data(bytes))
         }
