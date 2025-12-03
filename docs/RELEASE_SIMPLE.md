@@ -1,6 +1,6 @@
-# Простая схема релиза
+# Simple Release Process
 
-## Процесс (3 шага для любого пакета)
+## Process (3 steps for any package)
 
 ```mermaid
 sequenceDiagram
@@ -9,16 +9,16 @@ sequenceDiagram
     participant CI as GitHub Actions
     participant NPM as GitHub Packages
 
-    Dev->>Dev: 1. Обновить версию<br/>в package.json
+    Dev->>Dev: 1. Update version<br/>in package.json
     Dev->>Git: 2. git commit + push
-    Git->>CI: 3. Запуск workflow
-    CI->>CI: Сборка всех пакетов
-    CI->>NPM: Публикация всех пакетов
+    Git->>CI: 3. Run workflow
+    CI->>CI: Build all packages
+    CI->>NPM: Publish all packages
 ```
 
-## Шаги
+## Steps
 
-### 1. Обновить версию
+### 1. Update Version
 
 ```bash
 # Tunnel server
@@ -32,7 +32,7 @@ pnpm version:workstation:minor   # 0.1.2 → 0.2.0
 pnpm version:workstation:major   # 0.1.2 → 1.0.0
 ```
 
-### 2. Закоммитить и запушить
+### 2. Commit and Push
 
 ```bash
 git add packages/*/package.json
@@ -40,29 +40,29 @@ git commit -m "chore: bump version"
 git push origin main
 ```
 
-### 3. Автоматически
+### 3. Automatic
 
 GitHub Actions:
-- ✅ Соберет все пакеты
-- ✅ Опубликует все пакеты в GitHub Packages
+- ✅ Will build all packages
+- ✅ Will publish all packages to GitHub Packages
 
-**Всё. Больше ничего.**
+**That's it. Nothing else.**
 
 ---
 
-## Что публикуется
+## What Gets Published
 
-Все пакеты из `packages/`:
+All packages from `packages/`:
 - `@tiflis-io/tiflis-code-tunnel`
 - `@tiflis-io/tiflis-code-workstation`
 
-Workflow автоматически находит все `package.json` в `packages/` и публикует их.
+The workflow automatically finds all `package.json` files in `packages/` and publishes them.
 
 ---
 
-## Единая схема
+## Unified Process
 
-Одинаковый процесс для всех серверных компонентов:
-1. Обновить версию → 2. Commit → 3. Push → 4. Автоматическая публикация
+Same process for all server components:
+1. Update version → 2. Commit → 3. Push → 4. Automatic publish
 
-Никаких различий, никаких условий, никакой сложности.
+No differences, no complexity.

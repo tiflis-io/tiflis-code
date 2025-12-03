@@ -10,122 +10,122 @@ import UIKit
 
 // MARK: - iOS Native Keyboard Metrics
 
-/// Точные метрики нативной iOS клавиатуры iPhone
-/// Соответствуют Apple Human Interface Guidelines
+/// Exact metrics of native iOS iPhone keyboard
+/// Matches Apple Human Interface Guidelines
 /// Minimum touch target: 44x44pt
 struct KeyboardMetrics {
 
-    // MARK: - Размеры клавиатуры
+    // MARK: - Keyboard Dimensions
 
-    /// Общая высота клавиатуры (без safe area) - iOS standard + bottom row (globe + mic)
+    /// Total keyboard height (without safe area) - iOS standard + bottom row (globe + mic)
     static let keyboardHeight: CGFloat = 268  // 216 + 42 (bottom row with padding) + 10 (spacing)
 
-    /// Высота тулбара терминала (дополнительная панель)
+    /// Terminal toolbar height (additional panel)
     static let terminalToolbarHeight: CGFloat = 44
 
-    // MARK: - Размеры кнопок (Apple HIG compliant)
+    // MARK: - Key sizes (Apple HIG compliant)
 
-    /// Высота обычной буквенной кнопки - Apple HIG 44pt minimum touch target
+    /// Height of regular letter key - Apple HIG 44pt minimum touch target
     static let keyHeight: CGFloat = 44
 
-    /// Радиус скругления углов кнопки - matches native iOS keyboard
+    /// Key corner radius - matches native iOS keyboard
     static let keyCornerRadius: CGFloat = 5
 
-    // MARK: - Отступы
+    // MARK: - Paddings
 
-    /// Горизонтальный отступ между кнопками - matches native iOS visual gap
+    /// Horizontal key spacing - matches native iOS visual gap
     static let horizontalKeySpacing: CGFloat = 6
 
-    /// Вертикальный отступ между рядами кнопок
+    /// Vertical row spacing
     static let verticalRowSpacing: CGFloat = 10
 
-    /// Отступ от левого/правого края клавиатуры
+    /// Horizontal edge padding
     static let horizontalEdgePadding: CGFloat = 3
 
-    /// Отступ сверху клавиатуры
+    /// Top padding
     static let topPadding: CGFloat = 6
 
-    /// Отступ снизу клавиатуры (до safe area) - increased for rounded screens
+    /// Bottom padding (to safe area) - increased for rounded screens
     static let bottomPadding: CGFloat = 8
 
-    // MARK: - Тени
+    // MARK: - Shadows
 
-    /// Смещение тени кнопки по Y
+    /// Key shadow offset Y
     static let keyShadowOffsetY: CGFloat = 1
 
-    /// Радиус размытия тени
+    /// Shadow blur radius
     static let keyShadowRadius: CGFloat = 0
 
-    /// Прозрачность тени
+    /// Shadow opacity
     static let keyShadowOpacity: Float = 0.35
 }
 
 // MARK: - Keyboard Theme
 
-/// Визуальная тема клавиатуры, соответствующая нативной iOS клавиатуре
+/// Visual theme matching native iOS keyboard
 struct KeyboardTheme {
     
     // MARK: - Background Colors
     
-    /// Цвет фона всей клавиатуры
+    /// Keyboard background color
     let keyboardBackgroundColor: UIColor
     
     // MARK: - Key Colors
     
-    /// Цвет фона буквенных кнопок (обычные кнопки)
+    /// Alphabetic key background color (regular keys)
     let letterKeyBackgroundColor: UIColor
     
-    /// Цвет фона функциональных кнопок (Shift, Backspace, 123, etc.)
+    /// Functional key background color (Shift, Backspace, 123, etc.)
     let functionKeyBackgroundColor: UIColor
     
-    /// Цвет фона нажатой кнопки
+    /// Pressed key background color
     let pressedKeyBackgroundColor: UIColor
     
-    /// Цвет текста на кнопках
+    /// Key text color
     let keyTextColor: UIColor
     
-    /// Цвет вторичного текста (символы над цифрами)
+    /// Secondary text color (symbols above numbers)
     let keySecondaryTextColor: UIColor
     
     // MARK: - Shadow Colors
     
-    /// Цвет тени кнопки (создает эффект глубины)
+    /// Key shadow color (creates depth effect)
     let keyShadowColor: UIColor
     
     // MARK: - Special States
     
-    /// Цвет активного модификатора (Shift в нажатом состоянии)
+    /// Active modifier color (Shift in pressed state)
     let modifierActiveBackgroundColor: UIColor
     
-    /// Цвет текста активного модификатора
+    /// Active modifier text color
     let modifierActiveTextColor: UIColor
     
     // MARK: - Terminal Toolbar Colors
     
-    /// Цвет фона тулбара терминала
+    /// Terminal toolbar background color
     let toolbarBackgroundColor: UIColor
     
-    /// Цвет разделителя между тулбаром и клавиатурой
+    /// Separator color between toolbar and keyboard
     let toolbarSeparatorColor: UIColor
     
     // MARK: - Presets
     
-    /// Светлая тема - точное соответствие нативной iOS клавиатуре
+    /// Light theme - exact match to native iOS keyboard
     static let light = KeyboardTheme(
         keyboardBackgroundColor: UIColor(red: 0.820, green: 0.831, blue: 0.851, alpha: 1.0), // #D1D4D9
         letterKeyBackgroundColor: .white,
         functionKeyBackgroundColor: UIColor(red: 0.678, green: 0.702, blue: 0.737, alpha: 1.0), // #ADB3BC
-        pressedKeyBackgroundColor: UIColor(red: 0.678, green: 0.702, blue: 0.737, alpha: 1.0), // #ADB3BC (как функциональные)
+        pressedKeyBackgroundColor: UIColor(red: 0.678, green: 0.702, blue: 0.737, alpha: 1.0), // #ADB3BC (as functional)
         keyTextColor: .black,
         keySecondaryTextColor: UIColor(red: 0.0, green: 0.0, blue: 0.0, alpha: 0.5),
         keyShadowColor: UIColor(red: 0.533, green: 0.545, blue: 0.569, alpha: 1.0), // #888B91
         modifierActiveBackgroundColor: .white,
         modifierActiveTextColor: .black,
-        toolbarBackgroundColor: UIColor(red: 0.820, green: 0.831, blue: 0.851, alpha: 1.0), // Тот же что и клавиатура
+        toolbarBackgroundColor: UIColor(red: 0.820, green: 0.831, blue: 0.851, alpha: 1.0), // Same as keyboard
         toolbarSeparatorColor: UIColor(red: 0.678, green: 0.702, blue: 0.737, alpha: 1.0)
     )
     
-    /// Тёмная тема - точное соответствие нативной iOS клавиатуре
+    /// Dark theme - exact match to native iOS keyboard
     static let dark = KeyboardTheme(
         keyboardBackgroundColor: UIColor(red: 0.051, green: 0.051, blue: 0.051, alpha: 1.0), // #0D0D0D
         letterKeyBackgroundColor: UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1.0), // #3A3A3C
@@ -140,7 +140,7 @@ struct KeyboardTheme {
         toolbarSeparatorColor: UIColor(red: 0.227, green: 0.227, blue: 0.235, alpha: 1.0)
     )
     
-    /// Получить тему в зависимости от текущего стиля интерфейса
+    /// Get theme based on current interface style
     static func theme(for userInterfaceStyle: UIUserInterfaceStyle) -> KeyboardTheme {
         switch userInterfaceStyle {
         case .dark:
@@ -153,22 +153,22 @@ struct KeyboardTheme {
 
 // MARK: - Keyboard Language
 
-/// Языки клавиатуры
+/// Keyboard languages
 enum KeyboardLanguage: String, CaseIterable {
     case english = "en"
     case russian = "ru"
     case georgian = "ka"
 
-    /// Название языка для UI
+    /// Language name for UI
     var displayName: String {
         switch self {
         case .english: return "English"
-        case .russian: return "Русский"
+        case .russian: return "Russian"
         case .georgian: return "ქართული"
         }
     }
 
-    /// Эмодзи флаг для визуального отображения
+    /// Flag emoji for visual display
     var flag: String {
         switch self {
         case .english: return "🇺🇸"
@@ -177,8 +177,8 @@ enum KeyboardLanguage: String, CaseIterable {
         }
     }
 
-    /// Получить список доступных языков (пересечение с системными языками)
-    /// English всегда доступен по умолчанию
+    /// Get list of available languages (intersection with system languages)
+    /// English is always available by default
     static func availableLanguages() -> [KeyboardLanguage] {
         // Get system keyboard language identifiers
         let systemLanguages = UserDefaults.standard.object(forKey: "AppleKeyboards") as? [String] ?? []
@@ -225,7 +225,7 @@ enum KeyboardLanguage: String, CaseIterable {
         return available.isEmpty ? [.english] : available
     }
 
-    /// Следующий язык в цикле (только среди доступных)
+    /// Next language in cycle (among available only)
     func next(availableLanguages: [KeyboardLanguage]) -> KeyboardLanguage {
         guard let currentIndex = availableLanguages.firstIndex(of: self) else {
             return .english
@@ -234,7 +234,7 @@ enum KeyboardLanguage: String, CaseIterable {
         return availableLanguages[nextIndex]
     }
 
-    /// Следующий язык в цикле (legacy - использует все языки)
+    /// Next language in cycle (legacy - uses all languages)
     var next: KeyboardLanguage {
         return next(availableLanguages: KeyboardLanguage.availableLanguages())
     }
@@ -242,13 +242,13 @@ enum KeyboardLanguage: String, CaseIterable {
 
 // MARK: - Keyboard Layout
 
-/// Типы раскладки клавиатуры
+/// Keyboard layout types
 enum KeyboardLayout {
-    case letters      // Буквенная раскладка (QWERTY/ЙЦУКЕН/ჯერუპ)
-    case numbers      // Цифры и основные символы
-    case symbols      // Дополнительные символы
+    case letters      // Letter layout (QWERTY/ЙЦУКЕН/ჯერუპ)
+    case numbers      // Numbers and basic symbols
+    case symbols      // Additional symbols
 
-    /// Текст для кнопки переключения на эту раскладку
+    /// Button text to switch to this layout
     var switchButtonTitle: String {
         switch self {
         case .letters: return "ABC"
@@ -269,7 +269,7 @@ enum KeyboardLayout {
 
 // MARK: - Modifier State
 
-/// Состояние модификаторов клавиатуры
+/// Keyboard modifier state
 struct ModifierState {
     var shift: Bool
     var capsLock: Bool
@@ -283,21 +283,21 @@ struct ModifierState {
         self.alt = alt
     }
     
-    /// Быстрая проверка - нет активных модификаторов
+    /// Quick check - no active modifiers
     var isEmpty: Bool {
         return !shift && !capsLock && !control && !alt
     }
     
-    /// Нужно ли показывать заглавные буквы
+    /// Should show capital letters
     var isUppercase: Bool {
         return shift || capsLock
     }
     
-    /// Применить модификаторы к символу
+    /// Apply modifiers to character
     func apply(to character: Character) -> String {
         var result = String(character)
 
-        // Преобразование регистра
+        // Case conversion
         if isUppercase {
             // Georgian letters - iOS keyboard shift mapping
             switch character {
@@ -338,7 +338,7 @@ struct ModifierState {
                 if character.isLetter {
                     result = character.uppercased()
                 } else {
-                    // Символы над цифрами при Shift
+                    // Symbols above numbers when Shift
                     switch character {
                     case "1": result = "!"
                     case "2": result = "@"
@@ -369,7 +369,7 @@ struct ModifierState {
             result = character.lowercased()
         }
         
-        // Control комбинации
+        // Control combinations
         if control, let asciiValue = character.uppercased().first?.asciiValue {
             // Ctrl+A = 0x01, Ctrl+B = 0x02, etc.
             if asciiValue >= 65 && asciiValue <= 90 { // A-Z
