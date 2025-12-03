@@ -15,9 +15,10 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     weak var delegate: WebSocketClientDelegate?
     
     // MARK: - Constants
-    
+
     private let pingInterval: TimeInterval = 20.0 // 20 seconds
     private let pongTimeout: TimeInterval = 30.0 // 30 seconds
+    private let receiveTimeout: TimeInterval = 60.0 // 60 seconds - detect silent disconnects
     private let minReconnectDelay: TimeInterval = 1.0
     private let maxReconnectDelay: TimeInterval = 30.0
     
@@ -672,39 +673,54 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
             WebSocketClient.log("⚠️ WebSocket: listenForMessages() - no webSocketTask")
             return
         }
-        
+
         WebSocketClient.log("🎧 WebSocket: Starting to listen for messages (task state: \(task.state.rawValue))")
-        
+
         while isConnected, task.state == .running {
             // Check if task was cancelled
             if Task.isCancelled {
                 WebSocketClient.log("🛑 WebSocket: Listen task cancelled")
                 break
             }
-            
+
             do {
-                // Use task.receive() directly instead of receiveMessage() to avoid timeout issues
-                // receiveMessage() is only for connection setup (connect, auth) with timeouts
-                WebSocketClient.log("👂 WebSocket: Waiting for message...")
-                let wsMessage = try await task.receive()
-                WebSocketClient.log("📥 WebSocket: Received raw message")
-                
-                // Convert to Data first (which is Sendable), then parse on MainActor
-                let messageData: Data
-                switch wsMessage {
-                case .string(let text):
-                    guard let data = text.data(using: .utf8) else {
-                        WebSocketClient.log("❌ WebSocket: Failed to convert string to data: \(text)")
-                        continue // Skip invalid message and continue listening
+                // Use timeout on receive to detect silent disconnects (network switch, carrier change)
+                // Without timeout, task.receive() blocks indefinitely on stale connections
+                WebSocketClient.log("👂 WebSocket: Waiting for message (timeout: \(receiveTimeout)s)...")
+
+                let messageData = try await withThrowingTaskGroup(of: Data.self) { group in
+                    // Task to receive message
+                    group.addTask {
+                        let wsMessage = try await task.receive()
+
+                        switch wsMessage {
+                        case .string(let text):
+                            guard let data = text.data(using: .utf8) else {
+                                throw WebSocketError.invalidMessage
+                            }
+                            return data
+                        case .data(let data):
+                            return data
+                        @unknown default:
+                            throw WebSocketError.invalidMessage
+                        }
                     }
-                    messageData = data
-                case .data(let data):
-                    messageData = data
-                @unknown default:
-                    WebSocketClient.log("❌ WebSocket: Unknown message type")
-                    continue // Skip unknown message type
+
+                    // Task for timeout - detect silent disconnects
+                    group.addTask { [receiveTimeout] in
+                        try await Task.sleep(for: .seconds(receiveTimeout))
+                        WebSocketClient.log("⏱️ WebSocket: Receive timeout after \(receiveTimeout) seconds - connection may be stale")
+                        throw WebSocketError.connectionClosed
+                    }
+
+                    // Return first completed task and cancel the other
+                    let result = try await group.next()!
+                    group.cancelAll()
+                    return result
                 }
-                
+
+                WebSocketClient.log("📥 WebSocket: Received raw message")
+
                 // Parse and handle message on main actor to avoid data races
                 await MainActor.run { [messageData] in
                     // Parse JSON on MainActor to ensure thread safety
@@ -724,8 +740,8 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
                     WebSocketClient.log("🛑 WebSocket: Listen task cancelled during receive")
                     break
                 }
-                
-                // Connection lost or error
+
+                // Connection lost or error (including receive timeout)
                 // Check if connection is still valid before handling disconnection
                 // This prevents handling errors from already-closed connections
                 await MainActor.run {

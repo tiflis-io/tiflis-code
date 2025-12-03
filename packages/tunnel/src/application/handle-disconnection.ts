@@ -122,6 +122,13 @@ export class HandleDisconnectionUseCase {
     // Check workstations
     const timedOutWorkstations = this.workstationRegistry.findTimedOut(timeoutMs);
     for (const workstation of timedOutWorkstations) {
+      // Close the socket to prevent zombie connections
+      // The workstation will detect the closure and reconnect
+      try {
+        workstation.socket.close(1000, 'Connection timed out');
+      } catch {
+        // Ignore close errors
+      }
       this.handleWorkstationDisconnection(workstation.tunnelId);
       workstationsClosed++;
     }

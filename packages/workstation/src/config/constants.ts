@@ -31,6 +31,9 @@ export const CONNECTION_TIMING = {
   /** Max time to wait for pong before considering connection stale (30 seconds) */
   PONG_TIMEOUT_MS: 30_000,
 
+  /** Max time to wait for registration response (15 seconds) */
+  REGISTRATION_TIMEOUT_MS: 15_000,
+
   /** Minimum reconnect delay (1 second) */
   RECONNECT_DELAY_MIN_MS: 1_000,
 

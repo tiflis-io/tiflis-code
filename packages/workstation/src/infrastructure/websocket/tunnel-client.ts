@@ -50,6 +50,7 @@ export class TunnelClient {
   private reconnectAttempts = 0;
   private pingInterval: NodeJS.Timeout | null = null;
   private reconnectTimeout: NodeJS.Timeout | null = null;
+  private registrationTimeout: NodeJS.Timeout | null = null;
   private messageBuffer: string[] = [];
 
   constructor(config: TunnelClientConfig, callbacks: TunnelClientCallbacks) {
@@ -170,19 +171,61 @@ export class TunnelClient {
 
   /**
    * Sends a message to the tunnel (for forwarding to clients).
+   * Detects send failures and triggers reconnection.
    */
   send(message: string): boolean {
     if (this.state !== 'registered' || !this.ws) {
       // Buffer messages during reconnection
-      if (this.state === 'connecting') {
+      if (this.state === 'connecting' || this.state === 'connected') {
         this.messageBuffer.push(message);
         return true;
       }
       return false;
     }
 
-    this.ws.send(message);
+    // Check socket state before sending
+    if (this.ws.readyState !== WebSocket.OPEN) {
+      this.logger.warn(
+        { readyState: this.ws.readyState },
+        'Socket not open, triggering reconnection'
+      );
+      this.handleSendFailure();
+      return false;
+    }
+
+    // Send with error callback to detect failures
+    this.ws.send(message, (error) => {
+      if (error) {
+        this.logger.error({ error }, 'Send failed, triggering reconnection');
+        this.handleSendFailure();
+      }
+    });
     return true;
+  }
+
+  /**
+   * Handles send failure by disconnecting and scheduling reconnection.
+   */
+  private handleSendFailure(): void {
+    // Only handle if we think we're connected
+    if (this.state === 'disconnected') {
+      return;
+    }
+
+    this.clearTimers();
+
+    if (this.ws) {
+      try {
+        this.ws.close(1000, 'Send failure');
+      } catch {
+        // Ignore close errors
+      }
+      this.ws = null;
+    }
+
+    this.state = 'disconnected';
+    this.callbacks.onDisconnected();
+    this.scheduleReconnect();
   }
 
   /**
@@ -201,6 +244,7 @@ export class TunnelClient {
 
   /**
    * Sends registration message to the tunnel.
+   * Starts a timeout that will trigger reconnection if registration response is not received.
    */
   private sendRegistration(): void {
     const message: WorkstationRegisterMessage = {
@@ -215,16 +259,67 @@ export class TunnelClient {
     };
 
     this.sendToTunnel(message);
+
+    // Start registration timeout - if we don't receive workstation.registered in time,
+    // disconnect and retry to avoid being stuck in 'connected' state forever
+    this.clearRegistrationTimeout();
+    this.registrationTimeout = setTimeout(() => {
+      if (this.state === 'connected') {
+        this.logger.warn(
+          { timeoutMs: CONNECTION_TIMING.REGISTRATION_TIMEOUT_MS },
+          'Registration timeout - did not receive workstation.registered response'
+        );
+        this.handleRegistrationTimeout();
+      }
+    }, CONNECTION_TIMING.REGISTRATION_TIMEOUT_MS);
+  }
+
+  /**
+   * Handles registration timeout.
+   * Disconnects and schedules reconnection.
+   */
+  private handleRegistrationTimeout(): void {
+    this.clearTimers();
+
+    if (this.ws) {
+      try {
+        this.ws.close(1000, 'Registration timeout');
+      } catch {
+        // Ignore close errors
+      }
+      this.ws = null;
+    }
+
+    this.state = 'disconnected';
+    this.callbacks.onError(new Error('Registration timeout'));
+    this.scheduleReconnect();
+  }
+
+  /**
+   * Clears registration timeout.
+   */
+  private clearRegistrationTimeout(): void {
+    if (this.registrationTimeout) {
+      clearTimeout(this.registrationTimeout);
+      this.registrationTimeout = null;
+    }
   }
 
   /**
    * Sends a message to the tunnel.
+   * Detects send failures and triggers reconnection.
    */
   private sendToTunnel(message: OutgoingTunnelMessage): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      this.logger.warn('Cannot send to tunnel - socket not open');
       return;
     }
-    this.ws.send(JSON.stringify(message));
+    this.ws.send(JSON.stringify(message), (error) => {
+      if (error) {
+        this.logger.error({ error, messageType: message.type }, 'Failed to send to tunnel');
+        this.handleSendFailure();
+      }
+    });
   }
 
   /**
@@ -267,6 +362,9 @@ export class TunnelClient {
    * Handles successful registration.
    */
   private handleRegistered(message: WorkstationRegisteredMessage): void {
+    // Clear registration timeout - we received the response
+    this.clearRegistrationTimeout();
+
     this.tunnelId = message.payload.tunnel_id;
     this.publicUrl = message.payload.public_url;
     this.state = 'registered';
@@ -371,6 +469,7 @@ export class TunnelClient {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
     }
+    this.clearRegistrationTimeout();
   }
 }
 
