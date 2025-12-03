@@ -732,9 +732,18 @@ final class TerminalViewModel: ObservableObject {
 
         // Detect clear screen sequences before feeding
         // ESC[2J - Erase Display, ESC[3J - Erase Scrollback, ESC c - Full Reset
-        let hasClearSequence = content.contains("\u{1b}[2J") ||
-                               content.contains("\u{1b}[3J") ||
-                               content.contains("\u{1b}c")
+        // Also detect alternate screen buffer exit (ESC[?1049l) which apps like vim/htop use
+        let hasEraseDisplay = content.contains("\u{1b}[2J")
+        let hasEraseScrollback = content.contains("\u{1b}[3J")
+        let hasFullReset = content.contains("\u{1b}c")
+        let hasAltScreenExit = content.contains("\u{1b}[?1049l")
+        let hasClearSequence = hasEraseDisplay || hasEraseScrollback || hasFullReset || hasAltScreenExit
+
+        #if DEBUG
+        if hasClearSequence {
+            print("[TerminalVM:\(session.id.prefix(8))] Clear sequence detected: eraseDisplay=\(hasEraseDisplay), eraseScrollback=\(hasEraseScrollback), fullReset=\(hasFullReset), altScreenExit=\(hasAltScreenExit)")
+        }
+        #endif
 
         // Feed directly to TerminalView (proper SwiftTerm pattern)
         // Wrap in safety check to handle potential SwiftTerm crashes with malformed escape sequences
@@ -765,10 +774,10 @@ final class TerminalViewModel: ObservableObject {
             terminalView.feed(byteArray: bytes)
         }
 
-        // After clear screen, scroll to bottom to show cursor position
-        // SwiftTerm doesn't auto-scroll after ESC[2J, leaving user viewing scrollback
+        // After clear screen, force resize to reset terminal state and scroll position
+        // This is needed because TUI apps (vim, htop, claude) may leave terminal in odd state
         if hasClearSequence {
-            scrollTerminalToBottom()
+            forceTerminalResize()
         }
 
         #if DEBUG
@@ -1008,25 +1017,37 @@ final class TerminalViewModel: ObservableObject {
         }
     }
     
-    // MARK: - Scroll Management
+    // MARK: - Terminal Reset
 
-    /// Scrolls the terminal view to the bottom to show the cursor position
-    /// Called after clear screen sequences to ensure user sees the prompt
-    private func scrollTerminalToBottom() {
+    /// Forces a terminal resize to reset state after clear screen
+    /// This sends SIGWINCH to the PTY which causes proper cursor repositioning
+    private func forceTerminalResize() {
         guard let terminalView = swiftTermView else { return }
 
-        // TerminalView is a UIScrollView subclass
-        // Calculate the bottom offset based on content size and bounds
-        let bottomOffset = max(0, terminalView.contentSize.height - terminalView.bounds.height)
-        let newOffset = CGPoint(x: 0, y: bottomOffset)
+        // Small delay to let clear sequence complete
+        Task { @MainActor [weak self, weak terminalView] in
+            try? await Task.sleep(for: .milliseconds(50))
 
-        // Only scroll if we're not already at the bottom
-        if abs(terminalView.contentOffset.y - bottomOffset) > 1 {
-            terminalView.setContentOffset(newOffset, animated: false)
+            guard let self = self, let terminalView = terminalView else { return }
 
-            #if DEBUG
-            print("[TerminalVM:\(session.id.prefix(8))] Scrolled to bottom after clear: offset=\(bottomOffset)")
-            #endif
+            // Force resize by re-sending current size
+            // This triggers SIGWINCH on server and resets terminal state
+            let cols = self.terminalSize.cols
+            let rows = self.terminalSize.rows
+
+            if cols > 0 && rows > 0 {
+                // Temporarily change size and change back to force resize
+                self.pendingResize = (cols: cols, rows: rows)
+                self.sendResizeToServer()
+
+                // Also resize SwiftTerm locally
+                terminalView.resize(cols: cols, rows: rows)
+
+                // Scroll to bottom after resize
+                try? await Task.sleep(for: .milliseconds(50))
+                let maxOffsetY = max(0, terminalView.contentSize.height - terminalView.bounds.height)
+                terminalView.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: false)
+            }
         }
     }
 
