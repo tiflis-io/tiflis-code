@@ -107,19 +107,34 @@ The app follows design principles inspired by:
 
 ### Connection Setup
 
+#### Option 1: Magic Link (Recommended)
 1. Launch the workstation server on your machine
-2. Open Tiflis Code app on iOS
-3. Go to Settings → Scan QR Code
-4. Scan the QR code displayed by the workstation server
+2. The server will display a magic link in the terminal: `tiflis://connect?data=...`
+3. Open the magic link on your iOS device to auto-configure the app
 
-### Manual Configuration
+#### Option 2: Terminal QR Code
+1. Launch the workstation server on your machine
+2. The server will display a QR code in the terminal
+3. Open Tiflis Code app on iOS → Settings → Scan QR Code
+4. Scan the QR code displayed in the terminal
 
-If QR scanning isn't available:
+#### Option 3: Manual Configuration
+If automated connection isn't available:
 
 1. Go to Settings
 2. Enter the Tunnel URL (e.g., `wss://tunnel.tiflis.io/ws`)
 3. Enter your Auth Key
 4. Tap Connect
+
+### Environment Setup
+
+The workstation server requires:
+- **Tunnel URL**: WebSocket endpoint for tunnel server
+- **Tunnel API Key**: Registration key for tunnel server
+- **Workstation Auth Key**: Local authentication key
+- **Agent Provider**: OpenAI, Anthropic, or other LLM provider (optional)
+
+See `packages/workstation/.env.local` for configuration example.
 
 ## 🧪 Running Tests
 

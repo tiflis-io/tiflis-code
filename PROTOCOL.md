@@ -839,6 +839,71 @@ tiflis://connect?data=eyJ0dW5uZWxfaWQiOiJaNnE2MmFLei1GOTYiLCJ1cmwiOiJ3c3M6Ly90dW
 
 **Note:** The `tunnel_id` is the persistent workstation identifier that must be included in the magic link so mobile clients can route to the correct workstation. The `tunnel_id` persists across both workstation and tunnel server restarts, ensuring stable routing.
 
+### 11.3 QR Code Implementation Details
+
+#### Terminal QR Code (Currently Supported)
+
+The workstation server generates simple ASCII QR codes in the terminal using the `qrcode` npm package:
+
+```bash
+📱 Scan QR Code to Connect:
+
+█████████████████████████████████
+████ ▄▄▄▄▄ █▀█ ▄▄▄▄▄ █▄█ ▄▄▄▄▄ ████
+████ █   █ █▀▀ █   █ █▀▀ █   █ ████
+████ █▄▄▄█ █▄▄ █▄▄▄█ █▄▄ █▄▄▄█ ████
+████▄▄▄▄▄▄▄█▄▀ ▄▄▄▄▄█▄█▄▄▄▄▄▄█▄████
+
+📱 Magic Link:
+tiflis://connect?data=eyJ0dW5uZWxfaWQiOiJaNnE2MmFLei1GOTYiLCJ1cmwiOiJ3c3M6Ly90dW5uZWwuZXhhbXBsZS5jb20vd3MiLCJrZXkiOiJteS13b3Jrc3RhdGlvbi1hdXRoLWtleSJ9
+```
+
+#### Web QR Code (Removed in v0.1.3)
+
+The workstation server previously provided HTTP endpoints for branded QR code generation:
+
+**Removed Features:**
+- `GET /connection-info/qr` - Branded QR code image with gradients and logo
+- Custom QR styling with brand colors (#2E5AA6 blue to #6F4ABF purple)
+- Logo embedding in QR code center
+- Multi-size QR generation (100-1000px)
+
+**Removed Dependencies:**
+- `qr-code-styling` - Branded QR code generation
+- `canvas` - Image rendering in Node.js
+- `jsdom` - DOM manipulation for QR styling
+- `@types/jsdom` - TypeScript definitions
+
+**Current State:**
+- Terminal QR codes: ✅ Fully supported
+- HTTP QR endpoints: ❌ Removed
+- Magic links: ✅ Fully supported
+- Manual configuration: ✅ Fully supported
+
+### 11.4 iOS App QR Integration
+
+The iOS app includes QR code scanning capability for terminal QR codes:
+
+```swift
+// QR Scanner View
+struct QRScannerView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
+        let scanner = VNDocumentCameraViewController()
+        scanner.delegate = context.coordinator
+        return scanner
+    }
+
+    func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
+}
+```
+
+**Connection Flow:**
+1. Workstation server starts → Generates terminal QR and magic link
+2. User opens Tiflis Code app → Settings → Scan QR Code
+3. Camera opens → Scans terminal QR code
+4. App parses QR data → Auto-configures connection settings
+5. WebSocket connection established → User can interact with AI agents
+
 ---
 
 *This document is the authoritative specification for the tiflis-code WebSocket protocol.*
