@@ -57,6 +57,8 @@ export class PtyManager implements TerminalManager {
       env: {
         ...process.env,
         TERM: 'xterm-256color',
+        // Disable zsh partial line marker (inverse % sign on startup)
+        PROMPT_EOL_MARK: '',
       },
     });
 
