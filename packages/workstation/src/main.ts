@@ -779,8 +779,6 @@ async function bootstrap(): Promise<void> {
             console.log(qr);
           }
           // eslint-disable-next-line no-console
-          console.log(`🎨 Branded QR: http://${env.HOST}:${env.PORT}/connection-info/qr`);
-          // eslint-disable-next-line no-console
           console.log('📱 Magic Link:');
           // eslint-disable-next-line no-console
           console.log(magicLink);
