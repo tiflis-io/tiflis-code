@@ -501,6 +501,13 @@ final class AppState: ObservableObject {
     }
     
     func terminateSession(_ session: Session, silent: Bool = false) {
+        // Don't allow terminating supervisor session
+        guard session.type != .supervisor else {
+            print("⚠️ AppState: Cannot terminate supervisor session")
+            return
+        }
+
+        // Remove session from local state immediately for responsive UI
         sessions.removeAll { $0.id == session.id }
         if selectedSessionId == session.id {
             // Set flag before changing selection
@@ -512,6 +519,41 @@ final class AppState: ObservableObject {
                     self?.isSilentSessionChange = false
                 }
             }
+        }
+
+        // Send terminate message to backend
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.terminateSessionOnBackend(sessionId: session.id)
+        }
+    }
+
+    private func terminateSessionOnBackend(sessionId: String) async {
+        guard connectionState == .connected else {
+            print("⚠️ AppState: Not connected, session terminated locally only")
+            return
+        }
+
+        // Generate request ID
+        let requestId = UUID().uuidString
+
+        // Build terminate_session message per protocol
+        let message: [String: Any] = [
+            "type": "supervisor.terminate_session",
+            "id": requestId,
+            "payload": [
+                "session_id": sessionId
+            ]
+        ]
+
+        print("📤 AppState: Sending supervisor.terminate_session for session: \(sessionId)")
+
+        do {
+            try connectionService.webSocketClient.sendMessage(message)
+            print("✅ AppState: supervisor.terminate_session sent successfully")
+        } catch {
+            print("❌ AppState: Failed to send terminate_session message: \(error)")
+            // Session is already removed from local state, backend will clean up eventually
         }
     }
 }
