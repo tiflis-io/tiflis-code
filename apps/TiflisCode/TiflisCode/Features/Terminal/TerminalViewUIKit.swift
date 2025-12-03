@@ -395,12 +395,20 @@ final class TerminalViewUIKit: UIView {
     
     /// Cleans up terminal resources
     /// Call this when view is being deallocated
-    @MainActor
+    /// Note: Must be called on main thread (which is guaranteed by SwiftUI's dismantleUIView)
     func cleanup() {
+        // Notify SwiftTerm that UI is closed
         terminalView.updateUiClosed()
+
+        // Remove notification observers
         NotificationCenter.default.removeObserver(self)
-        // Remove keyboard reference
+
+        // Remove keyboard reference to break retain cycle
+        customKeyboard?.delegate = nil
         customKeyboard = nil
+
+        // Clear terminal delegate to prevent callbacks to deallocated view model
+        terminalView.terminalDelegate = nil
     }
 
     // MARK: - Terminal Delegate Support

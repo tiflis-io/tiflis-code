@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		009M9QDOZS7T7KRMOTIWIMHG /* SessionLostView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE5PU9GL4RJCN0SCVNXLXV31 /* SessionLostView.swift */; };
 		01D00FB07A302D87795CA3D8 /* TerminalViewModel.swift.bak in Resources */ = {isa = PBXBuildFile; fileRef = 83CC219239587988388AE220 /* TerminalViewModel.swift.bak */; };
 		050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
@@ -16,14 +17,12 @@
 		248CF7C36370193C1B02FD8D /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */; };
 		29B5D73E4900554B45E33C6D /* ConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD369F38E321907820448CEA /* ConnectionService.swift */; };
 		2D8A29E5869A02DD2963955D /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2D35A999999055053D03394B /* SettingsView.swift */; };
+		2TBRPUR3QE8WHSGP5BR3GHP1 /* TerminalStateOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFK0P7JI72C5BGP7YOAVPME0 /* TerminalStateOverlay.swift */; };
 		3070D43E2EDDBF420031B080 /* KeyboardKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4352EDDBF420031B080 /* KeyboardKey.swift */; };
-
 		3070D4422EDDBF420031B080 /* KeyboardLayoutManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4372EDDBF420031B080 /* KeyboardLayoutManager.swift */; };
 		3070D4432EDDBF420031B080 /* TerminalCustomKeyboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D43C2EDDBF420031B080 /* TerminalCustomKeyboardView.swift */; };
-
 		3070D4462EDDBF420031B080 /* KeyboardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3070D4382EDDBF420031B080 /* KeyboardTheme.swift */; };
 		30B7BCCF3A6701E4F24563ED /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E39FD3E80285CE5E52310 /* ChatView.swift */; };
-
 		374794E6BAE6E62146274000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5473A38F6C188E71D88D9AE /* Assets.xcassets */; };
 		3C4E352D636682EF9ABCE02C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C2904D9A71D4757DFF1D2095 /* Assets.xcassets */; };
 		3D6F27B4FA9E75DCB2DC6B10 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
@@ -53,6 +52,8 @@
 		C83E4E3EB0AB84B4B385DFD7 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB369A0324105A5DCC91A1C /* KeychainManager.swift */; };
 		C858E0EBC178B965250B2FF0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1075CEFB65E42C5562E167F /* ContentView.swift */; };
 		CCDB23AA6683E34A83E54A2C /* DeviceIDManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */; };
+		CRASH001BUILDFILE00000001 /* CrashReporter.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRASH001FILEREF000000001 /* CrashReporter.swift */; };
+		CRASH002BUILDFILE00000001 /* CrashLogView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CRASH002FILEREF000000001 /* CrashLogView.swift */; };
 		D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
 		D1AD39526D5B100BD5089976 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5E7DEF52A06D185EC483DC /* Session.swift */; };
 		DBF5E596AC5FA8C67D5824CC /* WebSocketMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */; };
@@ -88,18 +89,14 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-
 		0B4CC7A25F1ECFCBEA3CAD66 /* TiflisCodeWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeWatchApp.swift; sourceTree = "<group>"; };
 		1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewModel.swift; sourceTree = "<group>"; };
 		1EB369A0324105A5DCC91A1C /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		2D35A999999055053D03394B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2FD23EFAA7CD1C122DF89A3E /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
-
 		3070D4352EDDBF420031B080 /* KeyboardKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardKey.swift; sourceTree = "<group>"; };
-
 		3070D4372EDDBF420031B080 /* KeyboardLayoutManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardLayoutManager.swift; sourceTree = "<group>"; };
 		3070D4382EDDBF420031B080 /* KeyboardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTheme.swift; sourceTree = "<group>"; };
-
 		3070D43C2EDDBF420031B080 /* TerminalCustomKeyboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalCustomKeyboardView.swift; sourceTree = "<group>"; };
 		308C9D6BE0BF345A41C8A1E5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		3E96900D8413F72E4B064E10 /* ConnectionState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionState.swift; sourceTree = "<group>"; };
@@ -114,22 +111,26 @@
 		83CC219239587988388AE220 /* TerminalViewModel.swift.bak */ = {isa = PBXFileReference; lastKnownFileType = text; path = TerminalViewModel.swift.bak; sourceTree = "<group>"; };
 		861C8E9521B9F35E6255C252 /* PromptInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInputBar.swift; sourceTree = "<group>"; };
 		8C5E70F9FE87A722D9D13259 /* AgentType.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentType.swift; sourceTree = "<group>"; };
-		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = TiflisCodeWatch.app; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
-		B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TiflisCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TiflisCodeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B5473A38F6C188E71D88D9AE /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClientProtocol.swift; sourceTree = "<group>"; };
 		C2904D9A71D4757DFF1D2095 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketClient.swift; sourceTree = "<group>"; };
+		CFK0P7JI72C5BGP7YOAVPME0 /* TerminalStateOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStateOverlay.swift; sourceTree = "<group>"; };
+		CRASH001FILEREF000000001 /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
+		CRASH002FILEREF000000001 /* CrashLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLogView.swift; sourceTree = "<group>"; };
 		D20190820F4474054253D38F /* TerminalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalContentView.swift; sourceTree = "<group>"; };
 		D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionIndicator.swift; sourceTree = "<group>"; };
 		DD369F38E321907820448CEA /* ConnectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionService.swift; sourceTree = "<group>"; };
+		DE5PU9GL4RJCN0SCVNXLXV31 /* SessionLostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionLostView.swift; sourceTree = "<group>"; };
 		E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
 		E45A48D49667369980A068E8 /* TerminalView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalView.swift; sourceTree = "<group>"; };
 		E8886AE584CDB64D5088E0F3 /* TiflisCodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeTests.swift; sourceTree = "<group>"; };
-		EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = TiflisCodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TiflisCodeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatViewModel.swift; sourceTree = "<group>"; };
 		EEFB352247A4D4566C00A9EB /* TiflisCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeApp.swift; sourceTree = "<group>"; };
 		F1075CEFB65E42C5562E167F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -234,6 +235,8 @@
 		47B9610030BC0EA6B32CEC71 /* Terminal */ = {
 			isa = PBXGroup;
 			children = (
+				DE5PU9GL4RJCN0SCVNXLXV31 /* SessionLostView.swift */,
+				CFK0P7JI72C5BGP7YOAVPME0 /* TerminalStateOverlay.swift */,
 				3070D43D2EDDBF420031B080 /* Keyboard */,
 				D20190820F4474054253D38F /* TerminalContentView.swift */,
 				E45A48D49667369980A068E8 /* TerminalView.swift */,
@@ -247,6 +250,7 @@
 		5265FF4E8B672E33707124D5 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				CRASH001GRPREF0000000001 /* CrashReporter */,
 				F43D691165B5D91804A4E461 /* Storage */,
 				A01EF65F15C0494100BD754D /* WebSocket */,
 			);
@@ -259,7 +263,7 @@
 				723A2D053CB58A252A985D76 /* Tiflis Code.app */,
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
-				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
+				96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -378,6 +382,14 @@
 			path = TiflisCode;
 			sourceTree = "<group>";
 		};
+		CRASH001GRPREF0000000001 /* CrashReporter */ = {
+			isa = PBXGroup;
+			children = (
+				CRASH001FILEREF000000001 /* CrashReporter.swift */,
+			);
+			path = CrashReporter;
+			sourceTree = "<group>";
+		};
 		D0B5FBD01207DD27A09FC66A /* Resources */ = {
 			isa = PBXGroup;
 			children = (
@@ -389,6 +401,7 @@
 		EC5071502C357389EF2548F4 /* Settings */ = {
 			isa = PBXGroup;
 			children = (
+				CRASH002FILEREF000000001 /* CrashLogView.swift */,
 				2D35A999999055053D03394B /* SettingsView.swift */,
 			);
 			path = Settings;
@@ -487,7 +500,7 @@
 			packageProductDependencies = (
 			);
 			productName = TiflisCodeWatch;
-			productReference = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */;
+			productReference = 96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -497,7 +510,7 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1600;
+				LastUpgradeCheck = 2610;
 				TargetAttributes = {
 					4293F37DA3BD351CBB50BF55 = {
 						DevelopmentTeam = "";
@@ -589,6 +602,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				009M9QDOZS7T7KRMOTIWIMHG /* SessionLostView.swift in Sources */,
+				2TBRPUR3QE8WHSGP5BR3GHP1 /* TerminalStateOverlay.swift in Sources */,
 				0D93AD3E6B27DD6926A57C43 /* AgentType.swift in Sources */,
 				E12F72AEA79995700BFC1A36 /* AudioPlayerView.swift in Sources */,
 				30B7BCCF3A6701E4F24563ED /* ChatView.swift in Sources */,
@@ -620,6 +635,8 @@
 				D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */,
 				536A7FE56FE78B6C906137F9 /* WebSocketClientProtocol.swift in Sources */,
 				F98803747A1C889C9EF80109 /* WebSocketMessage.swift in Sources */,
+				CRASH001BUILDFILE00000001 /* CrashReporter.swift in Sources */,
+				CRASH002BUILDFILE00000001 /* CrashLogView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -686,6 +703,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = "";
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -710,6 +728,7 @@
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
@@ -799,6 +818,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = "";
 				ENABLE_NS_ASSERTIONS = NO;
@@ -816,6 +836,7 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;

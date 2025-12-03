@@ -11,7 +11,6 @@ import type { TerminalManager } from '../../domain/ports/session-manager.js';
 import { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
 import { getEnv } from '../../config/env.js';
-import { SESSION_CONFIG } from '../../config/constants.js';
 
 /**
  * Default shell to use for terminal sessions.
@@ -35,7 +34,7 @@ export class PtyManager implements TerminalManager {
     this.logger = config.logger.child({ component: 'pty-manager' });
     // Get buffer size from environment, fallback to default
     const env = getEnv();
-    this.bufferSize = env.TERMINAL_OUTPUT_BUFFER_SIZE ?? SESSION_CONFIG.DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE;
+    this.bufferSize = env.TERMINAL_OUTPUT_BUFFER_SIZE;
   }
 
   /**

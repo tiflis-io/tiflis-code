@@ -48,7 +48,10 @@ const EnvSchema = z.object({
   DATA_DIR: z
     .string()
     .optional()
-    .transform((val) => (val?.trim() || getDefaultDataDir())),
+    .transform((val) => {
+      const trimmed = val?.trim();
+      return trimmed && trimmed.length > 0 ? trimmed : getDefaultDataDir();
+    }),
 
   // ─────────────────────────────────────────────────────────────
   // Supervisor Agent (LLM) Configuration

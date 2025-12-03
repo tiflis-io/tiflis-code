@@ -114,12 +114,14 @@ function handleTunnelMessage(
 
     // Get the message handlers
     const handlers = createMessageHandlers();
-    const handler = handlers[messageType as keyof MessageHandlers];
-    
-    if (!handler) {
+
+    // Check if messageType is a valid handler key
+    if (!(messageType in handlers)) {
       logger.warn({ type: messageType }, 'No handler for tunnel message type');
       return;
     }
+
+    const handler = handlers[messageType as keyof MessageHandlers];
 
     // Parse the message
     const parsedMessage = parseClientMessage(data);
@@ -129,7 +131,7 @@ function handleTunnelMessage(
     }
 
     // Execute the handler
-    handler(virtualSocket, parsedMessage).catch((error) => {
+    handler(virtualSocket, parsedMessage).catch((error: unknown) => {
       logger.error({ error, type: messageType }, 'Handler error for tunnel message');
     });
   } catch (error) {
@@ -418,28 +420,23 @@ async function bootstrap(): Promise<void> {
           const bcaster = messageBroadcaster;
           if (session && isTerminalSession(session)) {
             session.onOutput((data: string) => {
-              const timestamp = Date.now();
+              // Add to buffer and get the message with sequence number
+              const outputMessage = session.addOutputToBuffer(data);
+
               const outputEvent = {
                 type: 'session.output',
                 session_id: sessionId.value,
                 payload: {
                   content_type: 'terminal',
-                  content: data, // ✅ Correct field name per PROTOCOL.md
-                  timestamp, // ✅ Required timestamp per PROTOCOL.md
+                  content: data,
+                  timestamp: outputMessage.timestamp,
+                  sequence: outputMessage.sequence, // Include sequence for deduplication
                 },
               };
-              
-              // Add to in-memory buffer for replay
-              session.addOutputToBuffer({
-                content_type: 'terminal',
-                content: data,
-                timestamp,
-              });
-              
+
               // Send to all subscribers via broadcaster
               // Note: Direct socket.send() is not used for tunnel connections
               // All messages go through broadcaster which handles both direct and tunnel connections
-              // Also broadcast through tunnel
               bcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
             });
           }
@@ -568,14 +565,15 @@ async function bootstrap(): Promise<void> {
         session_id: string;
         payload: {
           since_timestamp?: number;
+          since_sequence?: number;
           limit?: number;
         };
       };
-      
+
       try {
         const sessionId = new SessionId(replayMessage.session_id);
         const session = sessionManager.getSession(sessionId);
-        
+
         if (!session) {
           socket.send(JSON.stringify({
             type: 'error',
@@ -587,40 +585,55 @@ async function bootstrap(): Promise<void> {
           }));
           return Promise.resolve();
         }
-        
+
         const sinceTimestamp = replayMessage.payload.since_timestamp;
+        const sinceSequence = replayMessage.payload.since_sequence;
         const limit = replayMessage.payload.limit ?? 100;
-        
+
         // Handle terminal sessions
         if (isTerminalSession(session)) {
-          const outputHistory = session.getOutputHistory(sinceTimestamp, limit);
-          
-          // Convert to ReplayedMessage format
+          const outputHistory = session.getOutputHistory({
+            sinceSequence,
+            sinceTimestamp,
+            limit,
+          });
+
+          // Convert to ReplayedMessage format with sequence numbers
           const replayedMessages = outputHistory.map((msg) => ({
             content_type: 'terminal' as const,
             content: msg.content,
             timestamp: msg.timestamp,
+            sequence: msg.sequence,
           }));
-          
+
           // Check if there are more messages (if we got exactly the limit, there might be more)
           const hasMore = outputHistory.length === limit;
-          
+
+          // Get sequence range for gap detection on client side
+          const firstMsg = outputHistory[0];
+          const lastMsg = outputHistory[outputHistory.length - 1];
+
           socket.send(JSON.stringify({
             type: 'session.replay.data',
             session_id: replayMessage.session_id,
             payload: {
               messages: replayedMessages,
               has_more: hasMore,
+              first_sequence: firstMsg?.sequence ?? 0,
+              last_sequence: lastMsg?.sequence ?? 0,
+              current_sequence: session.currentSequence,
             },
           }));
-          
+
           logger.debug(
-            { 
-              sessionId: replayMessage.session_id, 
-              messageCount: replayedMessages.length, 
+            {
+              sessionId: replayMessage.session_id,
+              messageCount: replayedMessages.length,
               hasMore,
               sinceTimestamp,
+              sinceSequence,
               limit,
+              currentSequence: session.currentSequence,
               bufferSize: session.getOutputHistory().length
             },
             'Terminal session replay sent'
@@ -634,9 +647,12 @@ async function bootstrap(): Promise<void> {
             payload: {
               messages: [],
               has_more: false,
+              first_sequence: 0,
+              last_sequence: 0,
+              current_sequence: 0,
             },
           }));
-          
+
           logger.debug(
             { sessionId: replayMessage.session_id, sessionType: session.type },
             'Session replay not implemented for this session type'
@@ -656,7 +672,7 @@ async function bootstrap(): Promise<void> {
           },
         }));
       }
-      
+
       return Promise.resolve();
     },
   });

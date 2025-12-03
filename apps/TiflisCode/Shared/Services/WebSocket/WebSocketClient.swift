@@ -297,23 +297,78 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     
     private func waitForConnectedResponse() async throws {
         WebSocketClient.log("⏳ WebSocket: Waiting for connected response...")
-        let message = try await receiveMessage()
-        WebSocketClient.log("📥 WebSocket: Received message: \(message)")
-        
-        guard let parsed = WebSocketMessage.parse(message),
-              case .connected(let connectedMsg) = parsed else {
-            WebSocketClient.log("❌ WebSocket: Unexpected message type while waiting for connected response")
-            throw WebSocketError.unexpectedMessage
-        }
-        
-        WebSocketClient.log("✅ WebSocket: Received connected response (tunnel_id: \(connectedMsg.payload.tunnelId))")
-        await MainActor.run {
-            delegate?.webSocketClient(
-                self,
-                didConnect: connectedMsg.payload.tunnelId,
-                tunnelVersion: connectedMsg.payload.tunnelVersion,
-                protocolVersion: connectedMsg.payload.protocolVersion
-            )
+
+        // Keep receiving messages until we get "connected" or an error
+        // Other messages are buffered for later processing
+        var bufferedMessages: [[String: Any]] = []
+        let timeout: TimeInterval = 30.0
+        let startTime = Date()
+
+        while true {
+            // Check timeout
+            if Date().timeIntervalSince(startTime) > timeout {
+                WebSocketClient.log("⏱️ WebSocket: Connect timeout after \(timeout) seconds")
+                throw WebSocketError.connectionClosed
+            }
+
+            let message = try await receiveMessage(timeout: timeout - Date().timeIntervalSince(startTime))
+            WebSocketClient.log("📥 WebSocket: Received message: \(message)")
+
+            guard let messageType = message["type"] as? String else {
+                WebSocketClient.log("⚠️ WebSocket: Message without type during connect: \(message)")
+                continue
+            }
+
+            // Handle connect-related messages
+            if messageType == "connected" || messageType == "error" {
+                guard let parsed = WebSocketMessage.parse(message) else {
+                    WebSocketClient.log("❌ WebSocket: Failed to parse connect message")
+                    throw WebSocketError.unexpectedMessage
+                }
+
+                switch parsed {
+                case .connected(let connectedMsg):
+                    WebSocketClient.log("✅ WebSocket: Received connected response (tunnel_id: \(connectedMsg.payload.tunnelId))")
+
+                    // Note: Buffered messages during connect phase are discarded since we're not authenticated yet
+                    // They will be re-sent by the server after we authenticate
+
+                    await MainActor.run {
+                        delegate?.webSocketClient(
+                            self,
+                            didConnect: connectedMsg.payload.tunnelId,
+                            tunnelVersion: connectedMsg.payload.tunnelVersion,
+                            protocolVersion: connectedMsg.payload.protocolVersion
+                        )
+                    }
+                    return
+
+                case .error(let errorMsg):
+                    let errorCode = errorMsg.payload.code
+                    let errorMessage = errorMsg.payload.message
+                    WebSocketClient.log("❌ WebSocket: Received error during connect: \(errorCode) - \(errorMessage)")
+
+                    switch errorCode {
+                    case "TUNNEL_NOT_FOUND":
+                        throw WebSocketError.workstationOffline(errorMessage)
+                    default:
+                        throw WebSocketError.authenticationFailed(errorMessage)
+                    }
+
+                default:
+                    WebSocketClient.log("❌ WebSocket: Unexpected parsed message type during connect")
+                    throw WebSocketError.unexpectedMessage
+                }
+            } else {
+                // Buffer non-connect messages (unlikely during connect phase, but handle gracefully)
+                WebSocketClient.log("📦 WebSocket: Buffering message during connect: \(messageType)")
+                bufferedMessages.append(message)
+
+                // Safety limit
+                if bufferedMessages.count > 100 {
+                    bufferedMessages.removeFirst()
+                }
+            }
         }
     }
     
@@ -340,49 +395,97 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     
     private func waitForAuthSuccess() async throws {
         WebSocketClient.log("⏳ WebSocket: Waiting for auth.success response...")
-        let message = try await receiveMessage()
-        WebSocketClient.log("📥 WebSocket: Received message: \(message)")
-        
-        guard let parsed = WebSocketMessage.parse(message) else {
-            WebSocketClient.log("❌ WebSocket: Failed to parse message while waiting for auth.success")
-            throw WebSocketError.unexpectedMessage
-        }
-        
-        switch parsed {
-        case .authSuccess(let authSuccessMsg):
-            WebSocketClient.log("✅ WebSocket: Received auth.success (device_id: \(authSuccessMsg.payload.deviceId))")
-            await MainActor.run {
-                delegate?.webSocketClient(
-                    self,
-                    didAuthenticate: authSuccessMsg.payload.deviceId,
-                    workstationName: authSuccessMsg.payload.workstationName,
-                    workstationVersion: authSuccessMsg.payload.workstationVersion,
-                    protocolVersion: authSuccessMsg.payload.protocolVersion,
-                    restoredSubscriptions: authSuccessMsg.payload.restoredSubscriptions
-                )
+
+        // Keep receiving messages until we get auth.success, auth.error, or error
+        // Other messages (like forward.session_output) are buffered for later processing
+        var bufferedMessages: [[String: Any]] = []
+        let timeout: TimeInterval = 30.0
+        let startTime = Date()
+
+        while true {
+            // Check timeout
+            if Date().timeIntervalSince(startTime) > timeout {
+                WebSocketClient.log("⏱️ WebSocket: Auth timeout after \(timeout) seconds")
+                throw WebSocketError.connectionClosed
             }
-        case .authError(let authErrorMsg):
-            WebSocketClient.log("❌ WebSocket: Authentication failed: \(authErrorMsg.payload.message)")
-            throw WebSocketError.authenticationFailed(authErrorMsg.payload.message)
-        case .error(let errorMsg):
-            // Handle error messages from tunnel (e.g., workstation offline)
-            let errorCode = errorMsg.payload.code
-            let errorMessage = errorMsg.payload.message
-            WebSocketClient.log("❌ WebSocket: Received error during auth: \(errorCode) - \(errorMessage)")
-            
-            // Map common error codes to specific errors
-            switch errorCode {
-            case "WORKSTATION_OFFLINE", "TUNNEL_NOT_FOUND":
-                throw WebSocketError.workstationOffline(errorMessage)
-            default:
-                throw WebSocketError.authenticationFailed(errorMessage)
+
+            let message = try await receiveMessage(timeout: timeout - Date().timeIntervalSince(startTime))
+
+            guard let messageType = message["type"] as? String else {
+                WebSocketClient.log("⚠️ WebSocket: Message without type during auth: \(message)")
+                continue
             }
-        case .workstationOffline(let offlineMsg):
-            WebSocketClient.log("❌ WebSocket: Workstation went offline during auth (tunnel_id: \(offlineMsg.payload.tunnelId))")
-            throw WebSocketError.workstationOffline("Workstation is offline")
-        default:
-            WebSocketClient.log("❌ WebSocket: Unexpected message type while waiting for auth.success: \(message)")
-            throw WebSocketError.unexpectedMessage
+
+            // Handle auth-related messages
+            if messageType == "auth.success" || messageType == "auth.error" || messageType == "error" || messageType == "connection.workstation_offline" {
+                WebSocketClient.log("📥 WebSocket: Received auth response: \(messageType)")
+
+                guard let parsed = WebSocketMessage.parse(message) else {
+                    WebSocketClient.log("❌ WebSocket: Failed to parse auth message")
+                    throw WebSocketError.unexpectedMessage
+                }
+
+                switch parsed {
+                case .authSuccess(let authSuccessMsg):
+                    WebSocketClient.log("✅ WebSocket: Received auth.success (device_id: \(authSuccessMsg.payload.deviceId))")
+
+                    // Process buffered messages after successful auth
+                    if !bufferedMessages.isEmpty {
+                        WebSocketClient.log("📦 WebSocket: Processing \(bufferedMessages.count) buffered messages")
+                        await MainActor.run {
+                            for buffered in bufferedMessages {
+                                handleReceivedMessage(buffered)
+                            }
+                        }
+                    }
+
+                    await MainActor.run {
+                        delegate?.webSocketClient(
+                            self,
+                            didAuthenticate: authSuccessMsg.payload.deviceId,
+                            workstationName: authSuccessMsg.payload.workstationName,
+                            workstationVersion: authSuccessMsg.payload.workstationVersion,
+                            protocolVersion: authSuccessMsg.payload.protocolVersion,
+                            restoredSubscriptions: authSuccessMsg.payload.restoredSubscriptions
+                        )
+                    }
+                    return
+
+                case .authError(let authErrorMsg):
+                    WebSocketClient.log("❌ WebSocket: Authentication failed: \(authErrorMsg.payload.message)")
+                    throw WebSocketError.authenticationFailed(authErrorMsg.payload.message)
+
+                case .error(let errorMsg):
+                    let errorCode = errorMsg.payload.code
+                    let errorMessage = errorMsg.payload.message
+                    WebSocketClient.log("❌ WebSocket: Received error during auth: \(errorCode) - \(errorMessage)")
+
+                    switch errorCode {
+                    case "WORKSTATION_OFFLINE", "TUNNEL_NOT_FOUND":
+                        throw WebSocketError.workstationOffline(errorMessage)
+                    default:
+                        throw WebSocketError.authenticationFailed(errorMessage)
+                    }
+
+                case .workstationOffline(let offlineMsg):
+                    WebSocketClient.log("❌ WebSocket: Workstation went offline during auth (tunnel_id: \(offlineMsg.payload.tunnelId))")
+                    throw WebSocketError.workstationOffline("Workstation is offline")
+
+                default:
+                    WebSocketClient.log("❌ WebSocket: Unexpected parsed message type during auth")
+                    throw WebSocketError.unexpectedMessage
+                }
+            } else {
+                // Buffer non-auth messages for later processing
+                WebSocketClient.log("📦 WebSocket: Buffering message during auth: \(messageType)")
+                bufferedMessages.append(message)
+
+                // Safety limit on buffered messages
+                if bufferedMessages.count > 100 {
+                    WebSocketClient.log("⚠️ WebSocket: Too many buffered messages during auth, dropping oldest")
+                    bufferedMessages.removeFirst()
+                }
+            }
         }
     }
     

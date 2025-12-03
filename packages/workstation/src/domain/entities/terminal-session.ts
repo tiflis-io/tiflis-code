@@ -14,6 +14,19 @@ export interface TerminalOutputMessage {
   content_type: 'terminal';
   content: string;
   timestamp: number;
+  sequence: number;
+}
+
+/**
+ * Options for retrieving output history.
+ */
+export interface GetOutputHistoryOptions {
+  /** Only return messages after this sequence number */
+  sinceSequence?: number;
+  /** Only return messages after this timestamp */
+  sinceTimestamp?: number;
+  /** Maximum number of messages to return */
+  limit?: number;
 }
 
 /**
@@ -42,6 +55,7 @@ export class TerminalSession extends Session {
   private _outputBuffer: TerminalOutputMessage[] = [];
   private _bufferSize: number;
   private _bufferIndex = 0; // For circular buffer
+  private _sequenceNumber = 0; // Monotonically increasing sequence counter
 
   constructor(props: TerminalSessionProps & { bufferSize?: number }) {
     super({ ...props, type: 'terminal' });
@@ -66,6 +80,13 @@ export class TerminalSession extends Session {
 
   get pid(): number {
     return this._pty.pid;
+  }
+
+  /**
+   * Returns the current sequence number (latest message sequence).
+   */
+  get currentSequence(): number {
+    return this._sequenceNumber;
   }
 
   /**
@@ -128,10 +149,19 @@ export class TerminalSession extends Session {
   }
 
   /**
-   * Adds output message to in-memory buffer (circular buffer).
+   * Adds output to in-memory buffer (circular buffer) with auto-assigned sequence number.
    * When buffer is full, oldest messages are evicted.
+   * @param content The raw terminal output content
+   * @returns The created message with assigned sequence number
    */
-  addOutputToBuffer(message: TerminalOutputMessage): void {
+  addOutputToBuffer(content: string): TerminalOutputMessage {
+    const message: TerminalOutputMessage = {
+      content_type: 'terminal',
+      content,
+      timestamp: Date.now(),
+      sequence: ++this._sequenceNumber,
+    };
+
     if (this._outputBuffer.length < this._bufferSize) {
       // Buffer not full yet, append
       this._outputBuffer.push(message);
@@ -140,32 +170,37 @@ export class TerminalSession extends Session {
       this._outputBuffer[this._bufferIndex] = message;
       this._bufferIndex = (this._bufferIndex + 1) % this._bufferSize;
     }
+
+    return message;
   }
 
   /**
    * Gets output history from buffer.
-   * @param sinceTimestamp Optional timestamp to filter messages (only return messages after this timestamp)
-   * @param limit Optional limit on number of messages to return
-   * @returns Array of terminal output messages, ordered by timestamp (oldest first)
+   * @param options Optional filtering options (sinceSequence, sinceTimestamp, limit)
+   * @returns Array of terminal output messages, ordered by sequence (oldest first)
    */
-  getOutputHistory(sinceTimestamp?: number, limit?: number): TerminalOutputMessage[] {
-    // Always sort by timestamp to ensure correct chronological order
+  getOutputHistory(options?: GetOutputHistoryOptions): TerminalOutputMessage[] {
+    // Always sort by sequence to ensure correct chronological order
     // This is critical for circular buffer where order may be disrupted
     let messages: TerminalOutputMessage[] = [...this._outputBuffer];
 
-    // Sort by timestamp first to ensure chronological order
-    // This is essential because circular buffer may not maintain order
-    messages.sort((a, b) => a.timestamp - b.timestamp);
+    // Sort by sequence first to ensure chronological order
+    // Sequence is more reliable than timestamp for ordering
+    messages.sort((a, b) => a.sequence - b.sequence);
 
-    // Filter by timestamp if provided
-    // If sinceTimestamp is 0 or undefined, return all messages
-    if (sinceTimestamp !== undefined && sinceTimestamp > 0) {
-      messages = messages.filter((msg) => msg.timestamp >= sinceTimestamp);
+    // Filter by sequence if provided (takes priority over timestamp)
+    const sinceSeq = options?.sinceSequence;
+    const sinceTs = options?.sinceTimestamp;
+    if (sinceSeq !== undefined && sinceSeq > 0) {
+      messages = messages.filter((msg) => msg.sequence > sinceSeq);
+    } else if (sinceTs !== undefined && sinceTs > 0) {
+      // Fall back to timestamp filtering if no sequence provided
+      messages = messages.filter((msg) => msg.timestamp >= sinceTs);
     }
 
     // Apply limit if provided
-    if (limit !== undefined && limit > 0) {
-      messages = messages.slice(0, limit);
+    if (options?.limit !== undefined && options.limit > 0) {
+      messages = messages.slice(0, options.limit);
     }
 
     return messages;

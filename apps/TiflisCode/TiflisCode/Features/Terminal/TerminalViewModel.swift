@@ -11,14 +11,31 @@ import Foundation
 import SwiftTerm
 import UIKit
 
+/// Terminal session state machine for tracking restoration state
+enum TerminalState: Equatable {
+    /// Not connected to workstation
+    case disconnected
+    /// Subscribing to terminal session
+    case subscribing
+    /// Loading historical output (replay)
+    case replaying
+    /// Applying buffered messages after replay
+    case buffering
+    /// Normal operation, receiving live output
+    case live
+    /// Session no longer exists on server
+    case sessionLost
+}
+
 /// View model for terminal session management
 @MainActor
 final class TerminalViewModel: ObservableObject {
     // MARK: - Published Properties
-    
+
     @Published var isConnected = false
     @Published var error: String?
     @Published var terminalSize: (cols: Int, rows: Int) = (cols: 80, rows: 24)
+    @Published var terminalState: TerminalState = .disconnected
     
     // MARK: - Terminal
     
@@ -49,13 +66,29 @@ final class TerminalViewModel: ObservableObject {
     private let connectionService: ConnectionServicing
     
     // MARK: - State
-    
+
     private var cancellables = Set<AnyCancellable>()
     private var isSubscribed = false
     private var hasLoadedReplay = false  // Track if we've loaded replay to avoid duplicates
-    
+
     // Track known session IDs (temp and real) to handle session ID updates
     private var knownSessionIds: Set<String> = []
+
+    // MARK: - Sequence Tracking (for deduplication and gap detection)
+
+    /// Last received sequence number (for deduplication)
+    private var lastReceivedSequence: Int = 0
+    /// Server's current sequence number (for gap detection)
+    private var serverCurrentSequence: Int = 0
+    /// Buffer for messages received during replay (sequence, content)
+    private var replayBuffer: [(sequence: Int, content: String)] = []
+    /// Flag indicating we're in replay mode (buffering live messages)
+    private var isInReplayMode = false
+    /// Buffer for content that arrives before terminal view is ready
+    /// Limited to prevent unbounded memory growth
+    private var pendingFeedBuffer: [String] = []
+    /// Maximum number of items in pending feed buffer
+    private let maxPendingFeedBufferSize = 1000
     
     // Thread-safe terminal size for nonisolated delegate access
     // Updated from main actor, read from nonisolated context
@@ -89,77 +122,40 @@ final class TerminalViewModel: ObservableObject {
         
         // Observe connection state
         observeConnectionState()
-        
+
         // Observe WebSocket messages
         observeMessages()
-        
-        // Observe session updates (when temp session ID gets replaced with real one)
-        observeSessionUpdates()
+
+        // Note: Session ID updates (temp -> real) are handled via updateSession()
+        // which is called from TerminalView when the session binding changes in AppState
+
+        #if DEBUG
+        print("[TerminalVM:\(session.id.prefix(8))] INIT - knownSessionIds: \(knownSessionIds)")
+        #endif
     }
-    
+
     deinit {
         // Clean up subscriptions when ViewModel is deallocated
         // Note: We can't access @MainActor properties from deinit
         // The session will be unsubscribed when view disappears (onDisappear)
         // Cancellables will be cleaned up automatically when ViewModel is deallocated
+        #if DEBUG
+        print("[TerminalVM] DEINIT")
+        #endif
     }
     
-    /// Observes session updates from AppState (when session ID gets updated from temp to real)
-    private func observeSessionUpdates() {
-        // Observe response messages that contain the updated session ID
-        connectionService.messagePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] message in
-                guard let self = self,
-                      let messageType = message["type"] as? String,
-                      messageType == "response",
-                      let payload = message["payload"] as? [String: Any],
-                      let sessionId = payload["session_id"] as? String,
-                      let sessionType = payload["session_type"] as? String,
-                      sessionType == "terminal",
-                      sessionId != self.session.id else {
-                    return
-                }
-                
-                // If we're tracking the current session ID, this response updates it to the real ID
-                // Update session to use the real ID from backend
-                let updatedSession = Session(
-                    id: sessionId,
-                    type: .terminal,
-                    workspace: self.session.workspace,
-                    project: self.session.project
-                )
-                self.session = updatedSession
-                self.knownSessionIds.insert(sessionId)
-            }
-            .store(in: &cancellables)
-        
-        // Also observe session.created messages
-        connectionService.messagePublisher
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] message in
-                guard let self = self,
-                      let messageType = message["type"] as? String,
-                      messageType == "session.created",
-                      let sessionId = message["session_id"] as? String,
-                      let payload = message["payload"] as? [String: Any],
-                      let sessionType = payload["session_type"] as? String,
-                      sessionType == "terminal",
-                      sessionId != self.session.id else {
-                    return
-                }
-                
-                // If we're tracking the current session ID, this broadcast updates it to the real ID
-                let updatedSession = Session(
-                    id: sessionId,
-                    type: .terminal,
-                    workspace: payload["workspace"] as? String,
-                    project: payload["project"] as? String
-                )
-                self.session = updatedSession
-                self.knownSessionIds.insert(sessionId)
-            }
-            .store(in: &cancellables)
+    /// Updates the session when AppState changes the session ID (e.g., temp ID -> real ID)
+    /// This is called from TerminalView when the session binding changes
+    func updateSession(_ newSession: Session) {
+        guard newSession.id != session.id else { return }
+
+        #if DEBUG
+        print("[TerminalViewModel] Session ID updated: \(session.id) -> \(newSession.id)")
+        #endif
+
+        // Track the new session ID as known
+        knownSessionIds.insert(newSession.id)
+        session = newSession
     }
     
     // MARK: - Connection Observation
@@ -170,16 +166,19 @@ final class TerminalViewModel: ObservableObject {
             .sink { [weak self] state in
                 guard let self = self else { return }
                 self.isConnected = state == .connected
-                
+
                 if self.isConnected {
                     // Auto-resubscribe and recover state on reconnection
                     Task { @MainActor [weak self] in
                         await self?.handleReconnection()
                     }
+                } else {
+                    // Update terminal state to disconnected
+                    self.terminalState = .disconnected
                 }
             }
             .store(in: &cancellables)
-        
+
         connectionService.workstationOnlinePublisher
             .receive(on: DispatchQueue.main)
             .sink { [weak self] online in
@@ -209,62 +208,97 @@ final class TerminalViewModel: ObservableObject {
     
     func subscribeToSession() async {
         guard !isSubscribed else { return }
-        
+
+        // Update state
+        terminalState = .subscribing
+
         // Reset terminal before subscribing to ensure clean state
         // This prevents duplicates when returning to terminal
         resetTerminal()
-        
+
+        // Reset sequence tracking
+        lastReceivedSequence = 0
+        serverCurrentSequence = 0
+        replayBuffer.removeAll()
+        isInReplayMode = true  // Enter replay mode until we load history
+
         let message: [String: Any] = [
             "type": "session.subscribe",
             "session_id": session.id
         ]
-        
+
         do {
             try webSocketClient.sendMessage(message)
             isSubscribed = true
-            
+
             // Reset replay flag when subscribing (new subscription = fresh load)
             hasLoadedReplay = false
-            
+
+            // Update state and request replay
+            terminalState = .replaying
+
             // Always request replay from beginning when subscribing
             // This ensures we load fresh state from server each time we return to terminal
             await recoverSessionState()
         } catch {
             self.error = "Failed to subscribe: \(error.localizedDescription)"
+            terminalState = .disconnected
         }
     }
     
     /// Resets terminal state before loading replay
-    /// Note: SwiftTerm doesn't provide a clear() method, so we reset the TerminalView reference
-    /// This ensures clean state when returning to terminal or reloading history
+    /// Note: We no longer nil out swiftTermView here because replay data may arrive
+    /// before the view is recreated, causing data loss.
+    /// Instead, we use TerminalView's softReset or just reset state flags.
     private func resetTerminal() {
-        // SwiftTerm TerminalView doesn't expose clear/reset methods
-        // Resetting the TerminalView reference will cause it to be recreated
-        // This ensures TerminalView's internal terminal is fresh when we load replay
-        
-        // Reset the TerminalView reference
-        // The view will be recreated when TerminalContentView.makeUIView is called
-        swiftTermView = nil
-        
-        // Reset state flags
+        // Reset state flags only - don't nil out swiftTermView
+        // The TerminalView will be reused or replaced when makeUIView is called
         hasLoadedReplay = false
+
+        // If we have a terminal view, try to reset its state
+        // This clears the screen without losing the view reference
+        if let terminalView = swiftTermView {
+            // Send reset escape sequences to clear screen and reset cursor
+            // CSI H - Cursor Home (move to 0,0)
+            // CSI 2J - Erase Display (clear entire screen)
+            // CSI ?25h - Show Cursor (DECTCEM)
+            let resetSequence = "\u{1b}[H\u{1b}[2J\u{1b}[?25h"
+            terminalView.feed(byteArray: Array(resetSequence.utf8)[...])
+
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Terminal reset via escape sequences")
+            #endif
+        }
     }
     
     func unsubscribeFromSession() {
         guard isSubscribed else { return }
-        
+
+        // Mark as unsubscribed FIRST to prevent any further message processing
+        isSubscribed = false
+
+        // Clear terminal view reference to prevent feeding to disposed view
+        swiftTermView = nil
+
+        // Reset replay state
+        hasLoadedReplay = false
+        isInReplayMode = false
+        replayBuffer.removeAll()
+        pendingFeedBuffer.removeAll()
+
+        // Send unsubscribe message to server
         let message: [String: Any] = [
             "type": "session.unsubscribe",
             "session_id": session.id
         ]
-        
+
         do {
             try webSocketClient.sendMessage(message)
-            isSubscribed = false
-            // Reset replay flag when unsubscribing
-            hasLoadedReplay = false
         } catch {
-            self.error = "Failed to unsubscribe: \(error.localizedDescription)"
+            // Don't set error here - we're unsubscribing, errors are expected if disconnected
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Failed to send unsubscribe: \(error.localizedDescription)")
+            #endif
         }
     }
     
@@ -336,15 +370,35 @@ final class TerminalViewModel: ObservableObject {
     }
     
     // MARK: - Message Handling
-    
+
     private func handleMessage(_ message: [String: Any]) {
         guard let messageType = message["type"] as? String else { return }
-        
+
+        // Skip output/replay messages if we're not subscribed (prevents crashes during teardown)
+        // But still handle terminated/error messages for state updates
+        if !isSubscribed && (messageType == "session.output" || messageType == "session.replay.data") {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Ignoring \(messageType) - not subscribed")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        if messageType.starts(with: "session.") || messageType == "error" {
+            let sessionId = message["session_id"] as? String ?? "none"
+            print("[TerminalVM:\(session.id.prefix(8))] handleMessage: type=\(messageType), session_id=\(sessionId.prefix(8))")
+        }
+        #endif
+
         switch messageType {
         case "session.output":
             handleOutputMessage(message)
         case "session.replay.data":
             handleReplayMessage(message)
+        case "session.terminated":
+            handleSessionTerminated(message)
+        case "error":
+            handleErrorMessage(message)
         case "connection.workstation_offline":
             // Workstation offline - will auto-recover when online
             break
@@ -357,136 +411,308 @@ final class TerminalViewModel: ObservableObject {
             break
         }
     }
+
+    /// Handles session terminated message
+    private func handleSessionTerminated(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              sessionId == session.id || knownSessionIds.contains(sessionId) else {
+            return
+        }
+
+        #if DEBUG
+        print("[TerminalViewModel] Session terminated: \(sessionId)")
+        #endif
+
+        terminalState = .sessionLost
+        isSubscribed = false
+    }
+
+    /// Handles error messages from server
+    private func handleErrorMessage(_ message: [String: Any]) {
+        // Check if this error is for our session
+        if let sessionId = message["session_id"] as? String,
+           sessionId != session.id && !knownSessionIds.contains(sessionId) {
+            return
+        }
+
+        guard let payload = message["payload"] as? [String: Any],
+              let code = payload["code"] as? String else {
+            return
+        }
+
+        #if DEBUG
+        print("[TerminalViewModel] Error received: \(code)")
+        #endif
+
+        if code == "SESSION_NOT_FOUND" {
+            terminalState = .sessionLost
+            isSubscribed = false
+        }
+    }
     
     private func handleOutputMessage(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else {
             return
         }
-        
+
         // Check if the message is for this session
-        // The session ID might have been updated in AppState after creation
-        // So we check both the current session.id and known session IDs
+        // Only accept messages that match our current session ID or known session IDs
+        // knownSessionIds contains session IDs that we've confirmed belong to this terminal
         let isOurSession = sessionId == session.id || knownSessionIds.contains(sessionId)
-        
+
         if !isOurSession {
-            // If we have a temp session and receive a message with a new ID, update it
-            // This handles the case where AppState updated the session but we haven't received the response yet
-            if session.type == .terminal && knownSessionIds.contains(session.id) {
-                // This is likely our session with the updated ID from backend
-                let updatedSession = Session(
-                    id: sessionId,
-                    type: .terminal,
-                    workspace: session.workspace,
-                    project: session.project
-                )
-                self.session = updatedSession
-                self.knownSessionIds.insert(sessionId)
-            } else {
-                // Not our session, ignore
-                return
-            }
+            // Not our session, ignore
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Output IGNORED: got \(sessionId.prefix(8)), expected \(session.id.prefix(8))")
+            #endif
+            return
         }
-        
+
+        #if DEBUG
+        print("[TerminalVM:\(session.id.prefix(8))] Output ACCEPTED for session \(sessionId.prefix(8))")
+        #endif
+
         guard let payload = message["payload"] as? [String: Any],
               let contentType = payload["content_type"] as? String,
               contentType == "terminal",
               let content = payload["content"] as? String else {
             return
         }
-        
-        // Skip output messages if we're currently loading replay
-        // This prevents duplicates when replay is being loaded
-        // Once replay is loaded (hasLoadedReplay = true), we accept new output
-        guard hasLoadedReplay else {
-            // Replay is being loaded, ignore new output to avoid duplicates
+
+        // Extract sequence number (fallback to 0 for backward compatibility)
+        let sequence = payload["sequence"] as? Int ?? 0
+
+        // If in replay mode, buffer the message for later
+        if isInReplayMode {
+            replayBuffer.append((sequence: sequence, content: content))
+            #if DEBUG
+            print("[TerminalViewModel] Buffered sequence \(sequence) during replay (buffer size: \(replayBuffer.count))")
+            #endif
             return
         }
-        
-        // Feed output to TerminalView for rendering
-        // TerminalView manages its own Terminal instance for display
+
+        // Skip if we've already processed this sequence (deduplication)
+        guard sequence > lastReceivedSequence else {
+            #if DEBUG
+            print("[TerminalViewModel] Skipping duplicate sequence \(sequence), last was \(lastReceivedSequence)")
+            #endif
+            return
+        }
+
+        // Gap detection: if we missed sequences, request targeted replay
+        if sequence > lastReceivedSequence + 1 && lastReceivedSequence > 0 {
+            #if DEBUG
+            print("[TerminalViewModel] Gap detected: expected \(lastReceivedSequence + 1), got \(sequence)")
+            #endif
+            // Enter replay mode and request missing messages
+            isInReplayMode = true
+            terminalState = .replaying
+            replayBuffer.append((sequence: sequence, content: content))
+            requestReplay(sinceSequence: lastReceivedSequence)
+            return
+        }
+
+        // Update last received sequence and feed to terminal
+        lastReceivedSequence = sequence
+        feedToTerminal(content)
+    }
+
+    /// Feeds content to terminal view
+    /// Thread-safe: Only feeds if terminal view is available and we're in a valid state
+    /// If terminal view is not ready, buffers content for later delivery
+    private func feedToTerminal(_ content: String) {
+        // Early exit if we're not subscribed (view may be disappearing)
+        guard isSubscribed else {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Skipping feed - not subscribed")
+            #endif
+            return
+        }
+
         #if DEBUG
         let feedStartTime = Date()
         feedOperationCount += 1
         #endif
-        
+
         guard let terminalView = swiftTermView else {
-            // TerminalView not yet available - output will be lost
-            // This is acceptable as we'll load replay when view appears
+            // Buffer content if terminal view is not yet available
+            // This can happen during app restart when replay arrives before view creation
+            // Respect buffer size limit to prevent unbounded memory growth
+            if pendingFeedBuffer.count < maxPendingFeedBufferSize {
+                pendingFeedBuffer.append(content)
+            }
             #if DEBUG
-            print("[TerminalViewModel] Warning: Output received but TerminalView not available")
+            print("[TerminalVM:\(session.id.prefix(8))] Buffered content (view not available): \(content.utf8.count) bytes, buffer size: \(pendingFeedBuffer.count)")
             #endif
             return
         }
-        
+
+        // Additional safety check: verify the view is still in a valid state
+        // by checking if it has a window (is part of the view hierarchy)
+        guard terminalView.window != nil else {
+            // Buffer content if view is not in window hierarchy yet
+            // Respect buffer size limit to prevent unbounded memory growth
+            if pendingFeedBuffer.count < maxPendingFeedBufferSize {
+                pendingFeedBuffer.append(content)
+            }
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Buffered content (no window): \(content.utf8.count) bytes, buffer size: \(pendingFeedBuffer.count)")
+            #endif
+            return
+        }
+
         // Feed directly to TerminalView (proper SwiftTerm pattern)
-        // Use optimized conversion to avoid intermediate Data allocation
+        // Wrap in safety check to handle potential SwiftTerm crashes with malformed escape sequences
+        // This is especially important for TUI applications like htop that send complex sequences
         let bytes = content.utf8BytesSlice
-        terminalView.feed(byteArray: bytes)
-        
+
+        // Safety: Check content size to avoid overwhelming SwiftTerm
+        // Large TUI apps like htop can send very large chunks during replay
+        let contentSize = content.utf8.count
+        if contentSize > 100_000 {
+            // Split very large content into smaller chunks to prevent crashes
+            // This is defensive - SwiftTerm may have issues with very large single feeds
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Large content detected (\(contentSize) bytes), chunking...")
+            #endif
+
+            let chunkSize = 50_000
+            var offset = 0
+            let utf8Array = Array(content.utf8)
+
+            while offset < utf8Array.count {
+                let endIndex = min(offset + chunkSize, utf8Array.count)
+                let chunk = utf8Array[offset..<endIndex]
+                terminalView.feed(byteArray: chunk)
+                offset = endIndex
+            }
+        } else {
+            terminalView.feed(byteArray: bytes)
+        }
+
         #if DEBUG
         let feedDuration = Date().timeIntervalSince(feedStartTime)
         if feedOperationCount % 100 == 0 {
-            print("[TerminalViewModel] Feed operation #\(feedOperationCount): \(String(format: "%.3f", feedDuration * 1000))ms, content size: \(content.utf8.count) bytes")
+            print("[TerminalVM:\(session.id.prefix(8))] Feed operation #\(feedOperationCount): \(String(format: "%.3f", feedDuration * 1000))ms, content size: \(contentSize) bytes")
         }
         #endif
     }
+
+    /// Requests replay of messages since a specific sequence number
+    private func requestReplay(sinceSequence: Int) {
+        let message: [String: Any] = [
+            "type": "session.replay",
+            "session_id": session.id,
+            "payload": [
+                "since_sequence": sinceSequence,
+                "limit": 500
+            ]
+        ]
+
+        do {
+            try webSocketClient.sendMessage(message)
+        } catch {
+            self.error = "Failed to request replay: \(error.localizedDescription)"
+        }
+    }
     
     private func handleReplayMessage(_ message: [String: Any]) {
-        guard let sessionId = message["session_id"] as? String,
-              sessionId == session.id || knownSessionIds.contains(sessionId),
-              let payload = message["payload"] as? [String: Any],
+        guard let sessionId = message["session_id"] as? String else {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Replay message missing session_id")
+            #endif
+            return
+        }
+
+        guard sessionId == session.id || knownSessionIds.contains(sessionId) else {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Replay IGNORED: got \(sessionId.prefix(8)), expected \(session.id.prefix(8))")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("[TerminalVM:\(session.id.prefix(8))] Replay ACCEPTED for session \(sessionId.prefix(8))")
+        #endif
+
+        guard let payload = message["payload"] as? [String: Any],
               let messages = payload["messages"] as? [[String: Any]] else {
+            #if DEBUG
+            print("[TerminalViewModel] Replay message invalid payload")
+            #endif
             return
         }
-        
-        // Skip if we've already loaded replay (avoid duplicates)
-        guard !hasLoadedReplay else {
-            return
-        }
-        
-        // Mark that we've loaded replay
-        hasLoadedReplay = true
-        
-        guard !messages.isEmpty else {
-            return
-        }
-        
-        // Batch replay messages for better performance
-        // Collect all content and feed in a single operation to reduce render passes
+
+        // Extract sequence metadata for gap detection
+        let currentSequence = payload["current_sequence"] as? Int ?? 0
+        serverCurrentSequence = currentSequence
+
         #if DEBUG
         let replayStartTime = Date()
+        print("[TerminalViewModel] Replay received: \(messages.count) messages, server sequence: \(currentSequence)")
         #endif
-        
-        var batchedBytes: [UInt8] = []
+
+        // Feed replay messages to terminal in sequence order
         for msg in messages {
             guard let content = msg["content"] as? String else {
                 continue
             }
-            // Use optimized conversion and append to batch
-            batchedBytes.append(contentsOf: content.utf8Bytes)
+            let sequence = msg["sequence"] as? Int ?? 0
+
+            // Only feed messages we haven't seen
+            if sequence > lastReceivedSequence {
+                feedToTerminal(content)
+                lastReceivedSequence = sequence
+            }
         }
-        
+
+        // Now apply buffered messages that arrived during replay
+        terminalState = .buffering
+        let sortedBuffer = replayBuffer.sorted { $0.sequence < $1.sequence }
+
         #if DEBUG
-        let batchSize = batchedBytes.count
+        print("[TerminalViewModel] Applying \(sortedBuffer.count) buffered messages")
         #endif
-        
-        // Feed batched content to terminal in single operation
-        guard let terminalView = swiftTermView else {
-            // TerminalView not yet available - replay will be lost
-            // This is acceptable as we'll request replay again when view appears
+
+        for buffered in sortedBuffer {
+            if buffered.sequence > lastReceivedSequence {
+                feedToTerminal(buffered.content)
+                lastReceivedSequence = buffered.sequence
+            }
+        }
+        replayBuffer.removeAll()
+
+        // Check if we need more history
+        let hasMore = payload["has_more"] as? Bool ?? false
+
+        #if DEBUG
+        print("[TerminalViewModel] Replay check: hasMore=\(hasMore), lastReceivedSequence=\(lastReceivedSequence), serverCurrentSequence=\(serverCurrentSequence)")
+        #endif
+
+        if hasMore && lastReceivedSequence < serverCurrentSequence {
+            // More messages available, request next batch
             #if DEBUG
-            print("[TerminalViewModel] Warning: Replay received but TerminalView not available")
+            print("[TerminalViewModel] Requesting more history: last=\(lastReceivedSequence), server=\(serverCurrentSequence)")
             #endif
-            return
+            requestReplay(sinceSequence: lastReceivedSequence)
+        } else {
+            // Fully caught up - transition to live state
+            isInReplayMode = false
+            hasLoadedReplay = true
+            terminalState = .live
+
+            // Ensure cursor is visible after replay completes
+            // Send DECTCEM (DEC Text Cursor Enable Mode) to show cursor
+            if let terminalView = swiftTermView {
+                let showCursorSequence = "\u{1b}[?25h"
+                terminalView.feed(byteArray: Array(showCursorSequence.utf8)[...])
+            }
+
+            #if DEBUG
+            let replayDuration = Date().timeIntervalSince(replayStartTime)
+            print("[TerminalViewModel] Replay complete: last sequence=\(lastReceivedSequence), duration=\(String(format: "%.3f", replayDuration * 1000))ms")
+            #endif
         }
-        
-        // Feed directly to TerminalView for immediate display
-        terminalView.feed(byteArray: batchedBytes[...])
-        
-        #if DEBUG
-        let replayDuration = Date().timeIntervalSince(replayStartTime)
-        print("[TerminalViewModel] Replay batch: \(messages.count) messages, \(batchSize) bytes, \(String(format: "%.3f", replayDuration * 1000))ms")
-        #endif
     }
     
     // MARK: - State Recovery
@@ -534,15 +760,57 @@ final class TerminalViewModel: ObservableObject {
     func setTerminalView(_ view: SwiftTerm.TerminalView) {
         let isNewView = self.swiftTermView == nil || self.swiftTermView !== view
         self.swiftTermView = view
-        
+
         // Set terminalDelegate to receive input events from TerminalView
         // TerminalView's internal Terminal calls send() which is forwarded to terminalDelegate
         view.terminalDelegate = self
-        
+
         // If this is a new view (e.g., after navigation), reset replay flag
         // This ensures we can load history when view reappears
         if isNewView {
             hasLoadedReplay = false
+        }
+
+        // Flush any pending content that was buffered before the view was available
+        // Only flush if we're subscribed and have pending content
+        if isSubscribed && !pendingFeedBuffer.isEmpty {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Flushing \(pendingFeedBuffer.count) buffered items to terminal view")
+            #endif
+
+            // Feed all buffered content to the terminal
+            // Use chunking for large content to prevent SwiftTerm crashes with TUI apps like htop
+            for content in pendingFeedBuffer {
+                let contentSize = content.utf8.count
+                if contentSize > 100_000 {
+                    // Split very large content into smaller chunks
+                    let chunkSize = 50_000
+                    var offset = 0
+                    let utf8Array = Array(content.utf8)
+
+                    while offset < utf8Array.count {
+                        let endIndex = min(offset + chunkSize, utf8Array.count)
+                        let chunk = utf8Array[offset..<endIndex]
+                        view.feed(byteArray: chunk)
+                        offset = endIndex
+                    }
+                } else {
+                    let bytes = content.utf8BytesSlice
+                    view.feed(byteArray: bytes)
+                }
+            }
+            pendingFeedBuffer.removeAll()
+
+            // After flushing buffered content, ensure cursor is visible
+            // Send DECTCEM (DEC Text Cursor Enable Mode) to show cursor
+            let showCursorSequence = "\u{1b}[?25h"
+            view.feed(byteArray: Array(showCursorSequence.utf8)[...])
+        } else if !pendingFeedBuffer.isEmpty {
+            // Clear buffer if not subscribed to prevent stale data
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Clearing \(pendingFeedBuffer.count) buffered items (not subscribed)")
+            #endif
+            pendingFeedBuffer.removeAll()
         }
     }
     

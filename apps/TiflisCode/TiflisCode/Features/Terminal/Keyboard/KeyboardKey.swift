@@ -322,8 +322,11 @@ final class KeyboardKeyView: UIView {
     }()
     
     // MARK: - Auto-Repeat
-    
-    private var autoRepeatTimer: Timer?
+
+    /// Timer for auto-repeat functionality
+    /// Note: Uses nonisolated(unsafe) to allow cleanup in deinit
+    /// This is safe because Timer is invalidated on the same thread it was created (main)
+    nonisolated(unsafe) private var autoRepeatTimer: Timer?
     private var autoRepeatStartTime: CFTimeInterval = 0
     
     // MARK: - Initialization
@@ -486,19 +489,22 @@ final class KeyboardKeyView: UIView {
     private func startAutoRepeat() {
         autoRepeatStartTime = CACurrentMediaTime()
         autoRepeatTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            self?.checkAutoRepeat()
+            // Timer callback may run on arbitrary thread, dispatch to main
+            DispatchQueue.main.async {
+                self?.checkAutoRepeat()
+            }
         }
     }
-    
+
     private func stopAutoRepeat() {
         autoRepeatTimer?.invalidate()
         autoRepeatTimer = nil
     }
-    
+
     private func checkAutoRepeat() {
         let elapsed = CACurrentMediaTime() - autoRepeatStartTime
-        
-        // Начинаем повтор после 500ms, затем каждые 50ms
+
+        // Start repeat after 500ms, then every 50ms
         if elapsed > 0.5 {
             delegate?.keyDidPress(self, type: configuration.type)
         }
@@ -696,8 +702,10 @@ final class KeyboardKeyView: UIView {
     }
     
     // MARK: - Cleanup
-    
+
     deinit {
-        stopAutoRepeat()
+        // Timer invalidation is safe from any thread
+        autoRepeatTimer?.invalidate()
+        autoRepeatTimer = nil
     }
 }

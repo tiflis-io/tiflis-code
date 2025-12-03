@@ -1289,6 +1289,11 @@ TTS responses include an audio attachment:
 │  │ Speech Language                      [English ▼]        │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
+│  DEBUG                                                          │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │ ⚠️ View Crash Log (or ✓ No crashes detected)            │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
 │  ABOUT                                                          │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │ Version                                      1.0.0 (1)  │   │
@@ -1337,6 +1342,35 @@ TTS responses include an audio attachment:
 | -------- | ---- |
 | English  | `en` |
 | Russian  | `ru` |
+
+### Debug Section
+
+The Settings page includes a Debug section for troubleshooting:
+
+```
+DEBUG
+┌─────────────────────────────────────────────────────────────┐
+│ ⚠️ View Crash Log                                    →     │  ← Only shown if crash detected
+└─────────────────────────────────────────────────────────────┘
+       — or —
+┌─────────────────────────────────────────────────────────────┐
+│ ✓ No crashes detected                                       │  ← Shown when no crashes
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Crash Log View:**
+
+When a crash is detected from a previous session, the user can:
+- **View** the full crash report with stack trace
+- **Copy** to clipboard for sharing
+- **Share** via system share sheet
+- **Clear** the crash log
+
+The crash reporter captures:
+- Uncaught exceptions (NSException)
+- Fatal signals (SIGABRT, SIGSEGV, SIGBUS, etc.)
+- Device info (model, iOS version, app version)
+- Full call stack
 
 ---
 

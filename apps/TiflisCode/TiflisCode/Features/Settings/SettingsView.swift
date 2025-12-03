@@ -22,8 +22,11 @@ struct SettingsView: View {
     @State private var showMagicLinkInput = false
     @State private var magicLink = ""
     @State private var showDisconnectConfirmation = false
-    
+    @State private var showCrashLog = false
+    @State private var crashLogCopied = false
+
     private let keychainManager = KeychainManager()
+    private let crashReporter = CrashReporter.shared
     
     /// App version from Bundle
     private var appVersion: String {
@@ -201,12 +204,38 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                
+
                 Link(destination: URL(string: "https://github.com/tiflis-io/tiflis-code/blob/main/TERMS.md")!) {
                     HStack {
                         Text("Terms of Service")
                         Spacer()
                         Image(systemName: "arrow.up.right.square")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            // Debug Section
+            Section("Debug") {
+                if crashReporter.hasPreviousCrashLog {
+                    Button {
+                        showCrashLog = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                            Text("View Crash Log")
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .foregroundStyle(.primary)
+                } else {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("No crashes detected")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -254,6 +283,9 @@ struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Are you sure you want to disconnect from the workstation?")
+        }
+        .sheet(isPresented: $showCrashLog) {
+            CrashLogView()
         }
     }
     

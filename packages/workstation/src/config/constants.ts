@@ -151,7 +151,6 @@ export function getWorkstationVersion(): string {
     const __dirname = dirname(__filename);
     const packageJsonPath = join(__dirname, '../../package.json');
     const packageJsonContent = readFileSync(packageJsonPath, 'utf-8');
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
     const packageJson = JSON.parse(packageJsonContent) as { version?: string };
     const version = packageJson.version;
     if (typeof version === 'string' && version.length > 0) {

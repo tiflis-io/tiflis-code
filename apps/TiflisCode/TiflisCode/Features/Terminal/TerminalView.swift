@@ -43,32 +43,45 @@ struct TerminalView: View {
     }
     
     var body: some View {
-        VStack(spacing: 0) {
-            if viewModel.isConnected {
-                TerminalContentView(
-                    viewModel: viewModel
-                )
-                .background(Color(uiColor: .systemBackground))
-            } else {
-                VStack(spacing: 16) {
-                    Image(systemName: "apple.terminal.fill")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.secondary)
-                    
-                    Text("Terminal Disconnected")
-                        .font(.headline)
-                        .foregroundStyle(.secondary)
-                    
-                    if let error = viewModel.error {
-                        Text(error)
-                            .font(.caption)
-                            .foregroundStyle(.red)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+        ZStack {
+            // Main terminal content
+            VStack(spacing: 0) {
+                if viewModel.isConnected && viewModel.terminalState != .sessionLost {
+                    TerminalContentView(
+                        viewModel: viewModel
+                    )
+                    .background(Color(uiColor: .systemBackground))
+                } else if viewModel.terminalState == .sessionLost {
+                    // Session lost - show in main area (not as overlay)
+                    SessionLostView {
+                        handleCreateNewTerminal()
                     }
+                } else {
+                    VStack(spacing: 16) {
+                        Image(systemName: "apple.terminal.fill")
+                            .font(.system(size: 48))
+                            .foregroundStyle(.secondary)
+
+                        Text("Terminal Disconnected")
+                            .font(.headline)
+                            .foregroundStyle(.secondary)
+
+                        if let error = viewModel.error {
+                            Text(error)
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(uiColor: .systemBackground))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color(uiColor: .systemBackground))
+            }
+
+            // State overlays
+            if viewModel.terminalState == .replaying || viewModel.terminalState == .buffering {
+                TerminalLoadingOverlay(text: viewModel.terminalState == .replaying ? "Loading history..." : "Syncing...")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -166,11 +179,11 @@ struct TerminalView: View {
     }
     
     // MARK: - Actions
-    
+
     private func handleTerminateSession() {
         // Terminate the session
         appState.terminateSession(session)
-        
+
         // Select supervisor (already done in terminateSession)
         // Now handle UI navigation based on device
         if horizontalSizeClass == .compact {
@@ -184,6 +197,14 @@ struct TerminalView: View {
             }
         }
         // iPad: Supervisor is already selected in terminateSession, sidebar is always visible
+    }
+
+    private func handleCreateNewTerminal() {
+        // Remove the current (dead) session from the list
+        appState.sessions.removeAll { $0.id == session.id }
+
+        // Create a new terminal session
+        appState.createSession(type: .terminal, workspace: session.workspace, project: session.project)
     }
 }
 

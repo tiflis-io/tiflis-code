@@ -12,7 +12,15 @@ import Combine
 @main
 struct TiflisCodeApp: App {
     @StateObject private var appState = AppState()
-    
+
+    init() {
+        // Install crash handlers early in app launch
+        // This runs on main thread during app initialization
+        Task { @MainActor in
+            CrashReporter.shared.install()
+        }
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -271,13 +279,39 @@ final class AppState: ObservableObject {
               let sessionsArray = payload["sessions"] as? [[String: Any]] else {
             return
         }
-        
+
+        // Build set of active session IDs from server
+        let serverSessionIds = Set(sessionsArray.compactMap { $0["session_id"] as? String })
+
+        // Detect stale sessions: sessions we have locally but no longer exist on server
+        // This happens when:
+        // 1. Server restarted and PTY processes died
+        // 2. Session was terminated while app was in background
+        let staleSessions = sessions.filter { session in
+            // Skip supervisor (it's a singleton that always exists conceptually)
+            guard session.type != .supervisor else { return false }
+            return !serverSessionIds.contains(session.id)
+        }
+
+        // Remove stale sessions
+        for staleSession in staleSessions {
+            #if DEBUG
+            print("🗑️ AppState: Removing stale session \(staleSession.id) (not in server sync)")
+            #endif
+            sessions.removeAll { $0.id == staleSession.id }
+
+            // If currently viewing this session, navigate to supervisor
+            if selectedSessionId == staleSession.id {
+                selectedSessionId = "supervisor"
+            }
+        }
+
         // Note: subscriptions are handled by individual view models when they subscribe
         // We don't need to restore them here as view models will auto-subscribe on appear
-        
+
         // Restore sessions from backend
         var restoredSessions: [Session] = []
-        
+
         for sessionData in sessionsArray {
             guard let sessionId = sessionData["session_id"] as? String,
                   let sessionType = sessionData["session_type"] as? String,
@@ -285,7 +319,12 @@ final class AppState: ObservableObject {
                   status == "active" else {
                 continue
             }
-            
+
+            // Skip if we already have this session locally (avoid duplicates)
+            if sessions.contains(where: { $0.id == sessionId }) {
+                continue
+            }
+
             // Map session_type to Session.SessionType
             let type: Session.SessionType
             switch sessionType {
@@ -302,7 +341,7 @@ final class AppState: ObservableObject {
             default:
                 continue
             }
-            
+
             // Create session (workspace/project not in sync.state, will be empty)
             let session = Session(
                 id: sessionId,
@@ -312,19 +351,17 @@ final class AppState: ObservableObject {
             )
             restoredSessions.append(session)
         }
-        
-        // Replace mock sessions with restored sessions (keep supervisor if not in list)
-        let hasSupervisor = restoredSessions.contains { $0.type == .supervisor }
-        if !hasSupervisor {
-            // Supervisor session always exists
-            restoredSessions.insert(Session(id: "supervisor", type: .supervisor, workspace: nil, project: nil), at: 0)
+
+        // Add restored sessions to existing sessions (preserving local state)
+        sessions.append(contentsOf: restoredSessions)
+
+        // Ensure supervisor always exists
+        if !sessions.contains(where: { $0.type == .supervisor }) {
+            sessions.insert(Session(id: "supervisor", type: .supervisor, workspace: nil, project: nil), at: 0)
         }
-        
-        sessions = restoredSessions
-        
+
         // Store subscriptions for view models to re-subscribe
         // View models will handle re-subscription when they observe connection state
-        // For now, we just restore the session list
     }
     
     // MARK: - Actions

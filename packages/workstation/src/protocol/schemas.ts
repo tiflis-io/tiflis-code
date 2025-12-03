@@ -133,7 +133,8 @@ export const SessionResizeSchema = z.object({
 });
 
 export const SessionReplayPayloadSchema = z.object({
-  since_timestamp: z.number(),
+  since_timestamp: z.number().optional(),
+  since_sequence: z.number().int().optional(),
   limit: z.number().int().min(1).max(1000).optional(),
 });
 

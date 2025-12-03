@@ -531,16 +531,19 @@ All events are sent only to clients subscribed to the session.
   payload: {
     // Content type
     content_type: "agent" | "terminal" | "transcription",
-    
+
     // Content
     content: string,
-    
+
     // Metadata
     timestamp: number,
-    
+
+    // For terminal output - sequence number for deduplication and gap detection
+    sequence?: number,          // Monotonically increasing counter (terminal only)
+
     // For agent output
     is_complete?: boolean,      // Is this the final message?
-    
+
     // For agent output with TTS (only when is_complete=true && tts_enabled)
     audio?: string              // Base64 encoded audio
   }
@@ -604,7 +607,8 @@ All events are sent only to clients subscribed to the session.
   type: "session.replay",
   session_id: string,
   payload: {
-    since_timestamp: number,   // Replay messages after this timestamp
+    since_timestamp?: number,  // Replay messages after this timestamp
+    since_sequence?: number,   // Replay messages after this sequence (preferred for terminal)
     limit?: number             // Max messages (default: 100)
   }
 }
@@ -617,10 +621,48 @@ All events are sent only to clients subscribed to the session.
     messages: Array<{
       content_type: string,
       content: string,
-      timestamp: number
+      timestamp: number,
+      sequence?: number        // Sequence number (terminal only)
     }>,
-    has_more: boolean
+    has_more: boolean,
+
+    // Sequence metadata for terminal sessions (gap detection)
+    first_sequence?: number,   // Sequence of first message in response
+    last_sequence?: number,    // Sequence of last message in response
+    current_sequence?: number  // Server's current (latest) sequence number
   }
+}
+```
+
+#### Sequence Numbers (Terminal Sessions)
+
+Terminal sessions use monotonically increasing sequence numbers for:
+
+1. **Deduplication** — Client tracks `lastReceivedSequence` to skip duplicates
+2. **Gap Detection** — If received sequence > lastReceived + 1, messages were missed
+3. **Targeted Replay** — Use `since_sequence` to request only missing messages
+
+**Client Implementation:**
+
+```typescript
+// Track last received sequence
+let lastReceivedSequence = 0;
+
+function handleTerminalOutput(payload) {
+  const { sequence, content } = payload;
+
+  // Skip duplicates
+  if (sequence <= lastReceivedSequence) return;
+
+  // Detect gap - request replay
+  if (sequence > lastReceivedSequence + 1) {
+    requestReplay({ since_sequence: lastReceivedSequence });
+    return;
+  }
+
+  // Process message
+  lastReceivedSequence = sequence;
+  feedToTerminal(content);
 }
 ```
 
@@ -689,9 +731,9 @@ All events are sent only to clients subscribed to the session.
 | `session.terminated` | Session was terminated |
 | `session.subscribed` | Subscribed to session |
 | `session.unsubscribed` | Unsubscribed from session |
-| `session.output` | Session output (agent/terminal/transcription) |
+| `session.output` | Session output (agent/terminal/transcription), includes `sequence` for terminal |
 | `session.error` | Session error |
-| `session.replay.data` | Replayed messages |
+| `session.replay.data` | Replayed messages with sequence metadata |
 | `connection.workstation_offline` | Workstation disconnected |
 | `connection.workstation_online` | Workstation reconnected |
 

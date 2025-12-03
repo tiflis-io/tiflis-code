@@ -66,11 +66,10 @@ struct TerminalContentView: UIViewRepresentable {
     
     static func dismantleUIView(_ uiView: TerminalViewUIKit, coordinator: Coordinator) {
         // Clean up terminal resources when view is dismantled
+        // Note: dismantleUIView is already called on main thread by SwiftUI
+        // so we can call cleanup directly without async dispatch
         uiView.suspendDisplayUpdates()
-        // cleanup() is MainActor-isolated, so we need to call it on main actor
-        Task { @MainActor in
-            uiView.cleanup()
-        }
+        uiView.cleanup()
     }
     
     // MARK: - Coordinator

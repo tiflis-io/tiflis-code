@@ -108,12 +108,24 @@ final class TerminalCustomKeyboardView: UIView {
         super.init(frame: frame)
         setupUI()
         setupInputViewProperties()
+        registerTraitChangeObservers()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         setupUI()
         setupInputViewProperties()
+        registerTraitChangeObservers()
+    }
+
+    /// Register for trait changes on iOS 17+ (new API)
+    private func registerTraitChangeObservers() {
+        if #available(iOS 17.0, *) {
+            registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (changedView: Self, _: UITraitCollection) in
+                let newTheme = KeyboardTheme.theme(for: changedView.traitCollection.userInterfaceStyle)
+                changedView.applyTheme(newTheme)
+            }
+        }
     }
     
     /// Настройка свойств для корректной работы как inputView
@@ -598,14 +610,19 @@ final class TerminalCustomKeyboardView: UIView {
         }
     }
     
+    // For iOS 17+, traitCollectionDidChange is deprecated
+    // We use registerForTraitChanges in init() for iOS 17+
+    // This method is kept for iOS 16 and below compatibility
+    @available(iOS, deprecated: 17.0, message: "Use registerForTraitChanges for iOS 17+")
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
 
+        // Only handle trait changes on iOS 16 and below
+        // iOS 17+ uses registerForTraitChanges registered in init()
+        guard #unavailable(iOS 17.0) else { return }
+
         if traitCollection.hasDifferentColorAppearance(comparedTo: previousTraitCollection) {
-            print("🎨 Keyboard traitCollectionDidChange")
-            print("   Previous: \(previousTraitCollection?.userInterfaceStyle.rawValue ?? -1), Current: \(traitCollection.userInterfaceStyle.rawValue)")
             let newTheme = KeyboardTheme.theme(for: traitCollection.userInterfaceStyle)
-            print("   Applying theme: \(newTheme.keyboardBackgroundColor == KeyboardTheme.light.keyboardBackgroundColor ? "LIGHT" : "DARK")")
             applyTheme(newTheme)
         }
     }
