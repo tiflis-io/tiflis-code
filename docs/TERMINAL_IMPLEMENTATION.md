@@ -66,7 +66,7 @@ This document describes the terminal emulator implementation in the Tiflis Code 
 - **Location:** `packages/workstation/src/domain/entities/terminal-session.ts`
 - **Purpose:** Represents a PTY terminal session on the workstation
 - **Key Features:**
-  - In-memory circular buffer for terminal output (configurable size, default 1000 messages)
+  - In-memory circular buffer for terminal output (configurable size, default 100 messages)
   - `addOutputToBuffer()`: Adds messages to buffer (circular when full)
   - `getOutputHistory()`: Retrieves messages sorted by timestamp
   - PTY process management via `node-pty`
@@ -74,7 +74,7 @@ This document describes the terminal emulator implementation in the Tiflis Code 
 #### Terminal Output Buffer
 
 - **Type:** In-memory circular buffer
-- **Size:** Configurable via `TERMINAL_OUTPUT_BUFFER_SIZE` env var (default: 1000)
+- **Size:** Configurable via `TERMINAL_OUTPUT_BUFFER_SIZE` env var (default: 100)
 - **Persistence:** Does NOT survive server restarts (by design)
 - **Implementation:** Array with circular index when full
 - **Sorting:** Always sorts by timestamp when retrieving (ensures correct order)
@@ -442,7 +442,7 @@ nonisolated func requestTerminalSize(source: Terminal) -> (cols: Int, rows: Int)
 ### Network Traffic
 
 - **Replay Request:** ~100 bytes
-- **Replay Response:** Depends on buffer size (typically 10-50 KB for 1000 messages)
+- **Replay Response:** Depends on buffer size (typically 1-5 KB for 100 messages)
 - **Output Messages:** ~50-200 bytes per message (depends on content)
 - **Input Messages:** ~10-100 bytes per keystroke/command
 
