@@ -183,6 +183,11 @@ final class TerminalViewModel: ObservableObject {
         // Track the new session ID as known
         knownSessionIds.insert(newSession.id)
         session = newSession
+
+        // Reconfigure terminal if we have a terminal view and session has different buffer size
+        if let terminalView = swiftTermView {
+            configureTerminalOptions(view: terminalView)
+        }
     }
     
     // MARK: - Connection Observation
@@ -971,6 +976,9 @@ final class TerminalViewModel: ObservableObject {
         // TerminalView's internal Terminal calls send() which is forwarded to terminalDelegate
         view.terminalDelegate = self
 
+        // Configure terminal options with session-specific buffer size
+        configureTerminalOptions(view: view)
+
         // If this is a new view (e.g., after navigation), reset replay flag
         // This ensures we can load history when view reappears
         if isNewView {
@@ -1019,7 +1027,28 @@ final class TerminalViewModel: ObservableObject {
             pendingFeedBuffer.removeAll()
         }
     }
-    
+
+    /// Configures terminal options with session-specific buffer size
+    private func configureTerminalOptions(view: SwiftTerm.TerminalView) {
+        let terminal = view.getTerminal()
+
+        // Use server-provided buffer size, fallback to 100 for optimal mobile performance
+        let scrollbackLines = session.terminalConfig?.bufferSize ?? 100
+
+        // Configure terminal options following best practices
+        terminal.options = TerminalOptions(
+            cols: terminal.cols,
+            rows: terminal.rows,
+            cursorStyle: .blinkBlock,  // Blinking block cursor
+            scrollback: scrollbackLines,  // Server-configured scrollback lines
+            enableSixelReported: true  // Enable Sixel graphics support
+        )
+
+        #if DEBUG
+        print("[TerminalVM:\(session.id.prefix(8))] Configured terminal with \(scrollbackLines) scrollback lines")
+        #endif
+    }
+
     // MARK: - Terminal Reset
 
     /// Forces a terminal resize to reset state after clear screen

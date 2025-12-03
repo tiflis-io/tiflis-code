@@ -17,10 +17,25 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0-blue" alt="Version 1.0">
+  <img src="https://img.shields.io/badge/version-1.1-blue" alt="Version 1.1">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
 </p>
+
+---
+
+## Changelog
+
+### Version 1.1 (Current)
+- **Added:** `terminal_config.buffer_size` field to `session.created` message for dynamic terminal buffer configuration
+- **Enhanced:** Terminal sessions now receive server-configured buffer size instead of hardcoded values
+- **Improved:** Mobile clients optimize memory usage based on server-provided buffer configuration
+
+### Version 1.0
+- Initial protocol specification
+- Core session management and WebSocket communication
+- Supervisor agent commands
+- Terminal PTY support with resize and input/output
 
 ---
 
@@ -392,10 +407,26 @@ Supervisor manages session lifecycle. Project/workspace management is done throu
     workspace: string,
     project: string,
     worktree?: string,
-    working_dir: string
+    working_dir: string,
+    terminal_config?: {
+      buffer_size: number  // Terminal output buffer size (for terminal sessions)
+    }
   }
 }
 ```
+
+**Fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `session_id` | string | Unique session identifier |
+| `session_type` | string | Session type: `"terminal"`, `"cursor"`, `"claude"`, `"opencode"`, `"supervisor"` |
+| `workspace` | string | Workspace name (optional) |
+| `project` | string | Project name (optional) |
+| `worktree` | string | Worktree name (optional) |
+| `working_dir` | string | Working directory path |
+| `terminal_config` | object | Terminal configuration (only for terminal sessions) |
+| `terminal_config.buffer_size` | number | Terminal output buffer size (default: 100) |
 
 ### 4.3 Terminate Session
 

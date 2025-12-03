@@ -81,7 +81,7 @@ export const SESSION_CONFIG = {
   DATA_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
 
   /** Default terminal output buffer size (number of messages) */
-  DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE: 1000,
+  DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE: 100,
 } as const;
 
 /**

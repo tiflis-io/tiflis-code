@@ -288,6 +288,9 @@ export interface SessionCreatedMessage {
     project?: string;
     worktree?: string;
     working_dir: string;
+    terminal_config?: {
+      buffer_size: number;
+    };
   };
 }
 

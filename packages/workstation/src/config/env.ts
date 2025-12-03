@@ -94,7 +94,7 @@ const EnvSchema = z.object({
   // Terminal Configuration
   // ─────────────────────────────────────────────────────────────
   /** Terminal output buffer size (number of messages, in-memory only, does not survive restarts) */
-  TERMINAL_OUTPUT_BUFFER_SIZE: z.coerce.number().default(1000),
+  TERMINAL_OUTPUT_BUFFER_SIZE: z.coerce.number().default(100),
 
   // Legacy (fallback for STT/TTS if specific keys not set)
   OPENAI_API_KEY: z.string().optional(),

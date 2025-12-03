@@ -148,8 +148,11 @@ final class TerminalViewUIKit: UIView {
     }
     
     /// Configures terminal options (scrollback, cursor style, etc.)
-    private func configureTerminalOptions() {
+    func configureTerminalOptions(terminalConfig: TerminalConfig? = nil) {
         let terminal = terminalView.getTerminal()
+
+        // Use server-provided buffer size, fallback to 100 for optimal mobile performance
+        let scrollbackLines = terminalConfig?.bufferSize ?? 100
 
         // Configure terminal options following best practices
         // Note: TerminalOptions only supports basic options, not mouse reporting
@@ -157,9 +160,11 @@ final class TerminalViewUIKit: UIView {
             cols: terminal.cols,
             rows: terminal.rows,
             cursorStyle: .blinkBlock,  // Blinking block cursor
-            scrollback: 1000,  // 1000 lines of scrollback
+            scrollback: scrollbackLines,  // Server-configured scrollback lines
             enableSixelReported: true  // Enable Sixel graphics support
         )
+
+        print("[TerminalViewUIKit] Configured with \(scrollbackLines) scrollback lines")
 
         // Configure backspace behavior
         // When true, backspace sends Control-H (^H, ASCII 8)

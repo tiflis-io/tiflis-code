@@ -237,7 +237,17 @@ final class AppState: ObservableObject {
         let sessionType = payload["session_type"] as? String ?? "terminal"
         let workspace = payload["workspace"] as? String
         let project = payload["project"] as? String
-        
+        let worktree = payload["worktree"] as? String
+        let workingDir = payload["working_dir"] as? String
+
+        // Parse terminal config if present
+        var terminalConfig: TerminalConfig?
+        if let terminalConfigDict = payload["terminal_config"] as? [String: Any] {
+            if let bufferSize = terminalConfigDict["buffer_size"] as? Int {
+                terminalConfig = TerminalConfig(bufferSize: bufferSize)
+            }
+        }
+
         let type: Session.SessionType
         switch sessionType {
         case "cursor":
@@ -251,12 +261,15 @@ final class AppState: ObservableObject {
         default:
             return
         }
-        
+
         let session = Session(
             id: sessionId,
             type: type,
             workspace: workspace,
-            project: project
+            project: project,
+            worktree: worktree,
+            workingDir: workingDir,
+            terminalConfig: terminalConfig
         )
         sessions.append(session)
     }

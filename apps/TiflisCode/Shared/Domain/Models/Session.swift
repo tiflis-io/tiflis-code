@@ -8,6 +8,15 @@
 
 import Foundation
 
+/// Terminal configuration received from workstation
+struct TerminalConfig: Codable, Equatable {
+    let bufferSize: Int
+
+    enum CodingKeys: String, CodingKey {
+        case bufferSize = "buffer_size"
+    }
+}
+
 /// Represents a session (Supervisor, Agent, or Terminal)
 struct Session: Identifiable, Equatable {
     let id: String
@@ -18,6 +27,7 @@ struct Session: Identifiable, Equatable {
     let workingDir: String?
     let status: SessionStatus
     let createdAt: Date
+    let terminalConfig: TerminalConfig?
     
     enum SessionType: String, Codable, Equatable {
         case supervisor
@@ -108,7 +118,8 @@ struct Session: Identifiable, Equatable {
         worktree: String? = nil,
         workingDir: String? = nil,
         status: SessionStatus = .active,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        terminalConfig: TerminalConfig? = nil
     ) {
         self.id = id
         self.type = type
@@ -118,6 +129,7 @@ struct Session: Identifiable, Equatable {
         self.workingDir = workingDir
         self.status = status
         self.createdAt = createdAt
+        self.terminalConfig = terminalConfig
     }
 }
 

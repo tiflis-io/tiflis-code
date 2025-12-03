@@ -836,6 +836,7 @@ async function bootstrap(): Promise<void> {
       messageBroadcaster,
       workspacesRoot: env.WORKSPACES_ROOT,
       logger,
+      terminalOutputBufferSize: env.TERMINAL_OUTPUT_BUFFER_SIZE,
     });
 
   terminateSession = new TerminateSessionUseCase({
