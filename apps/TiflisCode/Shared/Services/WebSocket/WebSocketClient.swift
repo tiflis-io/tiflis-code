@@ -446,6 +446,7 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
                             workstationName: authSuccessMsg.payload.workstationName,
                             workstationVersion: authSuccessMsg.payload.workstationVersion,
                             protocolVersion: authSuccessMsg.payload.protocolVersion,
+                            workspacesRoot: authSuccessMsg.payload.workspacesRoot,
                             restoredSubscriptions: authSuccessMsg.payload.restoredSubscriptions
                         )
                     }

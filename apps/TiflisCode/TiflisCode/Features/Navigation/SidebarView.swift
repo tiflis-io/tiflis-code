@@ -34,7 +34,7 @@ struct SidebarView: View {
                     Button {
                         selectSession(supervisor.id)
                     } label: {
-                        SessionRow(session: supervisor, isSelected: appState.selectedSessionId == supervisor.id)
+                        SessionRow(session: supervisor, isSelected: appState.selectedSessionId == supervisor.id, workspacesRoot: appState.workspacesRoot)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -48,7 +48,7 @@ struct SidebarView: View {
                         Button {
                             selectSession(session.id)
                         } label: {
-                            SessionRow(session: session, isSelected: appState.selectedSessionId == session.id)
+                            SessionRow(session: session, isSelected: appState.selectedSessionId == session.id, workspacesRoot: appState.workspacesRoot)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -62,7 +62,7 @@ struct SidebarView: View {
                     }
                 }
             }
-            
+
             // Terminal Sessions
             if !terminalSessions.isEmpty {
                 Section("Terminals") {
@@ -70,7 +70,7 @@ struct SidebarView: View {
                         Button {
                             selectSession(session.id)
                         } label: {
-                            SessionRow(session: session, isSelected: appState.selectedSessionId == session.id)
+                            SessionRow(session: session, isSelected: appState.selectedSessionId == session.id, workspacesRoot: appState.workspacesRoot)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -150,28 +150,29 @@ struct SidebarView: View {
 struct SessionRow: View {
     let session: Session
     let isSelected: Bool
-    
+    let workspacesRoot: String?
+
     var body: some View {
         HStack(spacing: 12) {
             // Session type icon (custom image or SF Symbol)
             SessionIcon(type: session.type)
                 .frame(width: 32, height: 32)
-            
+
             VStack(alignment: .leading, spacing: 2) {
                 Text(session.type.displayName)
                     .font(.body)
                     .fontWeight(.medium)
-                
-                if let subtitle = session.subtitle {
+
+                if let subtitle = session.subtitle(relativeTo: workspacesRoot) {
                     Text(subtitle)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
             }
-            
+
             Spacer()
-            
+
             if isSelected {
                 Image(systemName: "checkmark")
                     .font(.body.weight(.semibold))

@@ -107,7 +107,7 @@ struct TerminalView: View {
                 VStack(spacing: 2) {
                     Text("Terminal")
                         .font(.headline)
-                    if let subtitle = session.subtitle {
+                    if let subtitle = session.subtitle(relativeTo: appState.workspacesRoot) {
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)

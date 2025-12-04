@@ -98,16 +98,38 @@ struct Session: Identifiable, Equatable {
         case terminated
     }
     
-    /// Returns the display subtitle for the session (workspace/project--worktree)
-    var subtitle: String? {
-        guard let workspace = workspace, let project = project else {
+    /// Returns the display subtitle for the session, showing relative path from workspaces root
+    /// - Parameter workspacesRoot: The workspaces root directory path from workstation
+    /// - Returns: A relative path string or nil if no path information is available
+    func subtitle(relativeTo workspacesRoot: String?) -> String? {
+        // If we have workspace/project, show that format (relative by nature)
+        if let workspace = workspace, let project = project {
+            if let worktree = worktree {
+                return "\(workspace)/\(project)--\(worktree)"
+            }
+            return "\(workspace)/\(project)"
+        }
+
+        // Otherwise compute relative path from workspaces root
+        guard let workingDir = workingDir else { return nil }
+        guard let root = workspacesRoot, !root.isEmpty else {
+            // No root known - fallback to absolute path
             return workingDir
         }
-        
-        if let worktree = worktree {
-            return "\(workspace)/\(project)--\(worktree)"
+
+        // Remove root prefix to get relative path
+        if workingDir.hasPrefix(root) {
+            var relative = String(workingDir.dropFirst(root.count))
+            // Remove leading slash if present
+            if relative.hasPrefix("/") {
+                relative = String(relative.dropFirst())
+            }
+            // Return "~" for empty relative path (at root)
+            return relative.isEmpty ? "~" : relative
         }
-        return "\(workspace)/\(project)"
+
+        // Path doesn't start with root - return as-is
+        return workingDir
     }
     
     init(

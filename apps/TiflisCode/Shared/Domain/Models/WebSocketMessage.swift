@@ -88,13 +88,15 @@ struct AuthSuccessMessage: Codable {
         let workstationName: String?
         let workstationVersion: String?
         let protocolVersion: String?
+        let workspacesRoot: String?
         let restoredSubscriptions: [String]?
-        
+
         enum CodingKeys: String, CodingKey {
             case deviceId = "device_id"
             case workstationName = "workstation_name"
             case workstationVersion = "workstation_version"
             case protocolVersion = "protocol_version"
+            case workspacesRoot = "workspaces_root"
             case restoredSubscriptions = "restored_subscriptions"
         }
     }

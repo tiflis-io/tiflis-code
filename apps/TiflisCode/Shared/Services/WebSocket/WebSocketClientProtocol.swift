@@ -53,8 +53,9 @@ protocol WebSocketClientDelegate: AnyObject {
     ///   - workstationName: The workstation display name (optional)
     ///   - workstationVersion: The workstation server version (optional)
     ///   - protocolVersion: The protocol version (optional, may come from tunnel or workstation)
+    ///   - workspacesRoot: The workspaces root directory path (optional)
     ///   - restoredSubscriptions: Optional array of restored session subscription IDs
-    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, restoredSubscriptions: [String]?)
+    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, workspacesRoot: String?, restoredSubscriptions: [String]?)
     
     /// Called when a message is received from the server
     /// - Parameters:

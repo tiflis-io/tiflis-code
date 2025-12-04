@@ -129,7 +129,7 @@ struct ChatView: View {
                 VStack(spacing: 2) {
                     Text(session.type.displayName)
                         .font(.headline)
-                    if let subtitle = session.subtitle {
+                    if let subtitle = session.subtitle(relativeTo: appState.workspacesRoot) {
                         Text(subtitle)
                             .font(.caption)
                             .foregroundStyle(.secondary)
@@ -195,7 +195,8 @@ struct ChatView: View {
 
 struct ChatEmptyState: View {
     let session: Session
-    
+    @EnvironmentObject private var appState: AppState
+
     var body: some View {
         VStack(spacing: 24) {
             Spacer()
@@ -221,7 +222,7 @@ struct ChatEmptyState: View {
                     .font(.title2)
                     .fontWeight(.semibold)
                 
-                if let subtitle = session.subtitle {
+                if let subtitle = session.subtitle(relativeTo: appState.workspacesRoot) {
                     HStack(spacing: 4) {
                         Image(systemName: "folder")
                             .font(.caption)

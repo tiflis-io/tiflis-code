@@ -421,6 +421,7 @@ private final class MockConnectionService: ConnectionServicing {
     @Published private(set) var tunnelVersion: String = "1.0.0"
     @Published private(set) var tunnelProtocolVersion: String = "1.0"
     @Published private(set) var workstationProtocolVersion: String = "1.2"
+    @Published private(set) var workspacesRoot: String = "/Users/mock/work"
 
     var connectionStatePublisher: Published<ConnectionState>.Publisher { $connectionState }
     var workstationOnlinePublisher: Published<Bool>.Publisher { $workstationOnline }
@@ -429,6 +430,7 @@ private final class MockConnectionService: ConnectionServicing {
     var tunnelVersionPublisher: Published<String>.Publisher { $tunnelVersion }
     var tunnelProtocolVersionPublisher: Published<String>.Publisher { $tunnelProtocolVersion }
     var workstationProtocolVersionPublisher: Published<String>.Publisher { $workstationProtocolVersion }
+    var workspacesRootPublisher: Published<String>.Publisher { $workspacesRoot }
 
     let messagePublisher = PassthroughSubject<[String: Any], Never>()
 

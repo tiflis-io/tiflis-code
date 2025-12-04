@@ -83,6 +83,7 @@ export interface AuthSuccessMessage {
     workstation_name?: string;
     workstation_version?: string;
     protocol_version?: string;
+    workspaces_root?: string;
     restored_subscriptions?: string[];
   };
 }

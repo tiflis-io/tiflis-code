@@ -18,6 +18,7 @@ export interface AuthenticateClientDeps {
   workstationName: string;
   workstationVersion: string;
   protocolVersion: string;
+  workspacesRoot: string;
   logger: Logger;
 }
 
@@ -77,6 +78,7 @@ export class AuthenticateClientUseCase {
         workstation_name: this.deps.workstationName,
         workstation_version: this.deps.workstationVersion,
         protocol_version: this.deps.protocolVersion,
+        workspaces_root: this.deps.workspacesRoot,
         restored_subscriptions: restoredSubscriptions.length > 0 ? restoredSubscriptions : undefined,
       },
     };

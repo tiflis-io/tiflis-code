@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.4-blue" alt="Version 1.4">
+  <img src="https://img.shields.io/badge/version-1.5-blue" alt="Version 1.5">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
 </p>
@@ -26,7 +26,11 @@
 
 ## Changelog
 
-### Version 1.4 (Current)
+### Version 1.5 (Current)
+- **Added:** `workspaces_root` field in `auth.success` payload for computing relative paths on mobile clients
+- **Enhanced:** Mobile clients now display relative working directory paths instead of absolute paths
+
+### Version 1.4
 - **Added:** `content_blocks` field in `supervisorHistory` for persisting structured content (tool calls, code blocks)
 - **Added:** Message `sequence` field for ordering in database and sync
 - **Enhanced:** Chat history now preserves rich content across app restarts
@@ -244,6 +248,7 @@ Tunnel Server monitors connections from both Workstations and Mobile clients.
     workstation_name?: string,        // Display name of the workstation
     workstation_version?: string,     // Workstation server version (semver, e.g., "0.1.0")
     protocol_version?: string,        // Protocol version (semver, e.g., "1.0.0")
+    workspaces_root?: string,         // Base directory for workspaces (for computing relative paths)
     restored_subscriptions?: string[]  // Session IDs (on reconnect)
   }
 }

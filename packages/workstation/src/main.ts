@@ -288,6 +288,7 @@ async function bootstrap(): Promise<void> {
     workstationName: env.WORKSTATION_NAME,
     workstationVersion,
     protocolVersion,
+    workspacesRoot: env.WORKSPACES_ROOT,
     logger,
   });
 

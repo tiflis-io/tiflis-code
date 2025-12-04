@@ -39,6 +39,7 @@ final class AppState: ObservableObject {
     @Published var workstationName: String = ""
     @Published var workstationVersion: String = ""
     @Published var workstationProtocolVersion: String = ""
+    @Published var workspacesRoot: String = ""
     @Published var tunnelVersion: String = ""
     @Published var tunnelProtocolVersion: String = ""
     @Published var sessions: [Session] = Session.mockSessions
@@ -132,6 +133,10 @@ final class AppState: ObservableObject {
         connectionService.workstationProtocolVersionPublisher
             .receive(on: DispatchQueue.main)
             .assign(to: &$workstationProtocolVersion)
+
+        connectionService.workspacesRootPublisher
+            .receive(on: DispatchQueue.main)
+            .assign(to: &$workspacesRoot)
     }
     
     private func observeWebSocketMessages() {
@@ -368,12 +373,19 @@ final class AppState: ObservableObject {
                 continue
             }
 
-            // Create session (workspace/project not in sync.state, will be empty)
+            // Extract all session fields from sync.state
+            let workspace = sessionData["workspace"] as? String
+            let project = sessionData["project"] as? String
+            let worktree = sessionData["worktree"] as? String
+            let workingDir = sessionData["working_dir"] as? String
+
             let session = Session(
                 id: sessionId,
                 type: type,
-                workspace: nil,
-                project: nil
+                workspace: workspace,
+                project: project,
+                worktree: worktree,
+                workingDir: workingDir
             )
             restoredSessions.append(session)
         }

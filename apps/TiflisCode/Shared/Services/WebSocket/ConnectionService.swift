@@ -57,10 +57,16 @@ protocol ConnectionServicing {
     
     /// Current workstation protocol version
     var workstationProtocolVersion: String { get }
-    
+
     /// Publisher for workstation protocol version changes
     var workstationProtocolVersionPublisher: Published<String>.Publisher { get }
-    
+
+    /// Current workspaces root directory path
+    var workspacesRoot: String { get }
+
+    /// Publisher for workspaces root changes
+    var workspacesRootPublisher: Published<String>.Publisher { get }
+
     /// WebSocket client for sending messages (read-only access)
     var webSocketClient: WebSocketClientProtocol { get }
     
@@ -86,6 +92,7 @@ final class ConnectionService: ConnectionServicing {
     @Published private(set) var workstationName: String = ""
     @Published private(set) var workstationVersion: String = ""
     @Published private(set) var workstationProtocolVersion: String = ""
+    @Published private(set) var workspacesRoot: String = ""
     @Published private(set) var tunnelVersion: String = ""
     @Published private(set) var tunnelProtocolVersion: String = ""
     
@@ -116,7 +123,11 @@ final class ConnectionService: ConnectionServicing {
     var workstationProtocolVersionPublisher: Published<String>.Publisher {
         $workstationProtocolVersion
     }
-    
+
+    var workspacesRootPublisher: Published<String>.Publisher {
+        $workspacesRoot
+    }
+
     /// Publisher for all incoming WebSocket messages
     /// View models can subscribe and filter by message type or session ID
     let messagePublisher = PassthroughSubject<[String: Any], Never>()
@@ -198,14 +209,15 @@ extension ConnectionService: WebSocketClientDelegate {
         self.tunnelProtocolVersion = protocolVersion ?? ""
     }
     
-    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, restoredSubscriptions: [String]?) {
+    func webSocketClient(_ client: WebSocketClientProtocol, didAuthenticate deviceId: String, workstationName: String?, workstationVersion: String?, protocolVersion: String?, workspacesRoot: String?, restoredSubscriptions: [String]?) {
         connectionState = .connected
         // Assume workstation is online when we successfully authenticate
         workstationOnline = true
         self.workstationName = workstationName ?? ""
         self.workstationVersion = workstationVersion ?? ""
         self.workstationProtocolVersion = protocolVersion ?? ""
-        
+        self.workspacesRoot = workspacesRoot ?? ""
+
         // After authentication, request state sync to restore sessions
         // This is especially important after app restart
         Task { @MainActor [weak self] in
@@ -246,6 +258,7 @@ extension ConnectionService: WebSocketClientDelegate {
         workstationName = ""
         workstationVersion = ""
         workstationProtocolVersion = ""
+        workspacesRoot = ""
         tunnelVersion = ""
         tunnelProtocolVersion = ""
     }
