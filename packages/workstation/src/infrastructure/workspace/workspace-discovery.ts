@@ -4,7 +4,7 @@
  * @license MIT
  */
 
-import { readdir, stat, access } from 'fs/promises';
+import { readdir, stat, access, mkdir } from 'fs/promises';
 import { join } from 'path';
 import { execSync } from 'child_process';
 import type {
@@ -290,6 +290,82 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
       return baseName.substring(project.length + 2);
     }
     return baseName;
+  }
+
+  /**
+   * Validates that a name is in lower-kebab-case format.
+   */
+  private isValidKebabCase(name: string): boolean {
+    return /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name);
+  }
+
+  /**
+   * Creates a new workspace directory.
+   */
+  async createWorkspace(name: string): Promise<WorkspaceInfo> {
+    if (!this.isValidKebabCase(name)) {
+      throw new Error(
+        `Invalid workspace name "${name}". Must be in lower-kebab-case (e.g., "my-workspace").`
+      );
+    }
+
+    const workspacePath = join(this.workspacesRoot, name);
+
+    if (await this.pathExists(workspacePath)) {
+      throw new Error(`Workspace "${name}" already exists.`);
+    }
+
+    await mkdir(workspacePath, { recursive: true });
+
+    return {
+      name,
+      path: workspacePath,
+      projectCount: 0,
+    };
+  }
+
+  /**
+   * Creates a new project directory within a workspace.
+   */
+  async createProject(
+    workspace: string,
+    name: string,
+    initGit = true
+  ): Promise<ProjectInfo> {
+    if (!this.isValidKebabCase(name)) {
+      throw new Error(
+        `Invalid project name "${name}". Must be in lower-kebab-case (e.g., "my-project").`
+      );
+    }
+
+    const workspacePath = join(this.workspacesRoot, workspace);
+
+    if (!(await this.pathExists(workspacePath))) {
+      throw new Error(`Workspace "${workspace}" does not exist.`);
+    }
+
+    const projectPath = join(workspacePath, name);
+
+    if (await this.pathExists(projectPath)) {
+      throw new Error(`Project "${name}" already exists in workspace "${workspace}".`);
+    }
+
+    await mkdir(projectPath, { recursive: true });
+
+    if (initGit) {
+      execSync('git init', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      });
+    }
+
+    return {
+      name,
+      path: projectPath,
+      isGitRepo: initGit,
+      defaultBranch: initGit ? 'main' : undefined,
+      worktrees: [],
+    };
   }
 }
 

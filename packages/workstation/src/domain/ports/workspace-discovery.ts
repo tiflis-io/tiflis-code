@@ -81,5 +81,22 @@ export interface WorkspaceDiscovery {
    * Checks if a path exists and is a directory.
    */
   pathExists(path: string): Promise<boolean>;
+
+  /**
+   * Creates a new workspace directory.
+   * Name must be in lower-kebab-case.
+   */
+  createWorkspace(name: string): Promise<WorkspaceInfo>;
+
+  /**
+   * Creates a new project directory within a workspace.
+   * Name must be in lower-kebab-case.
+   * Optionally initializes as a git repository.
+   */
+  createProject(
+    workspace: string,
+    name: string,
+    initGit?: boolean
+  ): Promise<ProjectInfo>;
 }
 

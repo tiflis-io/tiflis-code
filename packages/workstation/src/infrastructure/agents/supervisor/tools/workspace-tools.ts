@@ -90,6 +90,77 @@ export function createWorkspaceTools(workspaceDiscovery: WorkspaceDiscovery) {
     }
   );
 
-  return [listWorkspaces, listProjects, getProjectInfo];
+  /**
+   * Creates a new workspace.
+   */
+  const createWorkspace = tool(
+    async ({ name }: { name: string }) => {
+      try {
+        const workspace = await workspaceDiscovery.createWorkspace(name);
+        return `Created workspace "${workspace.name}" at ${workspace.path}`;
+      } catch (error) {
+        return `Error creating workspace: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'create_workspace',
+      description:
+        'Creates a new workspace directory. The name must be in lower-kebab-case (e.g., "my-company", "personal-projects").',
+      schema: z.object({
+        name: z
+          .string()
+          .regex(
+            /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/,
+            'Name must be in lower-kebab-case (e.g., "my-workspace")'
+          )
+          .describe('Name for the new workspace in lower-kebab-case'),
+      }),
+    }
+  );
+
+  /**
+   * Creates a new project in a workspace.
+   */
+  const createProject = tool(
+    async ({
+      workspace,
+      name,
+      init_git = true,
+    }: {
+      workspace: string;
+      name: string;
+      init_git?: boolean;
+    }) => {
+      try {
+        const project = await workspaceDiscovery.createProject(workspace, name, init_git);
+        const gitInfo = project.isGitRepo ? ' (git initialized)' : '';
+        return `Created project "${project.name}" in workspace "${workspace}"${gitInfo}\nPath: ${project.path}`;
+      } catch (error) {
+        return `Error creating project: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'create_project',
+      description:
+        'Creates a new project directory within a workspace. The name must be in lower-kebab-case. By default, initializes a git repository.',
+      schema: z.object({
+        workspace: z.string().describe('Name of the workspace to create the project in'),
+        name: z
+          .string()
+          .regex(
+            /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/,
+            'Name must be in lower-kebab-case (e.g., "my-project")'
+          )
+          .describe('Name for the new project in lower-kebab-case'),
+        init_git: z
+          .boolean()
+          .optional()
+          .default(true)
+          .describe('Whether to initialize a git repository (default: true)'),
+      }),
+    }
+  );
+
+  return [listWorkspaces, listProjects, getProjectInfo, createWorkspace, createProject];
 }
 
