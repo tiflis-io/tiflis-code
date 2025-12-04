@@ -4,6 +4,7 @@
  * @license MIT
  */
 
+import { EventEmitter } from 'events';
 import { nanoid } from 'nanoid';
 import type { Logger } from 'pino';
 import type {
@@ -20,6 +21,7 @@ import { SupervisorSession } from '../../domain/entities/supervisor-session.js';
 import { AgentSession, isAgentType } from '../../domain/entities/agent-session.js';
 import type { AgentType } from '../../domain/entities/agent-session.js';
 import type { SessionId } from '../../domain/value-objects/session-id.js';
+import type { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
 
@@ -31,10 +33,21 @@ export interface InMemorySessionManagerConfig {
 }
 
 /**
+ * Events emitted by InMemorySessionManager.
+ */
+export interface SessionManagerEvents {
+  /**
+   * Emitted when a terminal session is created.
+   * Used to attach output handlers and broadcast session.created messages.
+   */
+  terminalSessionCreated: (session: TerminalSession) => void;
+}
+
+/**
  * In-memory implementation of the session manager.
  * Coordinates between terminal (PTY) and agent session managers.
  */
-export class InMemorySessionManager implements SessionManager {
+export class InMemorySessionManager extends EventEmitter implements SessionManager {
   private readonly sessions = new Map<string, Session>();
   private readonly ptyManager: TerminalManager;
   private readonly agentSessionManager: AgentSessionManager;
@@ -42,6 +55,7 @@ export class InMemorySessionManager implements SessionManager {
   private supervisorSession: SupervisorSession | null = null;
 
   constructor(config: InMemorySessionManagerConfig) {
+    super();
     this.ptyManager = config.ptyManager;
     this.agentSessionManager = config.agentSessionManager;
     this.logger = config.logger.child({ component: 'session-manager' });
@@ -92,6 +106,9 @@ export class InMemorySessionManager implements SessionManager {
         { sessionId: session.id.value, sessionType, workingDir },
         'Terminal session created'
       );
+
+      // Emit event for listeners to attach output handlers and broadcast
+      this.emit('terminalSessionCreated', session);
 
       return session;
     }

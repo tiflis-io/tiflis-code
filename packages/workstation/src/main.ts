@@ -22,7 +22,8 @@ import { AuthKey } from './domain/value-objects/auth-key.js';
 import { SessionId } from './domain/value-objects/session-id.js';
 import { DeviceId } from './domain/value-objects/device-id.js';
 import type { ContentBlock } from './domain/value-objects/content-block.js';
-import { isTerminalSession } from './domain/entities/terminal-session.js';
+import { isTerminalSession, type TerminalSession } from './domain/entities/terminal-session.js';
+import type { SessionCreatedMessage } from './protocol/messages.js';
 import QRCode from 'qrcode';
 import { AuthenticateClientUseCase } from './application/commands/authenticate-client.js';
 import { CreateSessionUseCase } from './application/commands/create-session.js';
@@ -493,35 +494,9 @@ async function bootstrap(): Promise<void> {
         socket.send(JSON.stringify(result.response));
         messageBroadcaster.broadcastToAll(JSON.stringify(result.broadcast));
 
-        // Attach terminal output streaming for terminal sessions
-        if (createMessage.payload.session_type === 'terminal') {
-          const sessionId = new SessionId(result.response.payload.session_id as string);
-          const session = sessionManager.getSession(sessionId);
-          // Capture reference for the callback closure (guaranteed non-null from parent check)
-          const bcaster = messageBroadcaster;
-          if (session && isTerminalSession(session)) {
-            session.onOutput((data: string) => {
-              // Add to buffer and get the message with sequence number
-              const outputMessage = session.addOutputToBuffer(data);
-
-              const outputEvent = {
-                type: 'session.output',
-                session_id: sessionId.value,
-                payload: {
-                  content_type: 'terminal',
-                  content: data,
-                  timestamp: outputMessage.timestamp,
-                  sequence: outputMessage.sequence, // Include sequence for deduplication
-                },
-              };
-
-              // Send to all subscribers via broadcaster
-              // Note: Direct socket.send() is not used for tunnel connections
-              // All messages go through broadcaster which handles both direct and tunnel connections
-              bcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
-            });
-          }
-        }
+        // Note: Terminal output streaming is now handled via the 'terminalSessionCreated' event
+        // emitted by SessionManager. This ensures consistent output handling regardless of
+        // how the terminal session was created (via API or supervisor tool).
       } catch (error) {
         logger.error({ error, requestId: createMessage.id }, 'Failed to create session');
         socket.send(JSON.stringify({
@@ -997,8 +972,48 @@ async function bootstrap(): Promise<void> {
   });
 
   // Stream terminal output to subscribed clients
-  // Note: Terminal sessions emit output via their onOutput callback
-  // This is handled when sessions are created in CreateSessionUseCase
+  // Listen for terminal sessions created from ANY source (API, supervisor tool, etc.)
+  // This ensures broadcast and output handler attachment regardless of creation path
+  sessionManager.on('terminalSessionCreated', (session: TerminalSession) => {
+    const sessionId = session.id;
+
+    logger.info(
+      { sessionId: sessionId.value, workingDir: session.workingDir },
+      'Terminal session created via event, attaching output handler'
+    );
+
+    // Broadcast session.created to all clients
+    const broadcastMessage: SessionCreatedMessage = {
+      type: 'session.created',
+      session_id: sessionId.value,
+      payload: {
+        session_type: 'terminal',
+        working_dir: session.workingDir,
+        terminal_config: {
+          buffer_size: env.TERMINAL_OUTPUT_BUFFER_SIZE,
+        },
+      },
+    };
+    broadcaster.broadcastToAll(JSON.stringify(broadcastMessage));
+
+    // Attach output handler for streaming
+    session.onOutput((data: string) => {
+      const outputMessage = session.addOutputToBuffer(data);
+
+      const outputEvent = {
+        type: 'session.output',
+        session_id: sessionId.value,
+        payload: {
+          content_type: 'terminal',
+          content: data,
+          timestamp: outputMessage.timestamp,
+          sequence: outputMessage.sequence,
+        },
+      };
+
+      broadcaster.broadcastToSubscribers(sessionId.value, JSON.stringify(outputEvent));
+    });
+  });
 
   // Create Fastify app
   const app = createApp({ env, logger });
