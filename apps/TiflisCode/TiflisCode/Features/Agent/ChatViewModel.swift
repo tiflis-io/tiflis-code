@@ -132,6 +132,13 @@ final class ChatViewModel: ObservableObject {
             // Empty blocks but is_complete means end of streaming
             if isComplete {
                 isLoading = false
+                // Mark the streaming message as complete
+                if let streamingId = currentStreamingMessageId,
+                   let index = messages.firstIndex(where: { $0.id == streamingId }) {
+                    var updatedMessage = messages[index]
+                    updatedMessage.isStreaming = false
+                    messages[index] = updatedMessage
+                }
                 currentStreamingMessageId = nil
             }
             return
@@ -194,7 +201,21 @@ final class ChatViewModel: ObservableObject {
             blocks = ContentParser.parse(content: content, contentType: contentType)
         }
 
-        guard !blocks.isEmpty else { return }
+        guard !blocks.isEmpty else {
+            // Empty blocks but is_complete means end of streaming
+            if isComplete {
+                isLoading = false
+                // Mark the streaming message as complete
+                if let streamingId = currentStreamingMessageId,
+                   let index = messages.firstIndex(where: { $0.id == streamingId }) {
+                    var updatedMessage = messages[index]
+                    updatedMessage.isStreaming = false
+                    messages[index] = updatedMessage
+                }
+                currentStreamingMessageId = nil
+            }
+            return
+        }
 
         // Update or create streaming message
         if let streamingId = currentStreamingMessageId,
