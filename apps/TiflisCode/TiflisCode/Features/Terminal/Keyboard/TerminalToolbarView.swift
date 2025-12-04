@@ -36,8 +36,45 @@ final class TerminalToolbarView: UIView {
     /// Toolbar buttons
     private var toolbarButtons: [KeyboardKeyView] = []
 
+    /// Reference to the toolbar stack view for dynamic rebuilding
+    private var toolbarStack: UIStackView!
+
     /// Haptic feedback
     private let impactGenerator = UIImpactFeedbackGenerator(style: .light)
+
+    // MARK: - Toolbar Configurations
+
+    /// Normal mode toolbar configuration
+    private let normalModeConfigs: [KeyConfiguration] = [
+        KeyConfiguration(type: .special(.dismiss)),
+        KeyConfiguration(type: .modifier(.control)),
+        KeyConfiguration(type: .special(.escape)),
+        KeyConfiguration(type: .special(.tab)),
+        KeyConfiguration(type: .special(.dash)),
+        KeyConfiguration(type: .special(.slash)),
+        KeyConfiguration(type: .special(.tilde)),
+        KeyConfiguration(type: .special(.arrowLeft)),
+        KeyConfiguration(type: .special(.arrowDown)),
+        KeyConfiguration(type: .special(.arrowUp)),
+        KeyConfiguration(type: .special(.arrowRight)),
+        KeyConfiguration(type: .special(.backspace))
+    ]
+
+    /// Control mode toolbar configuration (when Ctrl is active)
+    /// Keys: C, R, L, O, K, B, W, X - common control combinations for terminal agents
+    private let controlModeConfigs: [KeyConfiguration] = [
+        KeyConfiguration(type: .special(.dismiss)),
+        KeyConfiguration(type: .modifier(.control)),
+        KeyConfiguration(type: .character("C")),  // Ctrl+C (0x03) - Interrupt/Cancel
+        KeyConfiguration(type: .character("R")),  // Ctrl+R (0x12) - History search
+        KeyConfiguration(type: .character("L")),  // Ctrl+L (0x0C) - Clear screen
+        KeyConfiguration(type: .character("O")),  // Ctrl+O (0x0F) - Toggle output
+        KeyConfiguration(type: .character("K")),  // Ctrl+K (0x0B) - Kill line
+        KeyConfiguration(type: .character("B")),  // Ctrl+B (0x02) - Background
+        KeyConfiguration(type: .character("W")),  // Ctrl+W (0x17) - Delete word
+        KeyConfiguration(type: .character("X")),  // Ctrl+X (0x18) - Cancel/Leader
+        KeyConfiguration(type: .special(.backspace))
+    ]
 
     // MARK: - Initialization
 
@@ -83,7 +120,7 @@ final class TerminalToolbarView: UIView {
         backgroundColor = theme.toolbarBackgroundColor
         autoresizingMask = [.flexibleWidth]
 
-        let toolbarStack = UIStackView()
+        toolbarStack = UIStackView()
         toolbarStack.translatesAutoresizingMaskIntoConstraints = false
         toolbarStack.axis = .horizontal
         toolbarStack.distribution = .fillEqually
@@ -99,22 +136,27 @@ final class TerminalToolbarView: UIView {
             toolbarStack.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -4)
         ])
 
-        // Toolbar buttons: Dismiss, Esc, Tab, -, /, ~, ← ↓ ↑ →, Backspace
-        let toolbarConfigs: [KeyConfiguration] = [
-            KeyConfiguration(type: .special(.dismiss)),
-            KeyConfiguration(type: .special(.escape)),
-            KeyConfiguration(type: .special(.tab)),
-            KeyConfiguration(type: .special(.dash)),
-            KeyConfiguration(type: .special(.slash)),
-            KeyConfiguration(type: .special(.tilde)),
-            KeyConfiguration(type: .special(.arrowLeft)),
-            KeyConfiguration(type: .special(.arrowDown)),
-            KeyConfiguration(type: .special(.arrowUp)),
-            KeyConfiguration(type: .special(.arrowRight)),
-            KeyConfiguration(type: .special(.backspace))
-        ]
+        // Build toolbar with normal mode configuration
+        rebuildToolbar(controlMode: false)
 
-        for config in toolbarConfigs {
+        impactGenerator.prepare()
+    }
+
+    // MARK: - Dynamic Toolbar Rebuild
+
+    /// Rebuilds the toolbar with either normal or control mode buttons
+    private func rebuildToolbar(controlMode: Bool) {
+        // Remove existing buttons
+        for button in toolbarButtons {
+            button.removeFromSuperview()
+        }
+        toolbarButtons.removeAll()
+
+        // Choose configuration based on mode
+        let configs = controlMode ? controlModeConfigs : normalModeConfigs
+
+        // Build new buttons
+        for config in configs {
             let button = KeyboardKeyView(configuration: config)
             button.delegate = self
             button.applyTheme(theme)
@@ -122,7 +164,8 @@ final class TerminalToolbarView: UIView {
             toolbarButtons.append(button)
         }
 
-        impactGenerator.prepare()
+        // Update Control button state to reflect active status
+        updateModifierButtons()
     }
 
     // MARK: - Theme
@@ -154,6 +197,8 @@ final class TerminalToolbarView: UIView {
         switch type {
         case .control:
             modifierState.control.toggle()
+            // Rebuild toolbar with control mode keys when Control is active
+            rebuildToolbar(controlMode: modifierState.control)
         case .shift:
             modifierState.shift.toggle()
         case .capsLock:
@@ -222,7 +267,15 @@ extension TerminalToolbarView: KeyboardKeyDelegate {
         case .special(.dismiss):
             delegate?.toolbarDidRequestDismiss(self)
 
-        case .character, .special:
+        case .character:
+            sendInput(for: type)
+            // Reset Control mode after sending a control character
+            if modifierState.control {
+                modifierState.control = false
+                rebuildToolbar(controlMode: false)
+            }
+
+        case .special:
             sendInput(for: type)
 
         case .layoutSwitch:

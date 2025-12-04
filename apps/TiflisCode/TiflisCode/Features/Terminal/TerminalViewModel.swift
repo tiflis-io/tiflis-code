@@ -375,18 +375,23 @@ final class TerminalViewModel: ObservableObject {
     }
     
     func resizeTerminal(cols: Int, rows: Int) {
+        // Enforce minimum terminal size for stability with TUI apps
+        // Prevents display issues when terminal is too small (e.g., during keyboard transitions)
+        let safeCols = max(40, cols)
+        let safeRows = max(10, rows)
+
         // Only resize if size actually changed
-        guard terminalSize.cols != cols || terminalSize.rows != rows else {
+        guard terminalSize.cols != safeCols || terminalSize.rows != safeRows else {
             return
         }
 
         // Update local state immediately for responsive UI
-        terminalSize = (cols: cols, rows: rows)
-        threadSafeTerminalSize = (cols: cols, rows: rows)
+        terminalSize = (cols: safeCols, rows: safeRows)
+        threadSafeTerminalSize = (cols: safeCols, rows: safeRows)
 
         // Update TerminalView's internal terminal size immediately
         if let terminalView = swiftTermView {
-            terminalView.resize(cols: cols, rows: rows)
+            terminalView.resize(cols: safeCols, rows: safeRows)
         }
 
         // Check if this is the first resize or enough time has passed since last resize
@@ -403,12 +408,12 @@ final class TerminalViewModel: ObservableObject {
             // Cancel any pending debounced resize
             resizeDebounceTask?.cancel()
             resizeDebounceTask = nil
-            pendingResize = (cols: cols, rows: rows)
+            pendingResize = (cols: safeCols, rows: safeRows)
             sendResizeToServer()
         } else {
             // Debounce subsequent rapid resizes to prevent storms during keyboard changes
             resizeDebounceTask?.cancel()
-            pendingResize = (cols: cols, rows: rows)
+            pendingResize = (cols: safeCols, rows: safeRows)
 
             resizeDebounceTask = Task { [weak self] in
                 do {

@@ -151,8 +151,9 @@ final class TerminalViewUIKit: UIView {
     func configureTerminalOptions(terminalConfig: TerminalConfig? = nil) {
         let terminal = terminalView.getTerminal()
 
-        // Use server-provided buffer size, fallback to 100 for optimal mobile performance
-        let scrollbackLines = terminalConfig?.bufferSize ?? 100
+        // Use server-provided buffer size, fallback to 1000 for stable TUI app behavior
+        // Increased from 100 to prevent display issues with terminal apps that expect larger buffers
+        let scrollbackLines = terminalConfig?.bufferSize ?? 1000
 
         // Configure terminal options following best practices
         // Note: TerminalOptions only supports basic options, not mouse reporting
