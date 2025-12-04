@@ -14,6 +14,7 @@ export interface CreateMessageParams {
   role: 'user' | 'assistant' | 'system';
   contentType: 'text' | 'audio' | 'transcription';
   content: string;
+  contentBlocks?: string; // JSON string of structured content blocks
   audioInputPath?: string;
   audioOutputPath?: string;
   isComplete?: boolean;
@@ -44,6 +45,7 @@ export class MessageRepository {
       role: params.role,
       contentType: params.contentType,
       content: params.content,
+      contentBlocks: params.contentBlocks,
       audioInputPath: params.audioInputPath,
       audioOutputPath: params.audioOutputPath,
       isComplete: params.isComplete ?? false,

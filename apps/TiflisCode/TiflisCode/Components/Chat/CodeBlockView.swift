@@ -45,13 +45,15 @@ struct CodeBlockView: View {
             .padding(.vertical, 8)
             .background(Color(.systemGray5))
 
-            // Code content
-            ScrollView(.horizontal, showsIndicators: false) {
+            // Code content with word wrap
+            ScrollView {
                 Text(code)
-                    .font(.system(.body, design: .monospaced))
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
                     .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(12)
             }
+            .frame(maxHeight: 300)
             .background(Color(.systemGray6))
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))

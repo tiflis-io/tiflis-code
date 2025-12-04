@@ -61,8 +61,17 @@ struct TextContentView: View {
     let text: String
 
     var body: some View {
-        Text(LocalizedStringKey(text))
+        // Use AttributedString for markdown support while preserving newlines
+        Text(attributedText)
             .textSelection(.enabled)
+    }
+
+    private var attributedText: AttributedString {
+        // Try to parse as markdown, fallback to plain text
+        if let attributed = try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) {
+            return attributed
+        }
+        return AttributedString(text)
     }
 }
 

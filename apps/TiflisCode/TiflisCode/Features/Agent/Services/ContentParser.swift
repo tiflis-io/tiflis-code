@@ -39,16 +39,23 @@ final class ContentParser {
     /// - Parameter blocks: Array of content block dictionaries from session.output payload
     /// - Returns: Array of parsed MessageContentBlock
     static func parseContentBlocks(_ blocks: [[String: Any]]) -> [MessageContentBlock] {
-        return blocks.compactMap { json -> MessageContentBlock? in
+        return blocks.flatMap { json -> [MessageContentBlock] in
             guard let blockType = json["block_type"] as? String else {
-                return nil
+                return []
             }
             // Skip status blocks - they are ephemeral streaming indicators
             // (e.g., "Processing...", "Complete") that shouldn't be persisted
             if blockType == "status" {
-                return nil
+                return []
             }
-            return parseTypedBlock(blockType: blockType, json: json)
+            // For text blocks, parse markdown code blocks inside
+            if blockType == "text", let content = json["content"] as? String {
+                return parseTextWithCodeBlocks(content)
+            }
+            if let block = parseTypedBlock(blockType: blockType, json: json) {
+                return [block]
+            }
+            return []
         }
     }
 

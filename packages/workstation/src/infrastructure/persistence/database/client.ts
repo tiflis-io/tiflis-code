@@ -98,6 +98,14 @@ export function initDatabase(dataDir: string): DrizzleDatabase {
     CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(session_id, sequence);
   `);
 
+  // Migration: add content_blocks column if it doesn't exist
+  const hasContentBlocks = columns.some((col) => col.name === 'content_blocks');
+  if (!hasContentBlocks) {
+    sqlite.exec(`
+      ALTER TABLE messages ADD COLUMN content_blocks TEXT;
+    `);
+  }
+
   db = drizzle(sqlite, { schema });
   return db;
 }

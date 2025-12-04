@@ -33,6 +33,7 @@ export const messages = sqliteTable('messages', {
   role: text('role').notNull(), // 'user' | 'assistant' | 'system'
   contentType: text('content_type').notNull(), // 'text' | 'audio' | 'transcription'
   content: text('content').notNull(),
+  contentBlocks: text('content_blocks'), // JSON array of ContentBlock for structured messages
   audioInputPath: text('audio_input_path'),
   audioOutputPath: text('audio_output_path'),
   isComplete: integer('is_complete', { mode: 'boolean' }).default(false),

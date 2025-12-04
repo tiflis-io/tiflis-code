@@ -69,7 +69,7 @@ struct ToolCallView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            CodeBlockView(language: nil, code: output)
+                            CodeBlockView(language: nil, code: unescapeString(output))
                         }
                     }
                 }
@@ -104,6 +104,24 @@ struct ToolCallView: View {
     private var displayName: String {
         // Convert snake_case to readable format
         name.replacingOccurrences(of: "_", with: " ").capitalized
+    }
+
+    /// Unescape JSON-encoded string (convert \n to newlines, \" to quotes, etc.)
+    private func unescapeString(_ str: String) -> String {
+        // If the string looks like a JSON string (starts and ends with quotes), try to decode it
+        if str.hasPrefix("\"") && str.hasSuffix("\"") {
+            if let data = str.data(using: .utf8),
+               let decoded = try? JSONDecoder().decode(String.self, from: data) {
+                return decoded
+            }
+        }
+
+        // Otherwise just replace common escape sequences
+        return str
+            .replacingOccurrences(of: "\\n", with: "\n")
+            .replacingOccurrences(of: "\\\"", with: "\"")
+            .replacingOccurrences(of: "\\t", with: "\t")
+            .replacingOccurrences(of: "\\\\", with: "\\")
     }
 }
 

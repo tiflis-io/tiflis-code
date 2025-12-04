@@ -333,6 +333,7 @@ async function bootstrap(): Promise<void> {
         sequence: msg.sequence,
         role: msg.role,
         content: msg.content,
+        content_blocks: msg.contentBlocks, // Structured blocks for rich UI restoration
         createdAt: msg.createdAt.toISOString(),
       }));
 
@@ -965,7 +966,7 @@ async function bootstrap(): Promise<void> {
   });
 
   // Stream Supervisor Agent output to ALL clients (supervisor chat is global/shared)
-  supervisorAgent.on('blocks', (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
+  supervisorAgent.on('blocks', (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string, allBlocks?: ContentBlock[]) => {
     // Build plain text content for backward compatibility
     const textContent = blocks
       .filter((b) => b.block_type === 'text')
@@ -990,7 +991,8 @@ async function bootstrap(): Promise<void> {
 
     // Save assistant response to persistent history when streaming completes (global)
     if (isComplete && finalOutput && finalOutput.length > 0) {
-      chatHistoryService.saveSupervisorMessage('assistant', finalOutput);
+      // Save with all accumulated content blocks for history restoration
+      chatHistoryService.saveSupervisorMessage('assistant', finalOutput, allBlocks);
     }
   });
 

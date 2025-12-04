@@ -64,8 +64,9 @@ export interface SupervisorAgentEvents {
    * @param blocks - Content blocks to send to client
    * @param isComplete - Whether streaming is complete
    * @param finalOutput - The complete response text (only present when isComplete=true)
+   * @param allBlocks - All accumulated blocks for persistence (only present when isComplete=true)
    */
-  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => void;
+  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string, allBlocks?: ContentBlock[]) => void;
 }
 
 /**
@@ -233,6 +234,7 @@ export class SupervisorAgent extends EventEmitter {
       );
 
       let finalOutput = '';
+      const allBlocks: ContentBlock[] = [];
 
       for await (const chunk of stream) {
         // LangGraph stream chunks contain the full state
@@ -252,6 +254,13 @@ export class SupervisorAgent extends EventEmitter {
             // Emit text block for the current content
             const textBlock = createTextBlock(content);
             this.emit('blocks', deviceId, [textBlock], false);
+            // Replace last text block (LangGraph sends full state each time)
+            const lastTextIndex = allBlocks.findLastIndex((b) => b.block_type === 'text');
+            if (lastTextIndex >= 0) {
+              allBlocks[lastTextIndex] = textBlock;
+            } else {
+              allBlocks.push(textBlock);
+            }
           } else if (Array.isArray(content)) {
             // Handle structured content (tool calls, etc.)
             for (const item of content) {
@@ -259,6 +268,7 @@ export class SupervisorAgent extends EventEmitter {
                 const block = this.parseContentItem(item as Record<string, unknown>);
                 if (block) {
                   this.emit('blocks', deviceId, [block], false);
+                  allBlocks.push(block);
                 }
               }
             }
@@ -276,6 +286,7 @@ export class SupervisorAgent extends EventEmitter {
             typeof toolContent === 'string' ? toolContent : JSON.stringify(toolContent)
           );
           this.emit('blocks', deviceId, [toolBlock], false);
+          allBlocks.push(toolBlock);
         }
       }
 
@@ -283,9 +294,9 @@ export class SupervisorAgent extends EventEmitter {
       this.addToHistory('user', command);
       this.addToHistory('assistant', finalOutput);
 
-      // Emit completion with final output for persistence
+      // Emit completion with final output and all blocks for persistence
       const completionBlock = createStatusBlock('Complete');
-      this.emit('blocks', deviceId, [completionBlock], true, finalOutput);
+      this.emit('blocks', deviceId, [completionBlock], true, finalOutput, allBlocks);
 
       this.logger.debug({ output: finalOutput.slice(0, 200) }, 'Supervisor streaming completed');
     } catch (error) {

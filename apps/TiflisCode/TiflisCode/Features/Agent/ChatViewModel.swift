@@ -307,10 +307,22 @@ final class ChatViewModel: ObservableObject {
                   let content = historyItem["content"] as? String else { continue }
 
             let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
+
+            // Parse content_blocks if available (for assistant messages with rich content)
+            var blocks: [MessageContentBlock] = []
+            if let contentBlocks = historyItem["content_blocks"] as? [[String: Any]], !contentBlocks.isEmpty {
+                blocks = ContentParser.parseContentBlocks(contentBlocks)
+            }
+
+            // If no blocks parsed, create text block from content
+            if blocks.isEmpty {
+                blocks = ContentParser.parse(content: content, contentType: "agent")
+            }
+
             let message = Message(
                 sessionId: session.id,
                 role: messageRole,
-                content: content
+                contentBlocks: blocks
             )
             messages.append(message)
         }

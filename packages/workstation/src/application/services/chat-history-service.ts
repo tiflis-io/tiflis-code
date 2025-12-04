@@ -31,6 +31,7 @@ export interface StoredMessage {
   role: 'user' | 'assistant' | 'system';
   contentType: 'text' | 'audio' | 'transcription';
   content: string;
+  contentBlocks?: unknown[]; // Structured content blocks (parsed from JSON)
   audioInputPath?: string | null;
   audioOutputPath?: string | null;
   isComplete: boolean;
@@ -279,10 +280,12 @@ export class ChatHistoryService {
   /**
    * Saves a supervisor message to the database.
    * Messages are shared across all devices connected to this workstation.
+   * @param contentBlocks - Optional structured content blocks (for assistant messages)
    */
   saveSupervisorMessage(
     role: 'user' | 'assistant',
-    content: string
+    content: string,
+    contentBlocks?: unknown[]
   ): string {
     this.ensureSupervisorSession();
     const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
@@ -292,11 +295,12 @@ export class ChatHistoryService {
       role,
       contentType: 'text',
       content,
+      contentBlocks: contentBlocks ? JSON.stringify(contentBlocks) : undefined,
       isComplete: true,
     };
 
     const saved = this.messageRepo.create(params);
-    this.logger.debug({ messageId: saved.id, role }, 'Supervisor message saved');
+    this.logger.debug({ messageId: saved.id, role, hasBlocks: !!contentBlocks }, 'Supervisor message saved');
     return saved.id;
   }
 
@@ -308,18 +312,31 @@ export class ChatHistoryService {
     const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
     const rows = this.messageRepo.getBySession(sessionId, limit);
     // Reverse to get chronological order (oldest first, since getBySession returns newest first)
-    return rows.reverse().map((row) => ({
-      id: row.id,
-      sessionId: row.sessionId,
-      sequence: row.sequence,
-      role: row.role as 'user' | 'assistant' | 'system',
-      contentType: row.contentType as 'text' | 'audio' | 'transcription',
-      content: row.content,
-      audioInputPath: row.audioInputPath,
-      audioOutputPath: row.audioOutputPath,
-      isComplete: row.isComplete ?? false,
-      createdAt: row.createdAt,
-    }));
+    return rows.reverse().map((row) => {
+      // Parse contentBlocks from JSON if present
+      let contentBlocks: unknown[] | undefined;
+      if (row.contentBlocks) {
+        try {
+          contentBlocks = JSON.parse(row.contentBlocks);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      return {
+        id: row.id,
+        sessionId: row.sessionId,
+        sequence: row.sequence,
+        role: row.role as 'user' | 'assistant' | 'system',
+        contentType: row.contentType as 'text' | 'audio' | 'transcription',
+        content: row.content,
+        contentBlocks,
+        audioInputPath: row.audioInputPath,
+        audioOutputPath: row.audioOutputPath,
+        isComplete: row.isComplete ?? false,
+        createdAt: row.createdAt,
+      };
+    });
   }
 
   /**
