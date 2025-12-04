@@ -98,7 +98,13 @@ final class TerminalViewModel: ObservableObject {
     private var pendingFeedBuffer: [String] = []
     /// Maximum number of items in pending feed buffer
     private let maxPendingFeedBufferSize = 1000
-    
+
+    // MARK: - Alternate Screen Mode (TUI Apps)
+
+    /// Flag indicating terminal is in alternate screen mode (TUI apps like vim, htop, claude code)
+    /// When true, we should NOT auto-scroll or force resize as the TUI app controls the screen
+    private var isInAlternateScreenMode = false
+
     // Thread-safe terminal size for nonisolated delegate access
     // Updated from main actor, read from nonisolated context
     nonisolated(unsafe) private var threadSafeTerminalSize: (cols: Int, rows: Int) = (80, 24)
@@ -743,18 +749,39 @@ final class TerminalViewModel: ObservableObject {
             return
         }
 
-        // Detect clear screen sequences before feeding
+        // Detect alternate screen mode transitions (TUI apps like vim, htop, claude code)
+        // ESC[?1049h - Enter alternate screen (TUI app started)
+        // ESC[?1049l - Exit alternate screen (TUI app exited)
+        let hasAltScreenEnter = content.contains("\u{1b}[?1049h")
+        let hasAltScreenExit = content.contains("\u{1b}[?1049l")
+
+        // Update alternate screen mode state
+        if hasAltScreenEnter {
+            isInAlternateScreenMode = true
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Entered alternate screen mode (TUI app started)")
+            #endif
+        }
+        if hasAltScreenExit {
+            isInAlternateScreenMode = false
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Exited alternate screen mode (TUI app exited)")
+            #endif
+        }
+
+        // Detect clear screen sequences (only relevant when NOT in alternate screen mode)
         // ESC[2J - Erase Display, ESC[3J - Erase Scrollback, ESC c - Full Reset
-        // Also detect alternate screen buffer exit (ESC[?1049l) which apps like vim/htop use
         let hasEraseDisplay = content.contains("\u{1b}[2J")
         let hasEraseScrollback = content.contains("\u{1b}[3J")
         let hasFullReset = content.contains("\u{1b}c")
-        let hasAltScreenExit = content.contains("\u{1b}[?1049l")
-        let hasClearSequence = hasEraseDisplay || hasEraseScrollback || hasFullReset || hasAltScreenExit
+        // Only trigger clear handling when exiting alternate screen or in normal mode
+        let hasClearSequence = hasAltScreenExit || (
+            !isInAlternateScreenMode && (hasEraseDisplay || hasEraseScrollback || hasFullReset)
+        )
 
         #if DEBUG
-        if hasClearSequence {
-            print("[TerminalVM:\(session.id.prefix(8))] Clear sequence detected: eraseDisplay=\(hasEraseDisplay), eraseScrollback=\(hasEraseScrollback), fullReset=\(hasFullReset), altScreenExit=\(hasAltScreenExit)")
+        if hasEraseDisplay || hasEraseScrollback || hasFullReset {
+            print("[TerminalVM:\(session.id.prefix(8))] Clear sequence detected: eraseDisplay=\(hasEraseDisplay), eraseScrollback=\(hasEraseScrollback), fullReset=\(hasFullReset), altScreenMode=\(isInAlternateScreenMode)")
         }
         #endif
 
@@ -1058,14 +1085,27 @@ final class TerminalViewModel: ObservableObject {
 
     /// Forces a terminal resize to reset state after clear screen
     /// This sends SIGWINCH to the PTY which causes proper cursor repositioning
+    /// NOTE: This should NOT be called while in alternate screen mode (TUI apps)
     private func forceTerminalResize() {
         guard let terminalView = swiftTermView else { return }
+
+        // Don't force resize or scroll while in alternate screen mode
+        // TUI apps (vim, htop, claude code) manage their own screen - interfering causes flickering
+        guard !isInAlternateScreenMode else {
+            #if DEBUG
+            print("[TerminalVM:\(session.id.prefix(8))] Skipping forceTerminalResize - in alternate screen mode")
+            #endif
+            return
+        }
 
         // Small delay to let clear sequence complete
         Task { @MainActor [weak self, weak terminalView] in
             try? await Task.sleep(for: .milliseconds(50))
 
             guard let self = self, let terminalView = terminalView else { return }
+
+            // Double-check we're still not in alternate screen mode after delay
+            guard !self.isInAlternateScreenMode else { return }
 
             // Force resize by re-sending current size
             // This triggers SIGWINCH on server and resets terminal state
@@ -1080,8 +1120,12 @@ final class TerminalViewModel: ObservableObject {
                 // Also resize SwiftTerm locally
                 terminalView.resize(cols: cols, rows: rows)
 
-                // Scroll to bottom after resize
+                // Scroll to bottom after resize (only in normal mode)
                 try? await Task.sleep(for: .milliseconds(50))
+
+                // Final check before scrolling
+                guard !self.isInAlternateScreenMode else { return }
+
                 let maxOffsetY = max(0, terminalView.contentSize.height - terminalView.bounds.height)
                 terminalView.setContentOffset(CGPoint(x: 0, y: maxOffsetY), animated: false)
             }
