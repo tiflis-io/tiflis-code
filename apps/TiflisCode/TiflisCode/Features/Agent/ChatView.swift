@@ -21,14 +21,16 @@ struct ChatView: View {
         session: Session,
         columnVisibility: Binding<NavigationSplitViewVisibility>,
         onMenuTap: (() -> Void)? = nil,
-        connectionService: ConnectionServicing
+        connectionService: ConnectionServicing,
+        appState: AppState? = nil
     ) {
         self.session = session
         self._columnVisibility = columnVisibility
         self.onMenuTap = onMenuTap
         self._viewModel = StateObject(wrappedValue: ChatViewModel(
             session: session,
-            connectionService: connectionService
+            connectionService: connectionService,
+            appState: appState
         ))
     }
     
@@ -54,29 +56,39 @@ struct ChatView: View {
                                 )
                                 .id(message.id)
                             }
-                            
+
                             // Typing indicator - show when waiting for response or during streaming
                             if viewModel.isLoading || viewModel.messages.last?.isStreaming == true {
                                 TypingIndicator(sessionType: session.type)
                                     .id("typing")
                             }
+
+                            // Invisible anchor at the very bottom for scrolling
+                            Color.clear
+                                .frame(height: 1)
+                                .id("bottom")
                         }
                         .padding()
                     }
                     .onTapGesture {
                         hideKeyboard()
                     }
+                    .onAppear {
+                        // Scroll to bottom when chat opens
+                        // Small delay to ensure content is fully rendered
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            proxy.scrollTo("bottom", anchor: .bottom)
+                        }
+                    }
                     .onChange(of: viewModel.messages.count) { _, _ in
                         withAnimation {
-                            if let lastMessage = viewModel.messages.last {
-                                proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                            }
+                            proxy.scrollTo("bottom", anchor: .bottom)
                         }
                     }
                     .onChange(of: viewModel.isLoading) { _, isLoading in
                         if isLoading {
                             withAnimation {
-                                proxy.scrollTo("typing", anchor: .bottom)
+                                proxy.scrollTo("bottom", anchor: .bottom)
                             }
                         }
                     }
@@ -252,7 +264,8 @@ struct ChatEmptyState: View {
         ChatView(
             session: .mockSupervisor,
             columnVisibility: .constant(.all),
-            connectionService: appState.connectionService
+            connectionService: appState.connectionService,
+            appState: appState
         )
     }
     .environmentObject(appState)
@@ -264,7 +277,8 @@ struct ChatEmptyState: View {
         ChatView(
             session: .mockClaudeSession,
             columnVisibility: .constant(.all),
-            connectionService: appState.connectionService
+            connectionService: appState.connectionService,
+            appState: appState
         )
     }
     .environmentObject(appState)

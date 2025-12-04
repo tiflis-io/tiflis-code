@@ -198,7 +198,8 @@ struct SessionDetailView: View {
                     session: session,
                     columnVisibility: $columnVisibility,
                     onMenuTap: onMenuTap,
-                    connectionService: appState.connectionService
+                    connectionService: appState.connectionService,
+                    appState: appState
                 )
             case .terminal:
                 TerminalView(

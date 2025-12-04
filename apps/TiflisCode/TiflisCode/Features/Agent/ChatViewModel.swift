@@ -14,11 +14,46 @@ import Foundation
 final class ChatViewModel: ObservableObject {
     // MARK: - Published Properties
 
-    @Published private(set) var messages: [Message] = []
+    /// Local messages for non-supervisor sessions
+    @Published private var localMessages: [Message] = []
     @Published var inputText = ""
     @Published var isRecording = false
-    @Published var isLoading = false
+    @Published private var _localIsLoading = false
     @Published var error: String?
+
+    /// Loading state - uses AppState for supervisor, local for others
+    var isLoading: Bool {
+        get {
+            if session.type == .supervisor, let appState = appState {
+                return appState.supervisorIsLoading
+            }
+            return _localIsLoading
+        }
+        set {
+            if session.type == .supervisor, let appState = appState {
+                appState.supervisorIsLoading = newValue
+            } else {
+                _localIsLoading = newValue
+            }
+        }
+    }
+
+    /// Messages to display - uses AppState for supervisor, local for others
+    var messages: [Message] {
+        get {
+            if session.type == .supervisor, let appState = appState {
+                return appState.supervisorMessages
+            }
+            return localMessages
+        }
+        set {
+            if session.type == .supervisor, let appState = appState {
+                appState.supervisorMessages = newValue
+            } else {
+                localMessages = newValue
+            }
+        }
+    }
 
     // MARK: - Dependencies
 
@@ -26,36 +61,49 @@ final class ChatViewModel: ObservableObject {
     private let connectionService: ConnectionServicing
     private let webSocketClient: WebSocketClientProtocol
     private let deviceId: String
+    private weak var appState: AppState?
 
     // MARK: - State
 
     private var cancellables = Set<AnyCancellable>()
     private var isSubscribed = false
-    private var currentStreamingMessageId: String?
+    private var currentStreamingMessageId: String? {
+        get {
+            if session.type == .supervisor, let appState = appState {
+                return appState.supervisorStreamingMessageId
+            }
+            return _localStreamingMessageId
+        }
+        set {
+            if session.type == .supervisor, let appState = appState {
+                appState.supervisorStreamingMessageId = newValue
+            } else {
+                _localStreamingMessageId = newValue
+            }
+        }
+    }
+    private var _localStreamingMessageId: String?
 
     // MARK: - Initialization
 
     init(
         session: Session,
         connectionService: ConnectionServicing,
+        appState: AppState? = nil,
         deviceId: String = DeviceIDManager().deviceID
     ) {
         self.session = session
         self.connectionService = connectionService
         self.webSocketClient = connectionService.webSocketClient
         self.deviceId = deviceId
+        self.appState = appState
 
         observeConnectionState()
-        observeMessages()
 
-        // Show welcome message for supervisor
-        if session.type == .supervisor {
-            let welcomeMessage = Message(
-                sessionId: session.id,
-                role: .assistant,
-                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
-            )
-            messages.append(welcomeMessage)
+        // Only observe messages for non-supervisor sessions
+        // Supervisor messages are handled by AppState
+        if session.type != .supervisor {
+            observeMessages()
         }
     }
 
@@ -97,15 +145,6 @@ final class ChatViewModel: ObservableObject {
         guard let type = message["type"] as? String else { return }
 
         switch type {
-        case "supervisor.output":
-            handleSupervisorOutput(message)
-
-        case "supervisor.user_message":
-            handleSupervisorUserMessage(message)
-
-        case "supervisor.context_cleared":
-            handleSupervisorContextCleared(message)
-
         case "session.output":
             handleSessionOutput(message)
 
@@ -118,82 +157,8 @@ final class ChatViewModel: ObservableObject {
         case "error":
             handleError(message)
 
-        case "sync.state":
-            handleSyncState(message)
-
         default:
             break
-        }
-    }
-
-    private func handleSupervisorOutput(_ message: [String: Any]) {
-        guard session.type == .supervisor,
-              let payload = message["payload"] as? [String: Any] else { return }
-
-        let isComplete = payload["is_complete"] as? Bool ?? false
-
-        // Parse content blocks if available
-        var blocks: [MessageContentBlock] = []
-        if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
-            blocks = ContentParser.parseContentBlocks(contentBlocks)
-        } else if let content = payload["content"] as? String, !content.isEmpty {
-            blocks = ContentParser.parse(content: content, contentType: "agent")
-        }
-
-        guard !blocks.isEmpty else {
-            // Empty blocks but is_complete means end of streaming
-            if isComplete {
-                isLoading = false
-                // Mark the streaming message as complete
-                if let streamingId = currentStreamingMessageId,
-                   let index = messages.firstIndex(where: { $0.id == streamingId }) {
-                    var updatedMessage = messages[index]
-                    updatedMessage.isStreaming = false
-                    messages[index] = updatedMessage
-                }
-                currentStreamingMessageId = nil
-            }
-            return
-        }
-
-        // Update or create streaming message
-        if let streamingId = currentStreamingMessageId,
-           let index = messages.firstIndex(where: { $0.id == streamingId }) {
-            // For text blocks, replace the last one instead of appending
-            // This handles LangGraph sending full state on each update
-            var updatedMessage = messages[index]
-
-            for newBlock in blocks {
-                if case .text = newBlock,
-                   let lastIndex = updatedMessage.contentBlocks.lastIndex(where: {
-                       if case .text = $0 { return true }
-                       return false
-                   }) {
-                    // Replace the last text block with the new one
-                    updatedMessage.contentBlocks[lastIndex] = newBlock
-                } else {
-                    // Append non-text blocks (tool calls, etc.)
-                    updatedMessage.contentBlocks.append(newBlock)
-                }
-            }
-
-            updatedMessage.isStreaming = !isComplete
-            messages[index] = updatedMessage
-        } else {
-            // Create new assistant message
-            let newMessage = Message(
-                sessionId: session.id,
-                role: .assistant,
-                contentBlocks: blocks,
-                isStreaming: !isComplete
-            )
-            messages.append(newMessage)
-            currentStreamingMessageId = newMessage.id
-        }
-
-        if isComplete {
-            isLoading = false
-            currentStreamingMessageId = nil
         }
     }
 
@@ -213,29 +178,29 @@ final class ChatViewModel: ObservableObject {
             blocks = ContentParser.parse(content: content, contentType: contentType)
         }
 
+        var currentMessages = localMessages
+
         guard !blocks.isEmpty else {
             // Empty blocks but is_complete means end of streaming
             if isComplete {
                 isLoading = false
                 // Mark the streaming message as complete
-                if let streamingId = currentStreamingMessageId,
-                   let index = messages.firstIndex(where: { $0.id == streamingId }) {
-                    var updatedMessage = messages[index]
-                    updatedMessage.isStreaming = false
-                    messages[index] = updatedMessage
+                if let streamingId = _localStreamingMessageId,
+                   let index = currentMessages.firstIndex(where: { $0.id == streamingId }) {
+                    currentMessages[index].isStreaming = false
+                    localMessages = currentMessages
                 }
-                currentStreamingMessageId = nil
+                _localStreamingMessageId = nil
             }
             return
         }
 
         // Update or create streaming message
-        if let streamingId = currentStreamingMessageId,
-           let index = messages.firstIndex(where: { $0.id == streamingId }) {
-            var updatedMessage = messages[index]
-            updatedMessage.contentBlocks.append(contentsOf: blocks)
-            updatedMessage.isStreaming = !isComplete
-            messages[index] = updatedMessage
+        if let streamingId = _localStreamingMessageId,
+           let index = currentMessages.firstIndex(where: { $0.id == streamingId }) {
+            currentMessages[index].contentBlocks.append(contentsOf: blocks)
+            currentMessages[index].isStreaming = !isComplete
+            localMessages = currentMessages
         } else {
             let newMessage = Message(
                 sessionId: session.id,
@@ -243,13 +208,14 @@ final class ChatViewModel: ObservableObject {
                 contentBlocks: blocks,
                 isStreaming: !isComplete
             )
-            messages.append(newMessage)
-            currentStreamingMessageId = newMessage.id
+            currentMessages.append(newMessage)
+            localMessages = currentMessages
+            _localStreamingMessageId = newMessage.id
         }
 
         if isComplete {
             isLoading = false
-            currentStreamingMessageId = nil
+            _localStreamingMessageId = nil
         }
     }
 
@@ -279,106 +245,6 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func handleSyncState(_ message: [String: Any]) {
-        // Only handle for supervisor sessions
-        guard session.type == .supervisor,
-              let payload = message["payload"] as? [String: Any],
-              let supervisorHistory = payload["supervisorHistory"] as? [[String: Any]] else { return }
-
-        // Don't reload if we already have messages (beyond the welcome message)
-        // This prevents duplicate messages on reconnect
-        if messages.count > 1 {
-            return
-        }
-
-        // Clear existing messages (including welcome message)
-        messages.removeAll()
-
-        // Sort history by sequence to ensure correct order
-        let sortedHistory = supervisorHistory.sorted { item1, item2 in
-            let seq1 = item1["sequence"] as? Int ?? 0
-            let seq2 = item2["sequence"] as? Int ?? 0
-            return seq1 < seq2
-        }
-
-        // Restore history from server
-        for historyItem in sortedHistory {
-            guard let role = historyItem["role"] as? String,
-                  let content = historyItem["content"] as? String else { continue }
-
-            let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
-
-            // Parse content_blocks if available (for assistant messages with rich content)
-            var blocks: [MessageContentBlock] = []
-            if let contentBlocks = historyItem["content_blocks"] as? [[String: Any]], !contentBlocks.isEmpty {
-                blocks = ContentParser.parseContentBlocks(contentBlocks)
-            }
-
-            // If no blocks parsed, create text block from content
-            if blocks.isEmpty {
-                blocks = ContentParser.parse(content: content, contentType: "agent")
-            }
-
-            let message = Message(
-                sessionId: session.id,
-                role: messageRole,
-                contentBlocks: blocks
-            )
-            messages.append(message)
-        }
-
-        // If no history was restored, show welcome message
-        if messages.isEmpty {
-            let welcomeMessage = Message(
-                sessionId: session.id,
-                role: .assistant,
-                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
-            )
-            messages.append(welcomeMessage)
-        }
-    }
-
-    /// Handles user messages from other devices (for multi-device sync)
-    private func handleSupervisorUserMessage(_ message: [String: Any]) {
-        guard session.type == .supervisor,
-              let payload = message["payload"] as? [String: Any],
-              let content = payload["content"] as? String,
-              let fromDeviceId = payload["from_device_id"] as? String else { return }
-
-        // Skip if this is our own message (we already added it locally)
-        guard fromDeviceId != deviceId else { return }
-
-        // Add user message from another device
-        let userMessage = Message(
-            sessionId: session.id,
-            role: .user,
-            content: content
-        )
-        messages.append(userMessage)
-
-        // Show loading indicator since we're waiting for response
-        isLoading = true
-    }
-
-    /// Handles context cleared notification from server
-    private func handleSupervisorContextCleared(_ message: [String: Any]) {
-        guard session.type == .supervisor else { return }
-
-        // Clear all messages
-        messages.removeAll()
-
-        // Show welcome message
-        let welcomeMessage = Message(
-            sessionId: session.id,
-            role: .assistant,
-            content: "Context cleared. How can I help you?"
-        )
-        messages.append(welcomeMessage)
-
-        isLoading = false
-        currentStreamingMessageId = nil
-    }
-
     // MARK: - Actions
 
     func sendMessage() {
@@ -391,7 +257,12 @@ final class ChatViewModel: ObservableObject {
             role: .user,
             content: text
         )
-        messages.append(userMessage)
+
+        // Append message (works with computed property via get-modify-set)
+        var currentMessages = messages
+        currentMessages.append(userMessage)
+        messages = currentMessages
+
         inputText = ""
         isLoading = true
         error = nil
@@ -522,7 +393,7 @@ extension ChatViewModel {
         let mockWebSocket = MockWebSocketClient()
         let mockConnectionService = MockConnectionService(webSocketClient: mockWebSocket)
         let viewModel = ChatViewModel(session: .mockClaudeSession, connectionService: mockConnectionService)
-        viewModel.messages = [
+        viewModel.localMessages = [
             .mockUserMessage,
             .mockAssistantMessage
         ]

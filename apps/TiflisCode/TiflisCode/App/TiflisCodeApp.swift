@@ -33,7 +33,7 @@ struct TiflisCodeApp: App {
 @MainActor
 final class AppState: ObservableObject {
     static let settingsId = "__settings__"
-    
+
     @Published var connectionState: ConnectionState = .disconnected
     @Published var workstationOnline: Bool = true
     @Published var workstationName: String = ""
@@ -43,16 +43,23 @@ final class AppState: ObservableObject {
     @Published var tunnelProtocolVersion: String = ""
     @Published var sessions: [Session] = Session.mockSessions
     @Published var selectedSessionId: String? = "supervisor"
-    
+
+    /// Supervisor chat messages - persisted across navigation
+    @Published var supervisorMessages: [Message] = []
+    /// Current streaming message ID for supervisor chat
+    var supervisorStreamingMessageId: String?
+    /// Loading state for supervisor chat
+    @Published var supervisorIsLoading: Bool = false
+
     @AppStorage("tunnelURL") private var tunnelURL = ""
     @AppStorage("tunnelId") private var tunnelId = ""
-    
+
     let connectionService: ConnectionServicing
     private var cancellables = Set<AnyCancellable>()
-    
+
     // Flag to indicate if session change should not trigger UI transitions
     var isSilentSessionChange = false
-    
+
     // Map request IDs to temporary session IDs for session creation
     private var pendingSessionCreations: [String: String] = [:]
     
@@ -138,7 +145,7 @@ final class AppState: ObservableObject {
     
     private func handleWebSocketMessage(_ message: [String: Any]) {
         guard let messageType = message["type"] as? String else { return }
-        
+
         switch messageType {
         case "response":
             handleResponseMessage(message)
@@ -150,6 +157,12 @@ final class AppState: ObservableObject {
             handleSessionCreatedMessage(message)
         case "session.terminated":
             handleSessionTerminatedMessage(message)
+        case "supervisor.output":
+            handleSupervisorOutput(message)
+        case "supervisor.user_message":
+            handleSupervisorUserMessage(message)
+        case "supervisor.context_cleared":
+            handleSupervisorContextCleared(message)
         default:
             break
         }
@@ -373,10 +386,179 @@ final class AppState: ObservableObject {
             sessions.insert(Session(id: "supervisor", type: .supervisor, workspace: nil, project: nil), at: 0)
         }
 
+        // Restore supervisor history
+        if let supervisorHistory = payload["supervisorHistory"] as? [[String: Any]], !supervisorHistory.isEmpty {
+            restoreSupervisorHistory(supervisorHistory)
+        } else if supervisorMessages.isEmpty {
+            // Add welcome message if no history
+            let welcomeMessage = Message(
+                sessionId: "supervisor",
+                role: .assistant,
+                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
+            )
+            supervisorMessages = [welcomeMessage]
+        }
+
         // Store subscriptions for view models to re-subscribe
         // View models will handle re-subscription when they observe connection state
     }
-    
+
+    private func restoreSupervisorHistory(_ history: [[String: Any]]) {
+        // Sort history by sequence to ensure correct order
+        let sortedHistory = history.sorted { item1, item2 in
+            let seq1 = item1["sequence"] as? Int ?? 0
+            let seq2 = item2["sequence"] as? Int ?? 0
+            return seq1 < seq2
+        }
+
+        var restoredMessages: [Message] = []
+
+        for historyItem in sortedHistory {
+            guard let role = historyItem["role"] as? String,
+                  let content = historyItem["content"] as? String else { continue }
+
+            let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
+
+            // Parse content_blocks if available (for assistant messages with rich content)
+            var blocks: [MessageContentBlock] = []
+            if let contentBlocks = historyItem["content_blocks"] as? [[String: Any]], !contentBlocks.isEmpty {
+                blocks = ContentParser.parseContentBlocks(contentBlocks)
+            }
+
+            // If no blocks parsed, create text block from content
+            if blocks.isEmpty {
+                blocks = ContentParser.parse(content: content, contentType: "agent")
+            }
+
+            let message = Message(
+                sessionId: "supervisor",
+                role: messageRole,
+                contentBlocks: blocks
+            )
+            restoredMessages.append(message)
+        }
+
+        // Only update if we got messages
+        if !restoredMessages.isEmpty {
+            supervisorMessages = restoredMessages
+        } else {
+            // Add welcome message if no history
+            let welcomeMessage = Message(
+                sessionId: "supervisor",
+                role: .assistant,
+                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
+            )
+            supervisorMessages = [welcomeMessage]
+        }
+    }
+
+    // MARK: - Supervisor Message Handlers
+
+    private func handleSupervisorOutput(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any] else { return }
+
+        let isComplete = payload["is_complete"] as? Bool ?? false
+
+        // Parse content blocks if available
+        var blocks: [MessageContentBlock] = []
+        if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
+            blocks = ContentParser.parseContentBlocks(contentBlocks)
+        } else if let content = payload["content"] as? String, !content.isEmpty {
+            blocks = ContentParser.parse(content: content, contentType: "agent")
+        }
+
+        guard !blocks.isEmpty else {
+            // Empty blocks but is_complete means end of streaming
+            if isComplete {
+                supervisorIsLoading = false
+                if let streamingId = supervisorStreamingMessageId,
+                   let index = supervisorMessages.firstIndex(where: { $0.id == streamingId }) {
+                    var updatedMessage = supervisorMessages[index]
+                    updatedMessage.isStreaming = false
+                    supervisorMessages[index] = updatedMessage
+                }
+                supervisorStreamingMessageId = nil
+            }
+            return
+        }
+
+        // Update or create streaming message
+        if let streamingId = supervisorStreamingMessageId,
+           let index = supervisorMessages.firstIndex(where: { $0.id == streamingId }) {
+            // For text blocks, replace the last one instead of appending
+            // This handles LangGraph sending full state on each update
+            var updatedMessage = supervisorMessages[index]
+
+            for newBlock in blocks {
+                if case .text = newBlock,
+                   let lastIndex = updatedMessage.contentBlocks.lastIndex(where: {
+                       if case .text = $0 { return true }
+                       return false
+                   }) {
+                    // Replace the last text block with the new one
+                    updatedMessage.contentBlocks[lastIndex] = newBlock
+                } else {
+                    // Append non-text blocks (tool calls, etc.)
+                    updatedMessage.contentBlocks.append(newBlock)
+                }
+            }
+
+            updatedMessage.isStreaming = !isComplete
+            supervisorMessages[index] = updatedMessage
+        } else {
+            // Create new assistant message
+            let newMessage = Message(
+                sessionId: "supervisor",
+                role: .assistant,
+                contentBlocks: blocks,
+                isStreaming: !isComplete
+            )
+            supervisorMessages.append(newMessage)
+            supervisorStreamingMessageId = newMessage.id
+        }
+
+        if isComplete {
+            supervisorIsLoading = false
+            supervisorStreamingMessageId = nil
+        }
+    }
+
+    private func handleSupervisorUserMessage(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let content = payload["content"] as? String,
+              let fromDeviceId = payload["from_device_id"] as? String else { return }
+
+        // Skip if this is our own message (we already added it locally)
+        let deviceId = DeviceIDManager().deviceID
+        guard fromDeviceId != deviceId else { return }
+
+        // Add user message from another device
+        let userMessage = Message(
+            sessionId: "supervisor",
+            role: .user,
+            content: content
+        )
+        supervisorMessages.append(userMessage)
+
+        // Show loading indicator since we're waiting for response
+        supervisorIsLoading = true
+    }
+
+    private func handleSupervisorContextCleared(_ message: [String: Any]) {
+        // Clear all messages
+        supervisorMessages.removeAll()
+        supervisorStreamingMessageId = nil
+        supervisorIsLoading = false
+
+        // Show welcome message
+        let welcomeMessage = Message(
+            sessionId: "supervisor",
+            role: .assistant,
+            content: "Context cleared. How can I help you?"
+        )
+        supervisorMessages = [welcomeMessage]
+    }
+
     // MARK: - Actions
     
     func connect() {
