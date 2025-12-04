@@ -43,6 +43,11 @@ final class ContentParser {
             guard let blockType = json["block_type"] as? String else {
                 return nil
             }
+            // Skip status blocks - they are ephemeral streaming indicators
+            // (e.g., "Processing...", "Complete") that shouldn't be persisted
+            if blockType == "status" {
+                return nil
+            }
             return parseTypedBlock(blockType: blockType, json: json)
         }
     }
