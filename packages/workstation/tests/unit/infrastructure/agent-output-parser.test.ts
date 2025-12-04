@@ -21,9 +21,9 @@ describe('AgentOutputParser', () => {
 
       const result = parser.parseLine(line);
 
-      expect(result.message).not.toBeNull();
-      expect(result.message?.type).toBe('assistant');
-      expect(result.message?.content).toBe('Hello, world!');
+      expect(result.blocks).toHaveLength(1);
+      expect(result.blocks[0]?.block_type).toBe('text');
+      expect(result.blocks[0]?.content).toBe('Hello, world!');
       expect(result.isComplete).toBe(false);
     });
 
@@ -48,22 +48,23 @@ describe('AgentOutputParser', () => {
 
       const result = parser.parseLine(line);
 
-      expect(result.message?.type).toBe('tool');
-      expect(result.message?.content).toContain('Tool: file_read');
+      expect(result.blocks).toHaveLength(1);
+      expect(result.blocks[0]?.block_type).toBe('tool');
+      expect(result.blocks[0]?.content).toBe('file_read');
     });
 
-    it('should return null for invalid JSON', () => {
+    it('should return empty blocks for invalid JSON', () => {
       const result = parser.parseLine('not valid json');
 
-      expect(result.message).toBeNull();
+      expect(result.blocks).toHaveLength(0);
       expect(result.sessionId).toBeNull();
       expect(result.isComplete).toBe(false);
     });
 
-    it('should return null for empty line', () => {
+    it('should return empty blocks for empty line', () => {
       const result = parser.parseLine('');
 
-      expect(result.message).toBeNull();
+      expect(result.blocks).toHaveLength(0);
       expect(result.isComplete).toBe(false);
     });
   });
@@ -80,8 +81,8 @@ describe('AgentOutputParser', () => {
 
       expect(results).toHaveLength(2);
       expect(remaining).toBe('');
-      expect(results[0]?.message?.content).toBe('Line 1');
-      expect(results[1]?.message?.content).toBe('Line 2');
+      expect(results[0]?.blocks[0]?.content).toBe('Line 1');
+      expect(results[1]?.blocks[0]?.content).toBe('Line 2');
     });
 
     it('should handle incomplete JSON lines', () => {
@@ -103,7 +104,7 @@ describe('AgentOutputParser', () => {
 
       expect(results).toHaveLength(1);
       expect(remaining).toBe('{"type":"ass');
-      expect(results[0]?.message?.content).toBe('Complete');
+      expect(results[0]?.blocks[0]?.content).toBe('Complete');
     });
 
     it('should detect session_end as completion', () => {
@@ -126,7 +127,7 @@ describe('AgentOutputParser', () => {
 
       // Invalid lines are skipped, only valid ones are returned
       expect(results).toHaveLength(1);
-      expect(results[0]?.message?.content).toBe('Valid');
+      expect(results[0]?.blocks[0]?.content).toBe('Valid');
     });
 
     it('should handle empty buffer', () => {

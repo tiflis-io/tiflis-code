@@ -35,6 +35,7 @@ export class ForwardMessageUseCase {
 
   /**
    * Forwards a message from a mobile client to the workstation.
+   * Injects device_id into the message so workstation can identify the sender.
    */
   forwardToWorkstation(deviceId: string, message: string): boolean {
     const client = this.clientRegistry.get(deviceId);
@@ -60,7 +61,18 @@ export class ForwardMessageUseCase {
       throw new WorkstationOfflineError(client.tunnelId.value);
     }
 
-    const sent = workstation.send(message);
+    // Inject device_id into the message so workstation knows which client sent it
+    let enrichedMessage = message;
+    try {
+      const parsed = JSON.parse(message) as Record<string, unknown>;
+      parsed.device_id = deviceId;
+      enrichedMessage = JSON.stringify(parsed);
+    } catch {
+      // If message is not valid JSON, forward as-is
+      this.logger.warn({ deviceId }, 'Could not inject device_id, message is not JSON');
+    }
+
+    const sent = workstation.send(enrichedMessage);
     if (!sent) {
       this.logger.warn(
         { tunnelId: client.tunnelId.value, deviceId },

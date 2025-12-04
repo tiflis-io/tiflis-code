@@ -4,22 +4,27 @@
  * @license MIT
  *
  * Parses JSON stream output from headless CLI agents (cursor-agent, claude)
- * and converts to structured ChatMessage objects.
+ * and converts to structured ContentBlock objects for rich UI rendering.
  */
 
+import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 import {
-  type ChatMessage,
-  type ChatMessageType,
-  createChatMessage,
-} from '../../domain/value-objects/chat-message.js';
+  createTextBlock,
+  createCodeBlock,
+  createToolBlock,
+  createThinkingBlock,
+  createStatusBlock,
+  createErrorBlock,
+  type ToolStatus,
+} from '../../domain/value-objects/content-block.js';
 import { AGENT_EXECUTION_CONFIG } from '../../config/constants.js';
 
 /**
  * Result of parsing a single JSON line.
  */
 export interface ParseResult {
-  /** Parsed chat message (null if not a displayable message) */
-  message: ChatMessage | null;
+  /** Parsed content blocks (empty if not displayable) */
+  blocks: ContentBlock[];
   /** Session ID extracted from the message */
   sessionId: string | null;
   /** True if this message indicates command completion */
@@ -27,22 +32,22 @@ export interface ParseResult {
 }
 
 /**
- * Parses JSON stream output from headless terminals and converts to ChatMessage objects.
+ * Parses JSON stream output from headless terminals and converts to ContentBlock objects.
  *
  * Supports both cursor-agent and claude CLI output formats.
  */
 export class AgentOutputParser {
   /**
-   * Parse a single JSON line and convert to ChatMessage.
+   * Parse a single JSON line and convert to ContentBlocks.
    *
    * @param jsonLine - Single line of JSON output from agent CLI
-   * @returns Parsed message, session ID, and completion status
+   * @returns Parsed blocks, session ID, and completion status
    */
   parseLine(jsonLine: string): ParseResult {
     const trimmed = jsonLine.trim();
 
     if (!trimmed) {
-      return { message: null, sessionId: null, isComplete: false };
+      return { blocks: [], sessionId: null, isComplete: false };
     }
 
     try {
@@ -50,7 +55,7 @@ export class AgentOutputParser {
 
       // Validate it's an object
       if (typeof parsed !== 'object' || parsed === null) {
-        return { message: null, sessionId: null, isComplete: false };
+        return { blocks: [], sessionId: null, isComplete: false };
       }
 
       const payload = parsed as Record<string, unknown>;
@@ -64,17 +69,17 @@ export class AgentOutputParser {
       const isComplete = messageType !== undefined && completionTypes.includes(messageType);
 
       if (isComplete) {
-        return { message: null, sessionId, isComplete: true };
+        return { blocks: [], sessionId, isComplete: true };
       }
 
-      // Map to ChatMessage
-      const message = this.mapToChatMessage(payload);
+      // Map to ContentBlocks
+      const blocks = this.mapToContentBlocks(payload);
 
-      return { message, sessionId, isComplete: false };
+      return { blocks, sessionId, isComplete: false };
     } catch {
       // Not valid JSON, skip gracefully
       // This can happen with partial lines or non-JSON output
-      return { message: null, sessionId: null, isComplete: false };
+      return { blocks: [], sessionId: null, isComplete: false };
     }
   }
 
@@ -94,7 +99,7 @@ export class AgentOutputParser {
 
     for (const line of lines) {
       const result = this.parseLine(line);
-      if (result.message || result.sessionId || result.isComplete) {
+      if (result.blocks.length > 0 || result.sessionId || result.isComplete) {
         results.push(result);
       }
     }
@@ -103,83 +108,187 @@ export class AgentOutputParser {
   }
 
   /**
-   * Map JSON payload to ChatMessage.
+   * Map JSON payload to ContentBlocks.
    */
-  private mapToChatMessage(payload: Record<string, unknown>): ChatMessage | null {
-    const messageType = this.determineMessageType(payload);
-    if (!messageType) {
-      return null; // Unknown or unsupported message type
-    }
-
-    const content = this.extractContent(payload, messageType);
-    if (!content) {
-      return null; // No content to display
-    }
-
-    const metadata = this.extractMetadata(payload, messageType);
-
-    return createChatMessage(messageType, content, metadata);
-  }
-
-  /**
-   * Determine ChatMessage type from JSON payload.
-   * Supports both cursor-agent and claude CLI formats.
-   */
-  private determineMessageType(
-    payload: Record<string, unknown>
-  ): ChatMessageType | null {
+  private mapToContentBlocks(payload: Record<string, unknown>): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
     const type = payload.type as string | undefined;
     const role = payload.role as string | undefined;
 
-    // Handle cursor-agent format
-    if (type === 'user') return 'user';
-    if (type === 'assistant') return 'assistant';
-    if (type === 'tool' || payload.tool_name) return 'tool';
-    if (type?.startsWith('system/') || type === 'system') return 'system';
-    if (type === 'error' || payload.error) return 'error';
-
-    // Handle claude CLI format
-    if (role === 'user') return 'user';
-    if (role === 'assistant') return 'assistant';
-    if (type === 'tool_use' || type === 'tool_result') return 'tool';
-    if (type === 'message' && role) {
-      return role === 'user' ? 'user' : 'assistant';
+    // Handle thinking content first (if present alongside other content)
+    const thinking = this.extractThinking(payload);
+    if (thinking) {
+      blocks.push(createThinkingBlock(thinking));
     }
 
-    // Handle content_block_delta (streaming chunks)
-    if (type === 'content_block_delta') {
-      return 'assistant';
+    // Determine message type and extract content
+    if (type === 'tool' || type === 'tool_use' || type === 'tool_result' || payload.tool_name) {
+      const toolBlock = this.parseToolCall(payload);
+      if (toolBlock) {
+        blocks.push(toolBlock);
+      }
+    } else if (type === 'error' || payload.error) {
+      const errorContent = this.extractErrorContent(payload);
+      if (errorContent) {
+        blocks.push(createErrorBlock(errorContent, this.getString(payload, 'error_code')));
+      }
+    } else if (type?.startsWith('system/') || type === 'system') {
+      const systemContent = this.extractSystemContent(payload);
+      if (systemContent) {
+        blocks.push(createStatusBlock(systemContent));
+      }
+    } else if (type === 'user' || role === 'user') {
+      const textContent = this.extractTextContent(payload);
+      if (textContent) {
+        blocks.push(createTextBlock(textContent));
+      }
+    } else if (type === 'assistant' || role === 'assistant' || type === 'content_block_delta' || type === 'message') {
+      const assistantBlocks = this.parseAssistantContent(payload);
+      blocks.push(...assistantBlocks);
     }
 
-    return null;
+    return blocks;
   }
 
   /**
-   * Extract content text from payload based on message type.
+   * Parse assistant message content into blocks.
+   * Handles text, code blocks, and mixed content.
    */
-  private extractContent(
-    payload: Record<string, unknown>,
-    messageType: ChatMessageType
-  ): string | null {
-    switch (messageType) {
-      case 'user':
-        return this.extractTextContent(payload);
+  private parseAssistantContent(payload: Record<string, unknown>): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
 
-      case 'assistant':
-        return this.extractAssistantContent(payload);
-
-      case 'tool':
-        return this.extractToolContent(payload);
-
-      case 'system':
-        return this.extractSystemContent(payload);
-
-      case 'error':
-        return this.extractErrorContent(payload);
-
-      default:
-        return null;
+    // Cursor format: payload.message.content (array of blocks)
+    const message = payload.message as Record<string, unknown> | undefined;
+    if (message?.content && Array.isArray(message.content)) {
+      return this.parseContentArray(message.content as unknown[]);
     }
+
+    // Claude format: payload.content (string or array)
+    if (payload.content) {
+      if (typeof payload.content === 'string') {
+        const parsed = this.parseTextWithCodeBlocks(payload.content);
+        blocks.push(...parsed);
+      } else if (Array.isArray(payload.content)) {
+        return this.parseContentArray(payload.content as unknown[]);
+      }
+    }
+
+    // Streaming delta format
+    const delta = payload.delta as Record<string, unknown> | undefined;
+    if (delta?.text && typeof delta.text === 'string') {
+      blocks.push(createTextBlock(delta.text));
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Parse content array (Claude/Cursor format with typed blocks).
+   */
+  private parseContentArray(content: unknown[]): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
+
+    for (const item of content) {
+      if (typeof item !== 'object' || item === null) continue;
+
+      const block = item as Record<string, unknown>;
+      const blockType = block.type as string | undefined;
+
+      if (blockType === 'text' && typeof block.text === 'string') {
+        // Parse text for embedded code blocks
+        const parsed = this.parseTextWithCodeBlocks(block.text);
+        blocks.push(...parsed);
+      } else if (blockType === 'tool_use') {
+        const toolBlock = this.parseToolCall(block);
+        if (toolBlock) {
+          blocks.push(toolBlock);
+        }
+      }
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Parse text content that may contain markdown code blocks.
+   */
+  private parseTextWithCodeBlocks(text: string): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
+    const codeBlockRegex = /```(\w*)?\n([\s\S]*?)```/g;
+
+    let lastIndex = 0;
+    let match;
+
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      // Text before code block
+      if (match.index > lastIndex) {
+        const textBefore = text.slice(lastIndex, match.index).trim();
+        if (textBefore) {
+          blocks.push(createTextBlock(textBefore));
+        }
+      }
+
+      // Code block
+      const language = match[1] ?? undefined;
+      const code = match[2] ?? '';
+      blocks.push(createCodeBlock(code, language));
+
+      lastIndex = match.index + match[0].length;
+    }
+
+    // Text after last code block
+    if (lastIndex < text.length) {
+      const textAfter = text.slice(lastIndex).trim();
+      if (textAfter) {
+        blocks.push(createTextBlock(textAfter));
+      }
+    }
+
+    // If no code blocks found, return text as single block
+    if (blocks.length === 0 && text.trim()) {
+      blocks.push(createTextBlock(text));
+    }
+
+    return blocks;
+  }
+
+  /**
+   * Parse tool call from payload.
+   */
+  private parseToolCall(payload: Record<string, unknown>): ContentBlock | null {
+    const toolName = this.getString(payload, 'tool_name')
+      ?? this.getString(payload, 'name')
+      ?? 'unknown';
+
+    const input = payload.input ?? payload.tool_input;
+    const output = payload.output ?? payload.tool_output;
+
+    // Determine status
+    let status: ToolStatus = 'running';
+    if (output !== undefined) {
+      const hasError = payload.error ?? payload.is_error;
+      status = hasError ? 'failed' : 'completed';
+    }
+
+    return createToolBlock(toolName, status, input, output);
+  }
+
+  /**
+   * Extract thinking content from payload.
+   */
+  private extractThinking(payload: Record<string, unknown>): string | null {
+    const thinking = payload.thinking;
+    if (typeof thinking === 'string') {
+      return thinking;
+    }
+
+    // Check in message.thinking
+    const message = payload.message as Record<string, unknown> | undefined;
+    if (message?.thinking && typeof message.thinking === 'string') {
+      return message.thinking;
+    }
+
+    return null;
   }
 
   /**
@@ -193,48 +302,16 @@ export class AgentOutputParser {
     }
 
     if (Array.isArray(content)) {
-      return this.extractFromContentBlocks(content);
+      return this.extractTextFromContentBlocks(content);
     }
 
     return null;
   }
 
   /**
-   * Extract assistant message content (supports various formats).
+   * Extract text from content blocks array.
    */
-  private extractAssistantContent(payload: Record<string, unknown>): string | null {
-    // Cursor format: payload.message.content (array of blocks)
-    const message = payload.message as Record<string, unknown> | undefined;
-    if (message?.content) {
-      const content = message.content;
-      if (Array.isArray(content)) {
-        return this.extractFromContentBlocks(content);
-      }
-    }
-
-    // Claude format: payload.content (string or array)
-    if (payload.content) {
-      if (typeof payload.content === 'string') {
-        return payload.content;
-      }
-      if (Array.isArray(payload.content)) {
-        return this.extractFromContentBlocks(payload.content);
-      }
-    }
-
-    // Streaming delta format
-    const delta = payload.delta as Record<string, unknown> | undefined;
-    if (delta?.text && typeof delta.text === 'string') {
-      return delta.text;
-    }
-
-    return null;
-  }
-
-  /**
-   * Extract content from content blocks array.
-   */
-  private extractFromContentBlocks(blocks: unknown[]): string {
+  private extractTextFromContentBlocks(blocks: unknown[]): string {
     return blocks
       .map((block) => {
         if (typeof block === 'object' && block !== null) {
@@ -247,26 +324,6 @@ export class AgentOutputParser {
       })
       .filter((text): text is string => text !== null)
       .join('\n');
-  }
-
-  /**
-   * Extract tool invocation content.
-   */
-  private extractToolContent(payload: Record<string, unknown>): string {
-    const toolName = this.getString(payload, 'tool_name')
-      ?? this.getString(payload, 'name')
-      ?? 'unknown';
-    const toolInput = payload.input ?? payload.tool_input;
-    const toolOutput = payload.output ?? payload.tool_output;
-
-    let content = `Tool: ${toolName}`;
-    if (toolInput !== undefined) {
-      content += `\nInput: ${JSON.stringify(toolInput)}`;
-    }
-    if (toolOutput !== undefined) {
-      content += `\nOutput: ${JSON.stringify(toolOutput)}`;
-    }
-    return content;
   }
 
   /**
@@ -291,37 +348,6 @@ export class AgentOutputParser {
       this.getString(payload, 'content') ??
       'Error occurred'
     );
-  }
-
-  /**
-   * Extract metadata from payload based on message type.
-   */
-  private extractMetadata(
-    payload: Record<string, unknown>,
-    messageType: ChatMessageType
-  ): Record<string, unknown> | undefined {
-    switch (messageType) {
-      case 'tool':
-        return {
-          toolName: this.getString(payload, 'tool_name') ?? this.getString(payload, 'name'),
-          toolInput: payload.input ?? payload.tool_input,
-          toolOutput: payload.output ?? payload.tool_output,
-        };
-
-      case 'assistant':
-        if (payload.thinking) {
-          return { thinking: payload.thinking };
-        }
-        break;
-
-      case 'error':
-        return {
-          errorCode: this.getString(payload, 'error_code') ?? this.getString(payload, 'code'),
-          stackTrace: this.getString(payload, 'stack_trace') ?? this.getString(payload, 'stackTrace'),
-        };
-    }
-
-    return undefined;
   }
 
   /**
@@ -354,4 +380,3 @@ export class AgentOutputParser {
     return null;
   }
 }
-

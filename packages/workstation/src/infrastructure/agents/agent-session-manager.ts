@@ -12,15 +12,24 @@ import type { Logger } from 'pino';
 import { HeadlessAgentExecutor } from './headless-agent-executor.js';
 import type { ExecutorOptions } from './headless-agent-executor.js';
 import { AgentOutputParser, type ParseResult } from './agent-output-parser.js';
+import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 import {
-  type ChatMessage,
-  createUserMessage,
-  createErrorMessage,
-  createCompletionMessage,
-  createCancellationMessage,
-} from '../../domain/value-objects/chat-message.js';
+  createTextBlock,
+  createErrorBlock,
+  createStatusBlock,
+} from '../../domain/value-objects/content-block.js';
 import type { AgentType } from '../../domain/entities/agent-session.js';
 import { getEnv } from '../../config/env.js';
+
+/**
+ * A stored message with its content blocks.
+ */
+export interface StoredMessage {
+  id: string;
+  timestamp: number;
+  role: 'user' | 'assistant' | 'system';
+  blocks: ContentBlock[];
+}
 
 /**
  * State of an active agent session.
@@ -37,7 +46,7 @@ export interface AgentSessionState {
   /** Whether a command is currently executing */
   isExecuting: boolean;
   /** Chat message history */
-  messages: ChatMessage[];
+  messages: StoredMessage[];
   /** Session creation timestamp */
   createdAt: number;
   /** Last activity timestamp */
@@ -48,8 +57,8 @@ export interface AgentSessionState {
  * Events emitted by AgentSessionManager.
  */
 export interface AgentSessionManagerEvents {
-  /** Emitted when a new chat message is received */
-  message: (sessionId: string, message: ChatMessage, isComplete: boolean) => void;
+  /** Emitted when content blocks are received */
+  blocks: (sessionId: string, blocks: ContentBlock[], isComplete: boolean) => void;
   /** Emitted when a session is created */
   sessionCreated: (state: AgentSessionState) => void;
   /** Emitted when a session is terminated */
@@ -150,9 +159,15 @@ export class AgentSessionManager extends EventEmitter {
     state.lastActivityAt = Date.now();
 
     // Create and add user message
-    const userMessage = createUserMessage(prompt);
+    const userBlocks = [createTextBlock(prompt)];
+    const userMessage: StoredMessage = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      role: 'user',
+      blocks: userBlocks,
+    };
     state.messages.push(userMessage);
-    this.emit('message', sessionId, userMessage, false);
+    this.emit('blocks', sessionId, userBlocks, false);
 
     // Set CLI session ID for context preservation
     if (state.cliSessionId) {
@@ -168,9 +183,15 @@ export class AgentSessionManager extends EventEmitter {
     } catch (error) {
       state.isExecuting = false;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      const errMsg = createErrorMessage(`Failed to execute: ${errorMessage}`);
+      const errorBlocks = [createErrorBlock(`Failed to execute: ${errorMessage}`)];
+      const errMsg: StoredMessage = {
+        id: randomUUID(),
+        timestamp: Date.now(),
+        role: 'system',
+        blocks: errorBlocks,
+      };
       state.messages.push(errMsg);
-      this.emit('message', sessionId, errMsg, true);
+      this.emit('blocks', sessionId, errorBlocks, true);
       throw error;
     }
   }
@@ -198,9 +219,15 @@ export class AgentSessionManager extends EventEmitter {
     state.lastActivityAt = Date.now();
 
     // Add cancellation message
-    const cancelMsg = createCancellationMessage();
+    const cancelBlocks = [createStatusBlock('Command cancelled by user')];
+    const cancelMsg: StoredMessage = {
+      id: randomUUID(),
+      timestamp: Date.now(),
+      role: 'system',
+      blocks: cancelBlocks,
+    };
     state.messages.push(cancelMsg);
-    this.emit('message', sessionId, cancelMsg, true);
+    this.emit('blocks', sessionId, cancelBlocks, true);
   }
 
   /**
@@ -260,7 +287,7 @@ export class AgentSessionManager extends EventEmitter {
   /**
    * Get chat history for a session.
    */
-  getMessages(sessionId: string): ChatMessage[] {
+  getMessages(sessionId: string): StoredMessage[] {
     return this.sessions.get(sessionId)?.messages ?? [];
   }
 
@@ -300,9 +327,15 @@ export class AgentSessionManager extends EventEmitter {
 
       const state = this.sessions.get(sessionId);
       if (state) {
-        const errMsg = createErrorMessage(data.trim());
+        const errorBlocks = [createErrorBlock(data.trim())];
+        const errMsg: StoredMessage = {
+          id: randomUUID(),
+          timestamp: Date.now(),
+          role: 'system',
+          blocks: errorBlocks,
+        };
         state.messages.push(errMsg);
-        this.emit('message', sessionId, errMsg, false);
+        this.emit('blocks', sessionId, errorBlocks, false);
       }
     });
 
@@ -321,9 +354,15 @@ export class AgentSessionManager extends EventEmitter {
 
         // Send completion if not already sent
         if (code !== null) {
-          const completionMsg = createCompletionMessage();
+          const completionBlocks = [createStatusBlock('Command completed')];
+          const completionMsg: StoredMessage = {
+            id: randomUUID(),
+            timestamp: Date.now(),
+            role: 'system',
+            blocks: completionBlocks,
+          };
           state.messages.push(completionMsg);
-          this.emit('message', sessionId, completionMsg, true);
+          this.emit('blocks', sessionId, completionBlocks, true);
         }
       }
 
@@ -337,9 +376,15 @@ export class AgentSessionManager extends EventEmitter {
       const state = this.sessions.get(sessionId);
       if (state) {
         state.isExecuting = false;
-        const errMsg = createErrorMessage(error.message);
+        const errorBlocks = [createErrorBlock(error.message)];
+        const errMsg: StoredMessage = {
+          id: randomUUID(),
+          timestamp: Date.now(),
+          role: 'system',
+          blocks: errorBlocks,
+        };
         state.messages.push(errMsg);
-        this.emit('message', sessionId, errMsg, true);
+        this.emit('blocks', sessionId, errorBlocks, true);
       }
     });
   }
@@ -398,17 +443,29 @@ export class AgentSessionManager extends EventEmitter {
         executor.clearExecutionTimeout();
       }
 
-      const completionMsg = createCompletionMessage();
+      const completionBlocks = [createStatusBlock('Command completed')];
+      const completionMsg: StoredMessage = {
+        id: randomUUID(),
+        timestamp: Date.now(),
+        role: 'system',
+        blocks: completionBlocks,
+      };
       state.messages.push(completionMsg);
-      this.emit('message', sessionId, completionMsg, true);
+      this.emit('blocks', sessionId, completionBlocks, true);
       return;
     }
 
-    // Handle chat message
-    if (result.message) {
-      state.messages.push(result.message);
+    // Handle content blocks
+    if (result.blocks.length > 0) {
+      const msg: StoredMessage = {
+        id: randomUUID(),
+        timestamp: Date.now(),
+        role: 'assistant',
+        blocks: result.blocks,
+      };
+      state.messages.push(msg);
       state.lastActivityAt = Date.now();
-      this.emit('message', sessionId, result.message, false);
+      this.emit('blocks', sessionId, result.blocks, false);
     }
   }
 }

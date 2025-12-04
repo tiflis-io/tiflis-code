@@ -20,7 +20,8 @@ import { PtyManager } from './infrastructure/terminal/pty-manager.js';
 import { AgentSessionManager } from './infrastructure/agents/agent-session-manager.js';
 import { AuthKey } from './domain/value-objects/auth-key.js';
 import { SessionId } from './domain/value-objects/session-id.js';
-import type { ChatMessage } from './domain/value-objects/chat-message.js';
+import { DeviceId } from './domain/value-objects/device-id.js';
+import type { ContentBlock } from './domain/value-objects/content-block.js';
 import { isTerminalSession } from './domain/entities/terminal-session.js';
 import QRCode from 'qrcode';
 import { AuthenticateClientUseCase } from './application/commands/authenticate-client.js';
@@ -313,8 +314,10 @@ async function bootstrap(): Promise<void> {
     },
 
     sync: (socket, message) => {
-      const syncMessage = message as { id: string };
-      const client = clientRegistry.getBySocket(socket);
+      const syncMessage = message as { id: string; device_id?: string };
+      // Helper to get client from socket (direct) or device_id (tunnel)
+      const client = clientRegistry.getBySocket(socket)
+        ?? (syncMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(syncMessage.device_id)) : undefined);
       const subscriptions = client ? client.getSubscriptions() : [];
       const sessions = sessionManager.getSessionInfos();
       
@@ -333,14 +336,28 @@ async function bootstrap(): Promise<void> {
       return Promise.resolve();
     },
 
-    // Natural language commands via LangGraph Supervisor Agent
+    // Natural language commands via LangGraph Supervisor Agent (streaming)
     'supervisor.command': async (socket, message) => {
       const commandMessage = message as {
         id: string;
+        device_id?: string; // Injected by tunnel for tunnel connections
         payload: { command: string; session_id?: string };
       };
-      const client = clientRegistry.getBySocket(socket);
-      if (!client) {
+
+      // Try to get client from socket (direct connection) or from device_id (tunnel connection)
+      let deviceId: string | undefined;
+      const directClient = clientRegistry.getBySocket(socket);
+      if (directClient) {
+        deviceId = directClient.deviceId.value;
+      } else if (commandMessage.device_id) {
+        // Tunnel connection - device_id is injected by tunnel server
+        const tunnelClient = clientRegistry.getByDeviceId(new DeviceId(commandMessage.device_id));
+        if (tunnelClient?.isAuthenticated) {
+          deviceId = commandMessage.device_id;
+        }
+      }
+
+      if (!deviceId) {
         socket.send(JSON.stringify({
           type: 'error',
           id: commandMessage.id,
@@ -349,43 +366,48 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
-      try {
-        const result = await supervisorAgent.execute(
-          commandMessage.payload.command,
-          client.deviceId.value,
-          commandMessage.payload.session_id
-        );
-        socket.send(JSON.stringify({
-          type: 'response',
-          id: commandMessage.id,
-          payload: {
-            output: result.output,
-            session_id: result.sessionId,
-          },
-        }));
-      } catch (error) {
-        logger.error({ error }, 'Supervisor command execution failed');
-        socket.send(JSON.stringify({
-          type: 'error',
-          id: commandMessage.id,
-          payload: {
-            code: 'EXECUTION_ERROR',
-            message: error instanceof Error ? error.message : 'Unknown error',
-          },
-        }));
-      }
+      // Acknowledge command receipt
+      socket.send(JSON.stringify({
+        type: 'response',
+        id: commandMessage.id,
+        payload: { acknowledged: true },
+      }));
+
+      // Execute with streaming - output will be sent via 'blocks' events
+      await supervisorAgent.executeWithStream(
+        commandMessage.payload.command,
+        deviceId
+      );
     },
 
     // Clear supervisor conversation history
     'supervisor.clear_context': (socket, message) => {
-      const clearMessage = message as { id: string };
-      const client = clientRegistry.getBySocket(socket);
-      if (client) {
-        supervisorAgent.clearHistory(client.deviceId.value);
+      const clearMessage = message as { id: string; device_id?: string };
+
+      // Try to get device ID from socket or from message (tunnel connection)
+      let deviceId: string | undefined;
+      const directClient = clientRegistry.getBySocket(socket);
+      if (directClient) {
+        deviceId = directClient.deviceId.value;
+      } else if (clearMessage.device_id) {
+        const tunnelClient = clientRegistry.getByDeviceId(new DeviceId(clearMessage.device_id));
+        if (tunnelClient?.isAuthenticated) {
+          deviceId = clearMessage.device_id;
+        }
+      }
+
+      if (deviceId) {
+        supervisorAgent.clearHistory(deviceId);
         socket.send(JSON.stringify({
           type: 'response',
           id: clearMessage.id,
           payload: { success: true },
+        }));
+      } else {
+        socket.send(JSON.stringify({
+          type: 'error',
+          id: clearMessage.id,
+          payload: { code: 'UNAUTHENTICATED', message: 'Not authenticated' },
         }));
       }
       return Promise.resolve();
@@ -496,9 +518,10 @@ async function bootstrap(): Promise<void> {
 
     'session.subscribe': (socket, message) => {
       if (!subscriptionService) return Promise.resolve();
-      const subscribeMessage = message as { session_id: string };
-      const client = clientRegistry.getBySocket(socket);
-      if (client) {
+      const subscribeMessage = message as { session_id: string; device_id?: string };
+      const client = clientRegistry.getBySocket(socket)
+        ?? (subscribeMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(subscribeMessage.device_id)) : undefined);
+      if (client?.isAuthenticated) {
         const result = subscriptionService.subscribe(
           client.deviceId.value,
           subscribeMessage.session_id
@@ -510,9 +533,10 @@ async function bootstrap(): Promise<void> {
 
     'session.unsubscribe': (socket, message) => {
       if (!subscriptionService) return Promise.resolve();
-      const unsubscribeMessage = message as { session_id: string };
-      const client = clientRegistry.getBySocket(socket);
-      if (client) {
+      const unsubscribeMessage = message as { session_id: string; device_id?: string };
+      const client = clientRegistry.getBySocket(socket)
+        ?? (unsubscribeMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(unsubscribeMessage.device_id)) : undefined);
+      if (client?.isAuthenticated) {
         const result = subscriptionService.unsubscribe(
           client.deviceId.value,
           unsubscribeMessage.session_id
@@ -568,14 +592,16 @@ async function bootstrap(): Promise<void> {
     'session.resize': (socket, message) => {
       const resizeMessage = message as {
         session_id: string;
+        device_id?: string;
         payload: { cols: number; rows: number };
       };
       try {
         const sessionId = new SessionId(resizeMessage.session_id);
         const session = sessionManager.getSession(sessionId);
         if (session?.type === 'terminal') {
-          // Get device ID from socket for master check
-          const client = clientRegistry.getBySocket(socket);
+          // Get device ID from socket (direct) or message (tunnel)
+          const client = clientRegistry.getBySocket(socket)
+            ?? (resizeMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(resizeMessage.device_id)) : undefined);
           const deviceId = client?.deviceId.value;
 
           const result = ptyManager.resize(
@@ -857,20 +883,22 @@ async function bootstrap(): Promise<void> {
 
   // Stream agent session output to subscribed clients
   const broadcaster = messageBroadcaster;
-  
-  agentSessionManager.on('message', (sessionId: string, message: ChatMessage, isComplete: boolean) => {
+
+  agentSessionManager.on('blocks', (sessionId: string, blocks: ContentBlock[], isComplete: boolean) => {
+    // Build plain text content for backward compatibility
+    const textContent = blocks
+      .filter((b) => b.block_type === 'text')
+      .map((b) => b.content)
+      .join('\n');
+
     const outputEvent = {
       type: 'session.output',
       session_id: sessionId,
       payload: {
-        content_type: 'chat_message',
-        message: {
-          id: message.id,
-          timestamp: message.timestamp,
-          type: message.type,
-          content: message.content,
-          metadata: message.metadata,
-        },
+        content_type: 'agent',
+        content: textContent, // Backward compat for older clients
+        content_blocks: blocks, // Structured blocks for rich UI
+        timestamp: Date.now(),
         is_complete: isComplete,
       },
     };
@@ -878,6 +906,35 @@ async function bootstrap(): Promise<void> {
     // Send to all subscribers via broadcaster
     // Broadcaster handles both direct WebSocket and tunnel connections
     broadcaster.broadcastToSubscribers(sessionId, JSON.stringify(outputEvent));
+  });
+
+  // Stream Supervisor Agent output to the client that initiated the command
+  supervisorAgent.on('blocks', (deviceId: string, blocks: ContentBlock[], isComplete: boolean) => {
+    // Build plain text content for backward compatibility
+    const textContent = blocks
+      .filter((b) => b.block_type === 'text')
+      .map((b) => b.content)
+      .join('\n');
+
+    const outputEvent = {
+      type: 'supervisor.output',
+      payload: {
+        content_type: 'supervisor',
+        content: textContent,
+        content_blocks: blocks,
+        timestamp: Date.now(),
+        is_complete: isComplete,
+      },
+    };
+
+    const message = JSON.stringify(outputEvent);
+
+    // Try to send to specific client first (works for both direct and tunnel connections)
+    if (!broadcaster.sendToClient(deviceId, message)) {
+      // Fallback to broadcast if client not found
+      logger.warn({ deviceId }, 'Could not send supervisor output to client, broadcasting');
+      broadcaster.broadcastToAll(message);
+    }
   });
 
   // Stream terminal output to subscribed clients

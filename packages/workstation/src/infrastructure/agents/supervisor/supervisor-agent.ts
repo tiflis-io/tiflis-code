@@ -6,9 +6,10 @@
  * LangGraph-based Supervisor Agent for managing workstation resources.
  */
 
+import { EventEmitter } from 'events';
 import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { HumanMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
+import { HumanMessage, AIMessage, isAIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
@@ -19,6 +20,13 @@ import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
 import { createFilesystemTools } from './tools/filesystem-tools.js';
 import { getEnv } from '../../../config/env.js';
+import type { ContentBlock } from '../../../domain/value-objects/content-block.js';
+import {
+  createTextBlock,
+  createToolBlock,
+  createErrorBlock,
+  createStatusBlock,
+} from '../../../domain/value-objects/content-block.js';
 
 /**
  * Configuration for SupervisorAgent.
@@ -48,6 +56,14 @@ interface ConversationEntry {
 }
 
 /**
+ * Events emitted by SupervisorAgent during streaming execution.
+ */
+export interface SupervisorAgentEvents {
+  /** Emitted when content blocks are received during streaming */
+  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean) => void;
+}
+
+/**
  * LangGraph-based Supervisor Agent.
  *
  * The Supervisor manages:
@@ -56,12 +72,13 @@ interface ConversationEntry {
  * - Session lifecycle (create, list, terminate)
  * - File system operations
  */
-export class SupervisorAgent {
+export class SupervisorAgent extends EventEmitter {
   private readonly logger: Logger;
   private readonly agent: ReturnType<typeof createReactAgent>;
   private readonly conversationHistory = new Map<string, ConversationEntry[]>();
 
   constructor(config: SupervisorAgentConfig) {
+    super();
     this.logger = config.logger.child({ component: 'SupervisorAgent' });
 
     // Create LLM
@@ -171,6 +188,127 @@ export class SupervisorAgent {
         output: `Error: ${errorMessage}`,
       };
     }
+  }
+
+  /**
+   * Executes a command with streaming output.
+   * Emits 'blocks' events as content is generated.
+   */
+  async executeWithStream(
+    command: string,
+    deviceId: string
+  ): Promise<void> {
+    this.logger.info({ command, deviceId }, 'Executing supervisor command with streaming');
+
+    try {
+      // Emit user message block
+      const userBlock = createTextBlock(command);
+      this.logger.debug({ deviceId, blockType: 'user' }, 'Emitting user block');
+      this.emit('blocks', deviceId, [userBlock], false);
+
+      // Get conversation history for this device
+      const history = this.getConversationHistory(deviceId);
+
+      // Build messages from history
+      const messages: BaseMessage[] = [
+        ...this.buildSystemMessage(),
+        ...this.buildHistoryMessages(history),
+        new HumanMessage(command),
+      ];
+
+      // Emit status block to show processing
+      const statusBlock = createStatusBlock('Processing...');
+      this.logger.debug({ deviceId, blockType: 'status' }, 'Emitting status block');
+      this.emit('blocks', deviceId, [statusBlock], false);
+
+      this.logger.info({ deviceId }, 'Starting LangGraph agent stream');
+      // Stream the agent execution
+      const stream = await this.agent.stream(
+        { messages },
+        { streamMode: 'values' }
+      );
+
+      let finalOutput = '';
+
+      for await (const chunk of stream) {
+        // LangGraph stream chunks contain the full state
+        const chunkData = chunk as { messages?: BaseMessage[] };
+        const chunkMessages = chunkData.messages;
+        if (!chunkMessages || chunkMessages.length === 0) continue;
+
+        const lastMessage = chunkMessages[chunkMessages.length - 1];
+        if (!lastMessage) continue;
+
+        // Check if this is an AI message with content
+        if (isAIMessage(lastMessage)) {
+          const content = lastMessage.content;
+
+          if (typeof content === 'string' && content.length > 0) {
+            finalOutput = content;
+            // Emit text block for the current content
+            const textBlock = createTextBlock(content);
+            this.emit('blocks', deviceId, [textBlock], false);
+          } else if (Array.isArray(content)) {
+            // Handle structured content (tool calls, etc.)
+            for (const item of content) {
+              if (typeof item === 'object') {
+                const block = this.parseContentItem(item as Record<string, unknown>);
+                if (block) {
+                  this.emit('blocks', deviceId, [block], false);
+                }
+              }
+            }
+          }
+        }
+
+        // Check for tool messages
+        if (lastMessage.getType() === 'tool') {
+          const toolContent = lastMessage.content;
+          const toolName = (lastMessage as unknown as { name?: string }).name ?? 'tool';
+          const toolBlock = createToolBlock(
+            toolName,
+            'completed',
+            undefined,
+            typeof toolContent === 'string' ? toolContent : JSON.stringify(toolContent)
+          );
+          this.emit('blocks', deviceId, [toolBlock], false);
+        }
+      }
+
+      // Update conversation history
+      this.addToHistory(deviceId, 'user', command);
+      this.addToHistory(deviceId, 'assistant', finalOutput);
+
+      // Emit completion
+      const completionBlock = createStatusBlock('Complete');
+      this.emit('blocks', deviceId, [completionBlock], true);
+
+      this.logger.debug({ output: finalOutput.slice(0, 200) }, 'Supervisor streaming completed');
+    } catch (error) {
+      this.logger.error({ error, command }, 'Supervisor streaming failed');
+      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
+      const errorBlock = createErrorBlock(errorMessage);
+      this.emit('blocks', deviceId, [errorBlock], true);
+    }
+  }
+
+  /**
+   * Parses a content item from LangGraph into a ContentBlock.
+   */
+  private parseContentItem(item: Record<string, unknown>): ContentBlock | null {
+    const type = item.type as string | undefined;
+
+    if (type === 'text' && typeof item.text === 'string') {
+      return createTextBlock(item.text);
+    }
+
+    if (type === 'tool_use') {
+      const name = typeof item.name === 'string' ? item.name : 'tool';
+      const input = item.input;
+      return createToolBlock(name, 'running', input);
+    }
+
+    return null;
   }
 
   /**

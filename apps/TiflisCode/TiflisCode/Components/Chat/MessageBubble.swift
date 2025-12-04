@@ -12,11 +12,12 @@ import SwiftUI
 struct MessageBubble: View {
     let message: Message
     let sessionType: Session.SessionType
-    
+    var onAction: ((ActionType) -> Void)?
+
     private var isUser: Bool {
         message.role == .user
     }
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             if isUser {
@@ -25,23 +26,21 @@ struct MessageBubble: View {
                 // Assistant avatar based on session type
                 AssistantAvatar(sessionType: sessionType)
             }
-            
+
             VStack(alignment: isUser ? .trailing : .leading, spacing: 4) {
                 // Message content
-                MessageContent(message: message, isUser: isUser)
-                
-                // Audio player for TTS responses
-                if !isUser && message.audioOutputPath != nil && message.isComplete {
-                    AudioPlayerView(duration: 12.5) // Mock duration
-                        .frame(maxWidth: 280)
-                }
-                
+                MessageBubbleContent(
+                    message: message,
+                    isUser: isUser,
+                    onAction: onAction
+                )
+
                 // Timestamp
                 Text(message.createdAt, style: .time)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
-            
+
             if !isUser {
                 Spacer(minLength: 60)
             }
@@ -52,7 +51,7 @@ struct MessageBubble: View {
 /// Avatar for assistant messages using session-specific icon
 struct AssistantAvatar: View {
     let sessionType: Session.SessionType
-    
+
     var body: some View {
         Group {
             if let customIcon = sessionType.customIcon {
@@ -72,53 +71,25 @@ struct AssistantAvatar: View {
     }
 }
 
-/// Message content with markdown rendering
-struct MessageContent: View {
+/// Message content with structured content blocks
+struct MessageBubbleContent: View {
     let message: Message
     let isUser: Bool
-    
+    var onAction: ((ActionType) -> Void)?
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            // Voice indicator for transcribed messages with audio playback
-            if message.contentType == .transcription || message.contentType == .audio {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "waveform")
-                            .font(.caption)
-                        Text("Voice message")
-                            .font(.caption)
-                    }
-                    .foregroundStyle(.secondary)
-                    
-                    // Audio player for user's voice message
-                    if message.audioInputPath != nil {
-                        AudioPlayerView(duration: 5.2) // Mock duration
-                    }
-                }
-            }
-            
-            // Main content (transcription or text)
-            if !message.content.isEmpty {
-                Text(LocalizedStringKey(message.content))
-                    .textSelection(.enabled)
-            }
-            
-            // Streaming indicator
-            if !message.isComplete {
-                HStack(spacing: 4) {
-                    ProgressView()
-                        .scaleEffect(0.7)
-                    Text("Generating...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            MessageContentView(
+                blocks: message.contentBlocks,
+                isStreaming: message.isStreaming,
+                onAction: onAction
+            )
         }
         .padding(12)
         .background(bubbleBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
-    
+
     @ViewBuilder
     private var bubbleBackground: some View {
         if isUser {
@@ -134,11 +105,11 @@ struct MessageContent: View {
 struct TypingIndicator: View {
     let sessionType: Session.SessionType
     @State private var animationPhase = 0.0
-    
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             AssistantAvatar(sessionType: sessionType)
-            
+
             HStack(spacing: 4) {
                 ForEach(0..<3, id: \.self) { index in
                     Circle()
@@ -156,14 +127,14 @@ struct TypingIndicator: View {
             .padding(12)
             .background(Color(.systemGray6))
             .clipShape(RoundedRectangle(cornerRadius: 16))
-            
+
             Spacer(minLength: 60)
         }
         .onAppear {
             animationPhase = 1.0
         }
     }
-    
+
     private func animationScale(for index: Int) -> CGFloat {
         let phase = animationPhase + Double(index) * 0.3
         return 0.6 + 0.4 * sin(phase * .pi)
@@ -194,6 +165,18 @@ struct TypingIndicator: View {
 
 #Preview("Streaming Message") {
     MessageBubble(message: .mockStreamingMessage, sessionType: .opencode)
+        .padding()
+}
+
+#Preview("Message with Tool Calls") {
+    ScrollView {
+        MessageBubble(message: .mockMessageWithToolCalls, sessionType: .claude)
+            .padding()
+    }
+}
+
+#Preview("Message with Error") {
+    MessageBubble(message: .mockMessageWithError, sessionType: .supervisor)
         .padding()
 }
 

@@ -75,6 +75,21 @@ export const TerminateSessionSchema = z.object({
   payload: TerminateSessionPayloadSchema,
 });
 
+export const SupervisorCommandPayloadSchema = z.object({
+  command: z.string().min(1, 'Command is required'),
+});
+
+export const SupervisorCommandSchema = z.object({
+  type: z.literal('supervisor.command'),
+  id: z.string(),
+  payload: SupervisorCommandPayloadSchema,
+});
+
+export const SupervisorClearContextSchema = z.object({
+  type: z.literal('supervisor.clear_context'),
+  id: z.string(),
+});
+
 // ============================================================================
 // Session Subscription Schemas
 // ============================================================================
@@ -163,6 +178,8 @@ export const IncomingClientMessageSchema = z.discriminatedUnion('type', [
   ListSessionsSchema,
   CreateSessionSchema,
   TerminateSessionSchema,
+  SupervisorCommandSchema,
+  SupervisorClearContextSchema,
   SessionSubscribeSchema,
   SessionUnsubscribeSchema,
   SessionExecuteSchema,
@@ -211,6 +228,7 @@ export const IncomingTunnelMessageSchema = z.discriminatedUnion('type', [
 export type AuthPayload = z.infer<typeof AuthPayloadSchema>;
 export type CreateSessionPayload = z.infer<typeof CreateSessionPayloadSchema>;
 export type TerminateSessionPayload = z.infer<typeof TerminateSessionPayloadSchema>;
+export type SupervisorCommandPayload = z.infer<typeof SupervisorCommandPayloadSchema>;
 export type SessionExecutePayload = z.infer<typeof SessionExecutePayloadSchema>;
 export type SessionInputPayload = z.infer<typeof SessionInputPayloadSchema>;
 export type SessionResizePayload = z.infer<typeof SessionResizePayloadSchema>;

@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.1-blue" alt="Version 1.1">
+  <img src="https://img.shields.io/badge/version-1.2-blue" alt="Version 1.2">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
 </p>
@@ -26,7 +26,15 @@
 
 ## Changelog
 
-### Version 1.1 (Current)
+### Version 1.2 (Current)
+- **Added:** `content_blocks` array in `session.output` for structured agent output (text, code, tool calls, thinking, status, error)
+- **Added:** `supervisor.output` streaming message for Supervisor Agent chat
+- **Added:** `supervisor.command` now returns streaming output instead of blocking response
+- **Added:** `supervisor.clear_context` command documented
+- **Enhanced:** Rich UI rendering support with typed content blocks
+- **Backward Compatible:** `content` field remains for terminal output and legacy clients
+
+### Version 1.1
 - **Added:** `terminal_config.buffer_size` field to `session.created` message for dynamic terminal buffer configuration
 - **Enhanced:** Terminal sessions now receive server-configured buffer size instead of hardcoded values
 - **Improved:** Mobile clients optimize memory usage based on server-provided buffer configuration
@@ -457,6 +465,62 @@ Supervisor manages session lifecycle. Project/workspace management is done throu
 }
 ```
 
+### 4.4 Supervisor Chat (Natural Language Commands)
+
+The Supervisor Agent supports natural language commands for workspace/project discovery,
+worktree management, and session orchestration. Output is streamed using ContentBlocks.
+
+```typescript
+// Request
+{
+  type: "supervisor.command",
+  id: string,
+  payload: {
+    command: string  // Natural language command
+  }
+}
+
+// Response (immediate acknowledgment)
+{
+  type: "response",
+  id: string,
+  payload: {
+    acknowledged: true
+  }
+}
+
+// Streamed output (multiple events)
+{
+  type: "supervisor.output",
+  payload: {
+    content_type: "supervisor",
+    content: string,                  // Plain text for backward compat
+    content_blocks: ContentBlock[],   // Structured blocks (see section 6.1)
+    timestamp: number,
+    is_complete: boolean              // true = final message
+  }
+}
+```
+
+### 4.5 Clear Supervisor Context
+
+```typescript
+// Request
+{
+  type: "supervisor.clear_context",
+  id: string
+}
+
+// Response
+{
+  type: "response",
+  id: string,
+  payload: {
+    success: true
+  }
+}
+```
+
 ---
 
 ## 5. Session Commands
@@ -598,8 +662,11 @@ All events are sent only to clients subscribed to the session.
     // Content type
     content_type: "agent" | "terminal" | "transcription",
 
-    // Content
+    // Plain text content (for terminal output and backward compatibility)
     content: string,
+
+    // Structured content blocks for rich UI (agent output only)
+    content_blocks?: ContentBlock[],
 
     // Metadata
     timestamp: number,
@@ -620,9 +687,165 @@ All events are sent only to clients subscribed to the session.
 
 | Type | Source | Description |
 |------|--------|-------------|
-| `agent` | Headless Agent | Streaming AI response |
-| `terminal` | PTY | Raw terminal output |
+| `agent` | Headless Agent | Streaming AI response with structured blocks |
+| `terminal` | PTY | Raw terminal output (uses `content` only) |
 | `transcription` | STT | Speech-to-text result |
+
+#### Content Blocks (for `content_type: "agent"`)
+
+When `content_type` is `"agent"`, the `content_blocks` array provides structured typed blocks for rich UI rendering:
+
+```typescript
+// Base interface
+interface ContentBlock {
+  id: string,
+  block_type: string,
+  content: string,
+  metadata?: Record<string, unknown>
+}
+
+// Text block
+{
+  id: string,
+  block_type: "text",
+  content: string    // Plain text content
+}
+
+// Code block
+{
+  id: string,
+  block_type: "code",
+  content: string,   // Code content
+  metadata: {
+    language?: string  // e.g., "typescript", "python"
+  }
+}
+
+// Tool call block
+{
+  id: string,
+  block_type: "tool",
+  content: string,   // Tool name
+  metadata: {
+    tool_name: string,
+    tool_input?: string,   // JSON stringified
+    tool_output?: string,  // JSON stringified
+    tool_status: "running" | "completed" | "failed"
+  }
+}
+
+// Thinking/reasoning block
+{
+  id: string,
+  block_type: "thinking",
+  content: string    // Reasoning content
+}
+
+// Status block
+{
+  id: string,
+  block_type: "status",
+  content: string    // Status message
+}
+
+// Error block
+{
+  id: string,
+  block_type: "error",
+  content: string,   // Error message
+  metadata?: {
+    error_code?: string
+  }
+}
+
+// Voice input block (STT result)
+{
+  id: string,
+  block_type: "voice_input",
+  content: string,   // Transcription
+  metadata: {
+    audio_url?: string,
+    duration?: number
+  }
+}
+
+// Voice output block (TTS audio)
+{
+  id: string,
+  block_type: "voice_output",
+  content: string,   // Text that was spoken
+  metadata: {
+    audio_base64?: string,
+    duration?: number
+  }
+}
+
+// Action buttons block
+{
+  id: string,
+  block_type: "action_buttons",
+  content: "",
+  metadata: {
+    buttons: Array<{
+      id: string,
+      title: string,
+      icon?: string,
+      style: "primary" | "secondary" | "destructive",
+      action: string  // "send:<message>", "url:<url>", "session:<type>", or custom
+    }>
+  }
+}
+```
+
+**Example Agent Output:**
+
+```json
+{
+  "type": "session.output",
+  "session_id": "agent-123",
+  "payload": {
+    "content_type": "agent",
+    "content": "I'll analyze the code...",
+    "content_blocks": [
+      {
+        "id": "b1",
+        "block_type": "status",
+        "content": "Analyzing codebase..."
+      },
+      {
+        "id": "b2",
+        "block_type": "tool",
+        "content": "read_file",
+        "metadata": {
+          "tool_name": "read_file",
+          "tool_input": "{\"path\": \"src/main.ts\"}",
+          "tool_status": "running"
+        }
+      },
+      {
+        "id": "b3",
+        "block_type": "thinking",
+        "content": "I can see this is a TypeScript project using Node.js..."
+      },
+      {
+        "id": "b4",
+        "block_type": "text",
+        "content": "Here's what I found:"
+      },
+      {
+        "id": "b5",
+        "block_type": "code",
+        "content": "import express from 'express';\\nconst app = express();",
+        "metadata": {
+          "language": "typescript"
+        }
+      }
+    ],
+    "timestamp": 1701700000000,
+    "is_complete": false
+  }
+}
+```
 
 ### 6.2 Session Error
 

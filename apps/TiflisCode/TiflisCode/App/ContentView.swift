@@ -197,7 +197,8 @@ struct SessionDetailView: View {
                 ChatView(
                     session: session,
                     columnVisibility: $columnVisibility,
-                    onMenuTap: onMenuTap
+                    onMenuTap: onMenuTap,
+                    connectionService: appState.connectionService
                 )
             case .terminal:
                 TerminalView(

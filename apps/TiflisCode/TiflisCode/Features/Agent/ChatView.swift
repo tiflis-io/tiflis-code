@@ -16,16 +16,20 @@ struct ChatView: View {
     @StateObject private var viewModel: ChatViewModel
     @EnvironmentObject private var appState: AppState
     @State private var showConnectionPopover = false
-    
+
     init(
         session: Session,
         columnVisibility: Binding<NavigationSplitViewVisibility>,
-        onMenuTap: (() -> Void)? = nil
+        onMenuTap: (() -> Void)? = nil,
+        connectionService: ConnectionServicing
     ) {
         self.session = session
         self._columnVisibility = columnVisibility
         self.onMenuTap = onMenuTap
-        self._viewModel = StateObject(wrappedValue: ChatViewModel(session: session))
+        self._viewModel = StateObject(wrappedValue: ChatViewModel(
+            session: session,
+            connectionService: connectionService
+        ))
     }
     
     var body: some View {
@@ -239,17 +243,27 @@ struct ChatEmptyState: View {
 // MARK: - Preview
 
 #Preview("Supervisor") {
-    NavigationStack {
-        ChatView(session: .mockSupervisor, columnVisibility: .constant(.all))
+    let appState = AppState()
+    return NavigationStack {
+        ChatView(
+            session: .mockSupervisor,
+            columnVisibility: .constant(.all),
+            connectionService: appState.connectionService
+        )
     }
-    .environmentObject(AppState())
+    .environmentObject(appState)
 }
 
 #Preview("Claude Session") {
-    NavigationStack {
-        ChatView(session: .mockClaudeSession, columnVisibility: .constant(.all))
+    let appState = AppState()
+    return NavigationStack {
+        ChatView(
+            session: .mockClaudeSession,
+            columnVisibility: .constant(.all),
+            connectionService: appState.connectionService
+        )
     }
-    .environmentObject(AppState())
+    .environmentObject(appState)
 }
 
 #Preview("Empty State - Supervisor") {

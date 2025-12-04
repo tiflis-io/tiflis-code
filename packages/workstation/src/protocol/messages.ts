@@ -6,6 +6,7 @@
 
 import type { ErrorCode } from './errors.js';
 import type { SessionType, SessionStatus } from '../domain/entities/session.js';
+import type { ContentBlock } from '../domain/value-objects/content-block.js';
 
 // ============================================================================
 // Tunnel Messages (Workstation ↔ Tunnel)
@@ -309,15 +310,22 @@ export type ContentType = 'agent' | 'terminal' | 'transcription';
 
 /**
  * Workstation → Mobile: Session output
+ *
+ * For agent output, content_blocks provides structured typed blocks for rich UI.
+ * The content field remains for backward compatibility and terminal output.
  */
 export interface SessionOutputMessage {
   type: 'session.output';
   session_id: string;
   payload: {
     content_type: ContentType;
+    /** Plain text content (for terminal) or stringified agent output (backward compat) */
     content: string;
+    /** Structured content blocks for rich UI rendering (agent output) */
+    content_blocks?: ContentBlock[];
     timestamp: number;
     is_complete?: boolean;
+    /** Base64 encoded TTS audio (only when is_complete=true && tts_enabled) */
     audio?: string;
   };
 }
