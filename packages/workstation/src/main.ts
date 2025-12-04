@@ -344,20 +344,31 @@ async function bootstrap(): Promise<void> {
         payload: { command: string; session_id?: string };
       };
 
+      logger.debug(
+        { device_id: commandMessage.device_id, hasSocket: !!socket },
+        'supervisor.command received'
+      );
+
       // Try to get client from socket (direct connection) or from device_id (tunnel connection)
       let deviceId: string | undefined;
       const directClient = clientRegistry.getBySocket(socket);
       if (directClient) {
         deviceId = directClient.deviceId.value;
+        logger.debug({ deviceId }, 'Found client by socket');
       } else if (commandMessage.device_id) {
         // Tunnel connection - device_id is injected by tunnel server
         const tunnelClient = clientRegistry.getByDeviceId(new DeviceId(commandMessage.device_id));
+        logger.debug(
+          { device_id: commandMessage.device_id, found: !!tunnelClient, isAuthenticated: tunnelClient?.isAuthenticated },
+          'Looking up tunnel client'
+        );
         if (tunnelClient?.isAuthenticated) {
           deviceId = commandMessage.device_id;
         }
       }
 
       if (!deviceId) {
+        logger.warn({ device_id: commandMessage.device_id }, 'supervisor.command: client not authenticated');
         socket.send(JSON.stringify({
           type: 'error',
           id: commandMessage.id,

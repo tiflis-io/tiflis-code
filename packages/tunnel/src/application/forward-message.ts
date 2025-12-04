@@ -38,6 +38,8 @@ export class ForwardMessageUseCase {
    * Injects device_id into the message so workstation can identify the sender.
    */
   forwardToWorkstation(deviceId: string, message: string): boolean {
+    this.logger.info({ deviceId, messageLength: message.length }, 'forwardToWorkstation called');
+
     const client = this.clientRegistry.get(deviceId);
     if (!client) {
       this.logger.warn({ deviceId }, 'Client not found for forwarding');
@@ -67,9 +69,10 @@ export class ForwardMessageUseCase {
       const parsed = JSON.parse(message) as Record<string, unknown>;
       parsed.device_id = deviceId;
       enrichedMessage = JSON.stringify(parsed);
+      this.logger.info({ deviceId, messageType: parsed.type, enrichedLength: enrichedMessage.length }, 'Injected device_id into message');
     } catch {
       // If message is not valid JSON, forward as-is
-      this.logger.warn({ deviceId }, 'Could not inject device_id, message is not JSON');
+      this.logger.warn({ deviceId, message: message.slice(0, 100) }, 'Could not inject device_id, message is not JSON');
     }
 
     const sent = workstation.send(enrichedMessage);
