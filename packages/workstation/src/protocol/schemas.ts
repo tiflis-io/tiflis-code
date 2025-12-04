@@ -41,6 +41,7 @@ export const PongSchema = z.object({
 export const SyncMessageSchema = z.object({
   type: z.literal('sync'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
 });
 
 // ============================================================================
@@ -50,6 +51,7 @@ export const SyncMessageSchema = z.object({
 export const ListSessionsSchema = z.object({
   type: z.literal('supervisor.list_sessions'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
 });
 
 export const CreateSessionPayloadSchema = z.object({
@@ -62,6 +64,7 @@ export const CreateSessionPayloadSchema = z.object({
 export const CreateSessionSchema = z.object({
   type: z.literal('supervisor.create_session'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: CreateSessionPayloadSchema,
 });
 
@@ -72,6 +75,7 @@ export const TerminateSessionPayloadSchema = z.object({
 export const TerminateSessionSchema = z.object({
   type: z.literal('supervisor.terminate_session'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: TerminateSessionPayloadSchema,
 });
 
@@ -82,12 +86,14 @@ export const SupervisorCommandPayloadSchema = z.object({
 export const SupervisorCommandSchema = z.object({
   type: z.literal('supervisor.command'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: SupervisorCommandPayloadSchema,
 });
 
 export const SupervisorClearContextSchema = z.object({
   type: z.literal('supervisor.clear_context'),
   id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
 });
 
 // ============================================================================
@@ -97,11 +103,13 @@ export const SupervisorClearContextSchema = z.object({
 export const SessionSubscribeSchema = z.object({
   type: z.literal('session.subscribe'),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
 });
 
 export const SessionUnsubscribeSchema = z.object({
   type: z.literal('session.unsubscribe'),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
 });
 
 // ============================================================================
@@ -123,6 +131,7 @@ export const SessionExecuteSchema = z.object({
   type: z.literal('session.execute'),
   id: z.string(),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: SessionExecutePayloadSchema,
 });
 
@@ -133,6 +142,7 @@ export const SessionInputPayloadSchema = z.object({
 export const SessionInputSchema = z.object({
   type: z.literal('session.input'),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: SessionInputPayloadSchema,
 });
 
@@ -144,6 +154,7 @@ export const SessionResizePayloadSchema = z.object({
 export const SessionResizeSchema = z.object({
   type: z.literal('session.resize'),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: SessionResizePayloadSchema,
 });
 
@@ -156,6 +167,7 @@ export const SessionReplayPayloadSchema = z.object({
 export const SessionReplaySchema = z.object({
   type: z.literal('session.replay'),
   session_id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
   payload: SessionReplayPayloadSchema,
 });
 
