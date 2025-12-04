@@ -258,6 +258,35 @@ extension ConnectionService: WebSocketClientDelegate {
     func webSocketClient(_ client: WebSocketClientProtocol, workstationDidComeOnline tunnelId: String) {
         // Workstation is back online
         workstationOnline = true
+
+        // Re-authenticate with the workstation since it may have restarted
+        // and lost our client registration
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            await self.reauthenticateWithWorkstation()
+        }
+    }
+
+    /// Re-sends authentication message to workstation after it comes back online
+    /// This is necessary because the workstation may have restarted and lost client state
+    private func reauthenticateWithWorkstation() async {
+        guard let authKey = keychainManager.getAuthKey() else { return }
+
+        let deviceId = deviceIDManager.deviceID
+        let message: [String: Any] = [
+            "type": "auth",
+            "payload": [
+                "auth_key": authKey,
+                "device_id": deviceId
+            ]
+        ]
+
+        do {
+            try _webSocketClient.sendMessage(message)
+        } catch {
+            // Auth failure here is logged but non-fatal
+            // The next user action will trigger the UNAUTHENTICATED error
+        }
     }
 }
 
