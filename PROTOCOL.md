@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.3-blue" alt="Version 1.3">
+  <img src="https://img.shields.io/badge/version-1.4-blue" alt="Version 1.4">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
 </p>
@@ -26,7 +26,12 @@
 
 ## Changelog
 
-### Version 1.3 (Current)
+### Version 1.4 (Current)
+- **Added:** `content_blocks` field in `supervisorHistory` for persisting structured content (tool calls, code blocks)
+- **Added:** Message `sequence` field for ordering in database and sync
+- **Enhanced:** Chat history now preserves rich content across app restarts
+
+### Version 1.3
 - **Added:** Multi-device synchronization for Supervisor chat
 - **Added:** `supervisor.user_message` broadcast event for syncing user messages across devices
 - **Added:** `supervisor.context_cleared` broadcast event for syncing context clear across devices
@@ -580,13 +585,15 @@ When a client reconnects, it receives chat history in `sync.state`:
     supervisorHistory?: Array<{    // Supervisor chat history
       role: "user" | "assistant",
       content: string,
-      sequence: number             // For ordering
+      content_blocks?: ContentBlock[],  // Structured content (tool calls, code, etc.)
+      sequence: number,                  // For ordering
+      createdAt: string                  // ISO timestamp
     }>
   }
 }
 ```
 
-**Note:** History is limited to the last 50 messages.
+**Note:** History is limited to the last 50 messages. The `content_blocks` field contains structured content for rich UI rendering (tool calls, code blocks, thinking blocks, etc.).
 
 ---
 
