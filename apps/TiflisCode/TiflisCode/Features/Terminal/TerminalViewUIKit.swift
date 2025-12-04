@@ -322,14 +322,15 @@ final class TerminalViewUIKit: UIView {
     /// Cached font metrics for performance
     /// Uses actual terminal font metrics (monospaced, configurable size)
     private var cachedFontMetrics: (width: CGFloat, height: CGFloat)?
-    
-    /// Minimum rows for terminal (VT100 standard, required by TUI apps like Claude Code)
-    /// Terminal always reports at least this many rows, even if view is smaller
-    /// Extra rows will be "above" visible area (cursor/prompt stays visible at bottom)
-    private static let minimumTerminalRows = 24
+
+    /// Full-screen height for terminal sizing (ignores keyboard)
+    /// Tracks maximum height seen - when keyboard appears, bounds shrink but we keep using this
+    /// This prevents terminal resize when keyboard shows/hides, eliminating TUI flickering
+    private var fullScreenHeight: CGFloat = 0
 
     /// Updates terminal size based on view size
-    /// Uses actual font metrics from configured terminal font
+    /// Uses actual terminal font metrics from configured terminal font
+    /// IMPORTANT: Uses full-screen height, ignoring keyboard-induced size changes
     func updateSize() {
         #if DEBUG
         let sizeCalcStartTime = Date()
@@ -364,19 +365,21 @@ final class TerminalViewUIKit: UIView {
         }
 
         let cols = max(1, Int(bounds.width / fontMetrics.width))
-        let actualRows = Int(bounds.height / fontMetrics.height)
 
-        // CRITICAL: Always report at least minimumTerminalRows to SwiftTerm
-        // This prevents TUI apps (like Claude Code /usage) from flickering when
-        // the keyboard is open and view height is reduced.
-        // Extra rows are rendered "above" the visible area - cursor stays visible
-        let rows = max(Self.minimumTerminalRows, actualRows)
-
-        #if DEBUG
-        if actualRows < Self.minimumTerminalRows {
-            print("[TerminalViewUIKit] Virtual rows: \(actualRows) visible → \(rows) reported (minimum \(Self.minimumTerminalRows))")
+        // CRITICAL: Use full-screen height, not current bounds.height
+        // When keyboard appears, SwiftUI shrinks the view bounds, but we want terminal
+        // to keep its full-screen size. We track maximum height seen and always use it.
+        // This prevents resize when keyboard shows/hides → no TUI redraws → no flickering
+        // Terminal content below visible area is simply covered by keyboard.
+        // SwiftTerm auto-scrolls to keep cursor visible.
+        if bounds.height > fullScreenHeight {
+            fullScreenHeight = bounds.height
+            #if DEBUG
+            print("[TerminalViewUIKit] Full screen height updated: \(String(format: "%.0f", fullScreenHeight))pt")
+            #endif
         }
-        #endif
+
+        let rows = max(1, Int(fullScreenHeight / fontMetrics.height))
 
         // Resize TerminalView's internal terminal
         // TerminalView.resize() handles both the terminal and view updates
@@ -385,7 +388,7 @@ final class TerminalViewUIKit: UIView {
         #if DEBUG
         let sizeCalcDuration = Date().timeIntervalSince(sizeCalcStartTime)
         if sizeCalcDuration > 0.001 { // Only log if it takes more than 1ms
-            print("[TerminalViewUIKit] Size calculation: \(cols)×\(rows), \(String(format: "%.3f", sizeCalcDuration * 1000))ms")
+            print("[TerminalViewUIKit] Size calculation: \(cols)×\(rows) (bounds: \(String(format: "%.0f", bounds.height))pt, fullScreen: \(String(format: "%.0f", fullScreenHeight))pt), \(String(format: "%.3f", sizeCalcDuration * 1000))ms")
         }
         #endif
     }
