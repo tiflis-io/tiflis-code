@@ -124,6 +124,9 @@ final class TerminalViewModel: ObservableObject {
     /// Timestamp of last resize sent to server (for debounce logic)
     private var lastResizeSentTime: Date?
 
+    /// Last size actually sent to server (to prevent duplicate resize requests)
+    private var lastSentServerSize: (cols: Int, rows: Int)?
+
     /// Minimum interval between server resizes (first resize is always immediate)
     private let minResizeInterval: TimeInterval = 0.15
 
@@ -327,6 +330,7 @@ final class TerminalViewModel: ObservableObject {
         resizeDebounceTask = nil
         pendingResize = nil
         lastResizeSentTime = nil  // Reset so next subscription gets immediate resize
+        lastSentServerSize = nil  // Reset so next subscription will send size
 
         // Clear terminal view reference to prevent feeding to disposed view
         swiftTermView = nil
@@ -448,6 +452,18 @@ final class TerminalViewModel: ObservableObject {
     private func sendResizeToServer() {
         guard let pending = pendingResize else { return }
 
+        // CRITICAL: Skip if we already sent this exact size to server
+        // This prevents resize loops where TUI apps redraw, SwiftTerm recalculates,
+        // and we keep sending the same clamped size repeatedly
+        if let lastSent = lastSentServerSize,
+           lastSent.cols == pending.cols && lastSent.rows == pending.rows {
+            #if DEBUG
+            print("[TerminalViewModel] Skipping duplicate resize: \(pending.cols)×\(pending.rows) (already sent)")
+            #endif
+            pendingResize = nil
+            return
+        }
+
         #if DEBUG
         let resizeStartTime = Date()
         #endif
@@ -465,6 +481,8 @@ final class TerminalViewModel: ObservableObject {
             try webSocketClient.sendMessage(message)
             // Track when resize was sent for debounce logic
             lastResizeSentTime = Date()
+            // Track the actual size we sent to prevent duplicate requests
+            lastSentServerSize = (cols: pending.cols, rows: pending.rows)
         } catch {
             self.error = "Failed to resize terminal: \(error.localizedDescription)"
         }
