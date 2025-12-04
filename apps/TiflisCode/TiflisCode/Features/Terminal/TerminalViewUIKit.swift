@@ -323,22 +323,27 @@ final class TerminalViewUIKit: UIView {
     /// Uses actual terminal font metrics (monospaced, configurable size)
     private var cachedFontMetrics: (width: CGFloat, height: CGFloat)?
     
+    /// Minimum rows for terminal (VT100 standard, required by TUI apps like Claude Code)
+    /// Terminal always reports at least this many rows, even if view is smaller
+    /// Extra rows will be "above" visible area (cursor/prompt stays visible at bottom)
+    private static let minimumTerminalRows = 24
+
     /// Updates terminal size based on view size
     /// Uses actual font metrics from configured terminal font
     func updateSize() {
         #if DEBUG
         let sizeCalcStartTime = Date()
         #endif
-        
+
         // Get or calculate font metrics
         let fontMetrics: (width: CGFloat, height: CGFloat)
-        
+
         if let cached = cachedFontMetrics {
             fontMetrics = cached
         } else {
             // Use actual terminal font for metrics calculation
             let terminalFont = UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular)
-            
+
             // Calculate character width from font metrics
             // For monospaced fonts, all characters have the same width
             // Use 'M' as a representative character for width calculation
@@ -346,25 +351,37 @@ final class TerminalViewUIKit: UIView {
             let fontAttributes = [NSAttributedString.Key.font: terminalFont]
             let charSize = testChar.size(withAttributes: fontAttributes)
             let fontWidth = max(charSize.width, 8) // Minimum 8pt fallback
-            
+
             // Calculate line height from font metrics
             let fontHeight = max(terminalFont.lineHeight, 16) // Minimum 16pt fallback
-            
+
             fontMetrics = (width: fontWidth, height: fontHeight)
             cachedFontMetrics = fontMetrics
-            
+
             #if DEBUG
             print("[TerminalViewUIKit] Font metrics calculated: \(String(format: "%.1f", fontWidth))×\(String(format: "%.1f", fontHeight))pt (font size: \(fontSize)pt)")
             #endif
         }
-        
+
         let cols = max(1, Int(bounds.width / fontMetrics.width))
-        let rows = max(1, Int(bounds.height / fontMetrics.height))
-        
+        let actualRows = Int(bounds.height / fontMetrics.height)
+
+        // CRITICAL: Always report at least minimumTerminalRows to SwiftTerm
+        // This prevents TUI apps (like Claude Code /usage) from flickering when
+        // the keyboard is open and view height is reduced.
+        // Extra rows are rendered "above" the visible area - cursor stays visible
+        let rows = max(Self.minimumTerminalRows, actualRows)
+
+        #if DEBUG
+        if actualRows < Self.minimumTerminalRows {
+            print("[TerminalViewUIKit] Virtual rows: \(actualRows) visible → \(rows) reported (minimum \(Self.minimumTerminalRows))")
+        }
+        #endif
+
         // Resize TerminalView's internal terminal
         // TerminalView.resize() handles both the terminal and view updates
         terminalView.resize(cols: cols, rows: rows)
-        
+
         #if DEBUG
         let sizeCalcDuration = Date().timeIntervalSince(sizeCalcStartTime)
         if sizeCalcDuration > 0.001 { // Only log if it takes more than 1ms
