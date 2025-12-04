@@ -128,14 +128,36 @@ final class ChatViewModel: ObservableObject {
             blocks = ContentParser.parse(content: content, contentType: "agent")
         }
 
-        guard !blocks.isEmpty else { return }
+        guard !blocks.isEmpty else {
+            // Empty blocks but is_complete means end of streaming
+            if isComplete {
+                isLoading = false
+                currentStreamingMessageId = nil
+            }
+            return
+        }
 
         // Update or create streaming message
         if let streamingId = currentStreamingMessageId,
            let index = messages.firstIndex(where: { $0.id == streamingId }) {
-            // Append blocks to existing message
+            // For text blocks, replace the last one instead of appending
+            // This handles LangGraph sending full state on each update
             var updatedMessage = messages[index]
-            updatedMessage.contentBlocks.append(contentsOf: blocks)
+
+            for newBlock in blocks {
+                if case .text = newBlock,
+                   let lastIndex = updatedMessage.contentBlocks.lastIndex(where: {
+                       if case .text = $0 { return true }
+                       return false
+                   }) {
+                    // Replace the last text block with the new one
+                    updatedMessage.contentBlocks[lastIndex] = newBlock
+                } else {
+                    // Append non-text blocks (tool calls, etc.)
+                    updatedMessage.contentBlocks.append(newBlock)
+                }
+            }
+
             updatedMessage.isStreaming = !isComplete
             messages[index] = updatedMessage
         } else {

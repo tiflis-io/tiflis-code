@@ -51,8 +51,8 @@ struct ChatView: View {
                                     .id(message.id)
                             }
                             
-                            // Typing indicator
-                            if viewModel.isLoading {
+                            // Typing indicator - show when waiting for response or during streaming
+                            if viewModel.isLoading || viewModel.messages.last?.isStreaming == true {
                                 TypingIndicator(sessionType: session.type)
                                     .id("typing")
                             }

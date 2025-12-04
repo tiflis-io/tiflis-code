@@ -201,11 +201,6 @@ export class SupervisorAgent extends EventEmitter {
     this.logger.info({ command, deviceId }, 'Executing supervisor command with streaming');
 
     try {
-      // Emit user message block
-      const userBlock = createTextBlock(command);
-      this.logger.debug({ deviceId, blockType: 'user' }, 'Emitting user block');
-      this.emit('blocks', deviceId, [userBlock], false);
-
       // Get conversation history for this device
       const history = this.getConversationHistory(deviceId);
 

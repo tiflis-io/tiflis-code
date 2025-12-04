@@ -15,14 +15,9 @@ struct MessageContentView: View {
     var onAction: ((ActionType) -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             ForEach(blocks) { block in
                 contentView(for: block)
-            }
-
-            // Streaming cursor at the end
-            if isStreaming {
-                StreamingCursor()
             }
         }
     }
