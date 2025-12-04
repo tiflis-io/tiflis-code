@@ -25,6 +25,7 @@ final class ChatViewModel: ObservableObject {
     let session: Session
     private let connectionService: ConnectionServicing
     private let webSocketClient: WebSocketClientProtocol
+    private let deviceId: String
 
     // MARK: - State
 
@@ -36,11 +37,13 @@ final class ChatViewModel: ObservableObject {
 
     init(
         session: Session,
-        connectionService: ConnectionServicing
+        connectionService: ConnectionServicing,
+        deviceId: String = DeviceIDManager().deviceID
     ) {
         self.session = session
         self.connectionService = connectionService
         self.webSocketClient = connectionService.webSocketClient
+        self.deviceId = deviceId
 
         observeConnectionState()
         observeMessages()
@@ -97,6 +100,12 @@ final class ChatViewModel: ObservableObject {
         case "supervisor.output":
             handleSupervisorOutput(message)
 
+        case "supervisor.user_message":
+            handleSupervisorUserMessage(message)
+
+        case "supervisor.context_cleared":
+            handleSupervisorContextCleared(message)
+
         case "session.output":
             handleSessionOutput(message)
 
@@ -108,6 +117,9 @@ final class ChatViewModel: ObservableObject {
 
         case "error":
             handleError(message)
+
+        case "sync.state":
+            handleSyncState(message)
 
         default:
             break
@@ -267,6 +279,94 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
+    private func handleSyncState(_ message: [String: Any]) {
+        // Only handle for supervisor sessions
+        guard session.type == .supervisor,
+              let payload = message["payload"] as? [String: Any],
+              let supervisorHistory = payload["supervisorHistory"] as? [[String: Any]] else { return }
+
+        // Don't reload if we already have messages (beyond the welcome message)
+        // This prevents duplicate messages on reconnect
+        if messages.count > 1 {
+            return
+        }
+
+        // Clear existing messages (including welcome message)
+        messages.removeAll()
+
+        // Sort history by sequence to ensure correct order
+        let sortedHistory = supervisorHistory.sorted { item1, item2 in
+            let seq1 = item1["sequence"] as? Int ?? 0
+            let seq2 = item2["sequence"] as? Int ?? 0
+            return seq1 < seq2
+        }
+
+        // Restore history from server
+        for historyItem in sortedHistory {
+            guard let role = historyItem["role"] as? String,
+                  let content = historyItem["content"] as? String else { continue }
+
+            let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
+            let message = Message(
+                sessionId: session.id,
+                role: messageRole,
+                content: content
+            )
+            messages.append(message)
+        }
+
+        // If no history was restored, show welcome message
+        if messages.isEmpty {
+            let welcomeMessage = Message(
+                sessionId: session.id,
+                role: .assistant,
+                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
+            )
+            messages.append(welcomeMessage)
+        }
+    }
+
+    /// Handles user messages from other devices (for multi-device sync)
+    private func handleSupervisorUserMessage(_ message: [String: Any]) {
+        guard session.type == .supervisor,
+              let payload = message["payload"] as? [String: Any],
+              let content = payload["content"] as? String,
+              let fromDeviceId = payload["from_device_id"] as? String else { return }
+
+        // Skip if this is our own message (we already added it locally)
+        guard fromDeviceId != deviceId else { return }
+
+        // Add user message from another device
+        let userMessage = Message(
+            sessionId: session.id,
+            role: .user,
+            content: content
+        )
+        messages.append(userMessage)
+
+        // Show loading indicator since we're waiting for response
+        isLoading = true
+    }
+
+    /// Handles context cleared notification from server
+    private func handleSupervisorContextCleared(_ message: [String: Any]) {
+        guard session.type == .supervisor else { return }
+
+        // Clear all messages
+        messages.removeAll()
+
+        // Show welcome message
+        let welcomeMessage = Message(
+            sessionId: session.id,
+            role: .assistant,
+            content: "Context cleared. How can I help you?"
+        )
+        messages.append(welcomeMessage)
+
+        isLoading = false
+        currentStreamingMessageId = nil
+    }
+
     // MARK: - Actions
 
     func sendMessage() {
@@ -364,7 +464,8 @@ final class ChatViewModel: ObservableObject {
 
     func clearContext() {
         if session.type == .supervisor {
-            // Send clear context command
+            // Send clear context command to server
+            // Server will broadcast supervisor.context_cleared to all clients
             let requestId = UUID().uuidString
             let message: [String: Any] = [
                 "type": "supervisor.clear_context",
@@ -373,15 +474,7 @@ final class ChatViewModel: ObservableObject {
 
             do {
                 try webSocketClient.sendMessage(message)
-                messages.removeAll()
-
-                // Re-add welcome message
-                let welcomeMessage = Message(
-                    sessionId: session.id,
-                    role: .assistant,
-                    content: "Context cleared. How can I help you?"
-                )
-                messages.append(welcomeMessage)
+                // Don't clear locally - wait for server broadcast (handleSupervisorContextCleared)
             } catch {
                 self.error = "Failed to clear context: \(error.localizedDescription)"
             }

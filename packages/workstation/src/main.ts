@@ -30,6 +30,7 @@ import { TerminateSessionUseCase } from './application/commands/terminate-sessio
 import { ListSessionsUseCase } from './application/queries/list-sessions.js';
 import { SubscriptionService } from './application/services/subscription-service.js';
 import { MessageBroadcasterImpl } from './application/services/message-broadcaster-impl.js';
+import { ChatHistoryService } from './application/services/chat-history-service.js';
 import { InMemorySessionManager } from './infrastructure/persistence/in-memory-session-manager.js';
 import { DomainError } from './domain/errors/domain-errors.js';
 import { SupervisorAgent } from './infrastructure/agents/supervisor/supervisor-agent.js';
@@ -241,6 +242,12 @@ async function bootstrap(): Promise<void> {
   initDatabase(dataDir);
   logger.info({ dataDir }, 'Database initialized');
 
+  // Create services
+  const chatHistoryService = new ChatHistoryService({
+    dataDir,
+    logger,
+  });
+
   // Create repositories
   const workstationMetadataRepository = new WorkstationMetadataRepository();
 
@@ -320,11 +327,27 @@ async function bootstrap(): Promise<void> {
         ?? (syncMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(syncMessage.device_id)) : undefined);
       const subscriptions = client ? client.getSubscriptions() : [];
       const sessions = sessionManager.getSessionInfos();
-      
+
+      // Get global supervisor history (shared across all devices)
+      const supervisorHistory = chatHistoryService.getSupervisorHistory().map(msg => ({
+        sequence: msg.sequence,
+        role: msg.role,
+        content: msg.content,
+        createdAt: msg.createdAt.toISOString(),
+      }));
+
+      // Restore global supervisor history into agent's in-memory cache from database
+      if (supervisorHistory.length > 0) {
+        const historyForAgent = supervisorHistory
+          .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+          .map(msg => ({ role: msg.role as 'user' | 'assistant', content: msg.content }));
+        supervisorAgent.restoreHistory(historyForAgent);
+      }
+
       socket.send(JSON.stringify({
         type: 'sync.state',
         id: syncMessage.id,
-        payload: { sessions, subscriptions },
+        payload: { sessions, subscriptions, supervisorHistory },
       }));
       return Promise.resolve();
     },
@@ -377,6 +400,23 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
+      // Save user message to persistent history (global, not per-device)
+      chatHistoryService.saveSupervisorMessage('user', commandMessage.payload.command);
+
+      // Broadcast user message to ALL clients for sync
+      // (so other devices see the message immediately)
+      if (messageBroadcaster) {
+        const userMessageEvent = {
+          type: 'supervisor.user_message',
+          payload: {
+            content: commandMessage.payload.command,
+            timestamp: Date.now(),
+            from_device_id: deviceId, // So sender can skip duplicate
+          },
+        };
+        messageBroadcaster.broadcastToAll(JSON.stringify(userMessageEvent));
+      }
+
       // Acknowledge command receipt
       socket.send(JSON.stringify({
         type: 'response',
@@ -391,24 +431,29 @@ async function bootstrap(): Promise<void> {
       );
     },
 
-    // Clear supervisor conversation history
+    // Clear supervisor conversation history (global)
     'supervisor.clear_context': (socket, message) => {
       const clearMessage = message as { id: string; device_id?: string };
 
-      // Try to get device ID from socket or from message (tunnel connection)
-      let deviceId: string | undefined;
+      // Verify client is authenticated
       const directClient = clientRegistry.getBySocket(socket);
-      if (directClient) {
-        deviceId = directClient.deviceId.value;
-      } else if (clearMessage.device_id) {
-        const tunnelClient = clientRegistry.getByDeviceId(new DeviceId(clearMessage.device_id));
-        if (tunnelClient?.isAuthenticated) {
-          deviceId = clearMessage.device_id;
-        }
-      }
+      const tunnelClient = clearMessage.device_id
+        ? clientRegistry.getByDeviceId(new DeviceId(clearMessage.device_id))
+        : undefined;
+      const isAuthenticated = directClient?.isAuthenticated || tunnelClient?.isAuthenticated;
 
-      if (deviceId) {
-        supervisorAgent.clearHistory(deviceId);
+      if (isAuthenticated) {
+        // Clear both in-memory and persistent history (global)
+        supervisorAgent.clearHistory();
+        chatHistoryService.clearSupervisorHistory();
+
+        // Notify all clients that context was cleared
+        const clearNotification = JSON.stringify({
+          type: 'supervisor.context_cleared',
+          payload: { timestamp: Date.now() },
+        });
+        broadcaster.broadcastToAll(clearNotification);
+
         socket.send(JSON.stringify({
           type: 'response',
           id: clearMessage.id,
@@ -919,8 +964,8 @@ async function bootstrap(): Promise<void> {
     broadcaster.broadcastToSubscribers(sessionId, JSON.stringify(outputEvent));
   });
 
-  // Stream Supervisor Agent output to the client that initiated the command
-  supervisorAgent.on('blocks', (deviceId: string, blocks: ContentBlock[], isComplete: boolean) => {
+  // Stream Supervisor Agent output to ALL clients (supervisor chat is global/shared)
+  supervisorAgent.on('blocks', (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
     // Build plain text content for backward compatibility
     const textContent = blocks
       .filter((b) => b.block_type === 'text')
@@ -940,11 +985,12 @@ async function bootstrap(): Promise<void> {
 
     const message = JSON.stringify(outputEvent);
 
-    // Try to send to specific client first (works for both direct and tunnel connections)
-    if (!broadcaster.sendToClient(deviceId, message)) {
-      // Fallback to broadcast if client not found
-      logger.warn({ deviceId }, 'Could not send supervisor output to client, broadcasting');
-      broadcaster.broadcastToAll(message);
+    // Broadcast to ALL clients since supervisor chat is shared across devices
+    broadcaster.broadcastToAll(message);
+
+    // Save assistant response to persistent history when streaming completes (global)
+    if (isComplete && finalOutput && finalOutput.length > 0) {
+      chatHistoryService.saveSupervisorMessage('assistant', finalOutput);
     }
   });
 

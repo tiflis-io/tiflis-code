@@ -27,6 +27,7 @@ export interface ChatHistoryServiceConfig {
 export interface StoredMessage {
   id: string;
   sessionId: string;
+  sequence: number;
   role: 'user' | 'assistant' | 'system';
   contentType: 'text' | 'audio' | 'transcription';
   content: string;
@@ -164,6 +165,7 @@ export class ChatHistoryService {
     return rows.map((row) => ({
       id: row.id,
       sessionId: row.sessionId,
+      sequence: row.sequence,
       role: row.role as 'user' | 'assistant' | 'system',
       contentType: row.contentType as 'text' | 'audio' | 'transcription',
       content: row.content,
@@ -182,6 +184,7 @@ export class ChatHistoryService {
     return rows.map((row) => ({
       id: row.id,
       sessionId: row.sessionId,
+      sequence: row.sequence,
       role: row.role as 'user' | 'assistant' | 'system',
       contentType: row.contentType as 'text' | 'audio' | 'transcription',
       content: row.content,
@@ -242,6 +245,90 @@ export class ChatHistoryService {
       default:
         return 'system';
     }
+  }
+
+  // ============================================================================
+  // Supervisor History Methods
+  // ============================================================================
+
+  /**
+   * Global supervisor session ID (shared across all devices).
+   */
+  private static readonly SUPERVISOR_SESSION_ID = 'supervisor';
+
+  /**
+   * Ensures the global supervisor session exists.
+   */
+  ensureSupervisorSession(): void {
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+    try {
+      const existing = this.sessionRepo.getById(sessionId);
+      if (!existing) {
+        this.sessionRepo.create({
+          id: sessionId,
+          type: 'supervisor',
+          workingDir: '/',
+        });
+        this.logger.debug({ sessionId }, 'Created global supervisor session');
+      }
+    } catch {
+      // Session might already exist, ignore
+    }
+  }
+
+  /**
+   * Saves a supervisor message to the database.
+   * Messages are shared across all devices connected to this workstation.
+   */
+  saveSupervisorMessage(
+    role: 'user' | 'assistant',
+    content: string
+  ): string {
+    this.ensureSupervisorSession();
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+
+    const params: CreateMessageParams = {
+      sessionId,
+      role,
+      contentType: 'text',
+      content,
+      isComplete: true,
+    };
+
+    const saved = this.messageRepo.create(params);
+    this.logger.debug({ messageId: saved.id, role }, 'Supervisor message saved');
+    return saved.id;
+  }
+
+  /**
+   * Gets supervisor chat history (global, shared across all devices).
+   * Returns messages sorted by sequence (oldest first) for chronological display.
+   */
+  getSupervisorHistory(limit = 50): StoredMessage[] {
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+    const rows = this.messageRepo.getBySession(sessionId, limit);
+    // Reverse to get chronological order (oldest first, since getBySession returns newest first)
+    return rows.reverse().map((row) => ({
+      id: row.id,
+      sessionId: row.sessionId,
+      sequence: row.sequence,
+      role: row.role as 'user' | 'assistant' | 'system',
+      contentType: row.contentType as 'text' | 'audio' | 'transcription',
+      content: row.content,
+      audioInputPath: row.audioInputPath,
+      audioOutputPath: row.audioOutputPath,
+      isComplete: row.isComplete ?? false,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /**
+   * Clears supervisor chat history (global).
+   */
+  clearSupervisorHistory(): void {
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+    this.messageRepo.deleteBySession(sessionId);
+    this.logger.info({ sessionId }, 'Supervisor history cleared');
   }
 }
 

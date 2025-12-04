@@ -4,7 +4,7 @@
  * @license MIT
  */
 
-import { eq, desc, gt, and } from 'drizzle-orm';
+import { eq, desc, gt, and, max } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../database/client.js';
 import { messages, type MessageRow, type NewMessageRow } from '../database/schema.js';
@@ -24,13 +24,23 @@ export interface CreateMessageParams {
  */
 export class MessageRepository {
   /**
-   * Creates a new message.
+   * Creates a new message with auto-incrementing sequence within session.
    */
   create(params: CreateMessageParams): MessageRow {
     const db = getDatabase();
+
+    // Get next sequence number for this session
+    const result = db
+      .select({ maxSeq: max(messages.sequence) })
+      .from(messages)
+      .where(eq(messages.sessionId, params.sessionId))
+      .get();
+    const nextSequence = (result?.maxSeq ?? 0) + 1;
+
     const newMessage: NewMessageRow = {
       id: nanoid(16),
       sessionId: params.sessionId,
+      sequence: nextSequence,
       role: params.role,
       contentType: params.contentType,
       content: params.content,
@@ -46,6 +56,7 @@ export class MessageRepository {
 
   /**
    * Gets messages for a session with pagination.
+   * Returns messages ordered by sequence descending (newest first).
    */
   getBySession(sessionId: string, limit = 100): MessageRow[] {
     const db = getDatabase();
@@ -53,7 +64,7 @@ export class MessageRepository {
       .select()
       .from(messages)
       .where(eq(messages.sessionId, sessionId))
-      .orderBy(desc(messages.createdAt))
+      .orderBy(desc(messages.sequence))
       .limit(limit)
       .all();
   }

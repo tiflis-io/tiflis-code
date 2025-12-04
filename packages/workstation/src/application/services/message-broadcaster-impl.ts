@@ -31,41 +31,37 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
 
   /**
    * Broadcasts a message to all connected and authenticated clients.
+   * Sends the message once to the tunnel, which forwards it to all clients.
    */
   broadcastToAll(message: string): void {
     const clients = this.deps.clientRegistry.getAll();
-    let sent = 0;
+    const authenticatedCount = clients.filter((c) => c.isAuthenticated).length;
 
-    for (const client of clients) {
-      if (client.isAuthenticated) {
-        if (this.deps.tunnelClient.send(message)) {
-          sent++;
-        }
-      }
+    if (authenticatedCount > 0) {
+      // Send once to tunnel - it will forward to all connected clients
+      const sent = this.deps.tunnelClient.send(message);
+      this.logger.debug({ sent, authenticatedClients: authenticatedCount }, 'Broadcast to all');
     }
-
-    this.logger.debug({ sent, total: clients.length }, 'Broadcast to all');
   }
 
   /**
    * Broadcasts a message to all clients subscribed to a session.
+   * Note: This method is currently unused. Use broadcastToSubscribers instead.
    */
   broadcastToSession(sessionId: SessionId, message: string): void {
     const subscribers = this.deps.clientRegistry.getSubscribers(sessionId);
-    let sent = 0;
+    const authenticatedCount = subscribers.filter((c) => c.isAuthenticated).length;
 
-    for (const client of subscribers) {
-      if (client.isAuthenticated) {
-        if (this.deps.tunnelClient.send(message)) {
-          sent++;
-        }
-      }
+    if (authenticatedCount > 0) {
+      // Send once to tunnel - it will forward to all connected clients
+      // Note: This sends to ALL clients, not just session subscribers.
+      // For proper session routing, use broadcastToSubscribers instead.
+      const sent = this.deps.tunnelClient.send(message);
+      this.logger.debug(
+        { sessionId: sessionId.value, sent, authenticatedSubscribers: authenticatedCount },
+        'Broadcast to session'
+      );
     }
-
-    this.logger.debug(
-      { sessionId: sessionId.value, sent, subscribers: subscribers.length },
-      'Broadcast to session'
-    );
   }
 
   /**

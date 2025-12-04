@@ -59,8 +59,13 @@ interface ConversationEntry {
  * Events emitted by SupervisorAgent during streaming execution.
  */
 export interface SupervisorAgentEvents {
-  /** Emitted when content blocks are received during streaming */
-  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean) => void;
+  /** Emitted when content blocks are received during streaming
+   * @param deviceId - The device ID that initiated the command
+   * @param blocks - Content blocks to send to client
+   * @param isComplete - Whether streaming is complete
+   * @param finalOutput - The complete response text (only present when isComplete=true)
+   */
+  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => void;
 }
 
 /**
@@ -71,11 +76,13 @@ export interface SupervisorAgentEvents {
  * - Git worktree management
  * - Session lifecycle (create, list, terminate)
  * - File system operations
+ *
+ * Note: Conversation history is global (shared across all devices connected to this workstation).
  */
 export class SupervisorAgent extends EventEmitter {
   private readonly logger: Logger;
   private readonly agent: ReturnType<typeof createReactAgent>;
-  private readonly conversationHistory = new Map<string, ConversationEntry[]>();
+  private conversationHistory: ConversationEntry[] = [];
 
   constructor(config: SupervisorAgentConfig) {
     super();
@@ -137,6 +144,7 @@ export class SupervisorAgent extends EventEmitter {
 
   /**
    * Executes a command through the supervisor agent.
+   * Note: deviceId is used for routing responses, not for history (history is global).
    */
   async execute(
     command: string,
@@ -146,8 +154,8 @@ export class SupervisorAgent extends EventEmitter {
     this.logger.info({ command, deviceId, currentSessionId }, 'Executing supervisor command');
 
     try {
-      // Get conversation history for this device
-      const history = this.getConversationHistory(deviceId);
+      // Get global conversation history
+      const history = this.getConversationHistory();
 
       // Build messages from history
       const messages: BaseMessage[] = [
@@ -170,9 +178,9 @@ export class SupervisorAgent extends EventEmitter {
           ? content
           : JSON.stringify(content);
 
-      // Update conversation history
-      this.addToHistory(deviceId, 'user', command);
-      this.addToHistory(deviceId, 'assistant', output);
+      // Update global conversation history
+      this.addToHistory('user', command);
+      this.addToHistory('assistant', output);
 
       this.logger.debug({ output: output.slice(0, 200) }, 'Supervisor command completed');
 
@@ -193,6 +201,7 @@ export class SupervisorAgent extends EventEmitter {
   /**
    * Executes a command with streaming output.
    * Emits 'blocks' events as content is generated.
+   * Note: deviceId is used for routing responses, history is global.
    */
   async executeWithStream(
     command: string,
@@ -201,8 +210,8 @@ export class SupervisorAgent extends EventEmitter {
     this.logger.info({ command, deviceId }, 'Executing supervisor command with streaming');
 
     try {
-      // Get conversation history for this device
-      const history = this.getConversationHistory(deviceId);
+      // Get global conversation history
+      const history = this.getConversationHistory();
 
       // Build messages from history
       const messages: BaseMessage[] = [
@@ -270,13 +279,13 @@ export class SupervisorAgent extends EventEmitter {
         }
       }
 
-      // Update conversation history
-      this.addToHistory(deviceId, 'user', command);
-      this.addToHistory(deviceId, 'assistant', finalOutput);
+      // Update global conversation history
+      this.addToHistory('user', command);
+      this.addToHistory('assistant', finalOutput);
 
-      // Emit completion
+      // Emit completion with final output for persistence
       const completionBlock = createStatusBlock('Complete');
-      this.emit('blocks', deviceId, [completionBlock], true);
+      this.emit('blocks', deviceId, [completionBlock], true, finalOutput);
 
       this.logger.debug({ output: finalOutput.slice(0, 200) }, 'Supervisor streaming completed');
     } catch (error) {
@@ -307,11 +316,23 @@ export class SupervisorAgent extends EventEmitter {
   }
 
   /**
-   * Clears conversation history for a device.
+   * Clears global conversation history.
    */
-  clearHistory(deviceId: string): void {
-    this.conversationHistory.delete(deviceId);
-    this.logger.info({ deviceId }, 'Conversation history cleared');
+  clearHistory(): void {
+    this.conversationHistory = [];
+    this.logger.info('Global conversation history cleared');
+  }
+
+  /**
+   * Restores global conversation history from persistent storage.
+   * Called on startup to sync in-memory cache with database.
+   */
+  restoreHistory(history: Array<{ role: 'user' | 'assistant'; content: string }>): void {
+    if (history.length === 0) return;
+
+    // Only keep last 20 messages
+    this.conversationHistory = history.slice(-20);
+    this.logger.debug({ messageCount: this.conversationHistory.length }, 'Global conversation history restored');
   }
 
   /**
@@ -357,24 +378,21 @@ Example: \`my-app--feature-auth\` is a worktree of \`my-app\` for the \`feature/
   }
 
   /**
-   * Gets conversation history for a device.
+   * Gets global conversation history.
    */
-  private getConversationHistory(deviceId: string): ConversationEntry[] {
-    return this.conversationHistory.get(deviceId) ?? [];
+  private getConversationHistory(): ConversationEntry[] {
+    return this.conversationHistory;
   }
 
   /**
-   * Adds an entry to conversation history.
+   * Adds an entry to global conversation history.
    */
-  private addToHistory(deviceId: string, role: 'user' | 'assistant', content: string): void {
-    const history = this.getConversationHistory(deviceId);
-    history.push({ role, content });
+  private addToHistory(role: 'user' | 'assistant', content: string): void {
+    this.conversationHistory.push({ role, content });
 
     // Keep only last 20 messages to avoid context overflow
-    if (history.length > 20) {
-      history.splice(0, history.length - 20);
+    if (this.conversationHistory.length > 20) {
+      this.conversationHistory.splice(0, this.conversationHistory.length - 20);
     }
-
-    this.conversationHistory.set(deviceId, history);
   }
 }

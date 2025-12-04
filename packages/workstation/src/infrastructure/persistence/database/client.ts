@@ -31,8 +31,8 @@ export function initDatabase(dataDir: string): DrizzleDatabase {
   
   // Enable WAL mode for better concurrent access
   sqlite.pragma('journal_mode = WAL');
-  
-  // Create tables if they don't exist
+
+  // Create tables if they don't exist (without sequence column for backward compatibility)
   sqlite.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id TEXT PRIMARY KEY,
@@ -76,6 +76,26 @@ export function initDatabase(dataDir: string): DrizzleDatabase {
     CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at);
     CREATE INDEX IF NOT EXISTS idx_subscriptions_device_id ON subscriptions(device_id);
     CREATE INDEX IF NOT EXISTS idx_subscriptions_session_id ON subscriptions(session_id);
+  `);
+
+  // Migration: add sequence column if it doesn't exist
+  const columns = sqlite.pragma('table_info(messages)') as Array<{ name: string }>;
+  const hasSequence = columns.some((col) => col.name === 'sequence');
+  if (!hasSequence) {
+    sqlite.exec(`
+      ALTER TABLE messages ADD COLUMN sequence INTEGER DEFAULT 0;
+      -- Update existing rows with sequence based on created_at order
+      UPDATE messages SET sequence = (
+        SELECT COUNT(*) FROM messages m2
+        WHERE m2.session_id = messages.session_id
+        AND m2.created_at <= messages.created_at
+      );
+    `);
+  }
+
+  // Create index for sequence after migration (safe to run multiple times with IF NOT EXISTS)
+  sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_messages_sequence ON messages(session_id, sequence);
   `);
 
   db = drizzle(sqlite, { schema });

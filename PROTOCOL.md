@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.2-blue" alt="Version 1.2">
+  <img src="https://img.shields.io/badge/version-1.3-blue" alt="Version 1.3">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket-green" alt="WebSocket">
 </p>
@@ -26,7 +26,14 @@
 
 ## Changelog
 
-### Version 1.2 (Current)
+### Version 1.3 (Current)
+- **Added:** Multi-device synchronization for Supervisor chat
+- **Added:** `supervisor.user_message` broadcast event for syncing user messages across devices
+- **Added:** `supervisor.context_cleared` broadcast event for syncing context clear across devices
+- **Added:** `supervisorHistory` in `sync.state` payload for restoring chat history on reconnect
+- **Enhanced:** Supervisor chat history is now global (shared across all devices connected to workstation)
+
+### Version 1.2
 - **Added:** `content_blocks` array in `session.output` for structured agent output (text, code, tool calls, thinking, status, error)
 - **Added:** `supervisor.output` streaming message for Supervisor Agent chat
 - **Added:** `supervisor.command` now returns streaming output instead of blocking response
@@ -519,7 +526,67 @@ worktree management, and session orchestration. Output is streamed using Content
     success: true
   }
 }
+
+// Broadcast to all connected devices
+{
+  type: "supervisor.context_cleared",
+  payload: {
+    timestamp: number
+  }
+}
 ```
+
+### 4.6 Multi-Device Synchronization
+
+Supervisor chat is **global** — shared across all devices connected to the same workstation.
+When one device sends a message, all other devices receive it in real-time.
+
+#### User Message Broadcast
+
+When a client sends `supervisor.command`, the server broadcasts the user message to all connected devices:
+
+```typescript
+// Server → All clients (broadcast)
+{
+  type: "supervisor.user_message",
+  payload: {
+    content: string,           // The user's message
+    timestamp: number,
+    from_device_id: string     // Device that sent the message
+  }
+}
+```
+
+**Client behavior:**
+- Compare `from_device_id` with local device ID
+- If match → skip (message already added locally before sending)
+- If different → add message to chat (from another device)
+
+#### Supervisor Output Broadcast
+
+All `supervisor.output` events are broadcast to **all** connected devices, not just the sender.
+
+#### History Sync on Reconnect
+
+When a client reconnects, it receives chat history in `sync.state`:
+
+```typescript
+{
+  type: "sync.state",
+  id: string,
+  payload: {
+    sessions: [...],
+    subscriptions: [...],
+    supervisorHistory?: Array<{    // Supervisor chat history
+      role: "user" | "assistant",
+      content: string,
+      sequence: number             // For ordering
+    }>
+  }
+}
+```
+
+**Note:** History is limited to the last 50 messages.
 
 ---
 
@@ -999,6 +1066,8 @@ function handleTerminalOutput(payload) {
 | `supervisor.list_sessions` | List active sessions |
 | `supervisor.create_session` | Create new session |
 | `supervisor.terminate_session` | Terminate session |
+| `supervisor.command` | Natural language command to Supervisor Agent |
+| `supervisor.clear_context` | Clear Supervisor chat history |
 | `session.subscribe` | Subscribe to session output |
 | `session.unsubscribe` | Unsubscribe from session |
 | `session.execute` | Execute command (text/audio) |
@@ -1024,6 +1093,9 @@ function handleTerminalOutput(payload) {
 | `session.output` | Session output (agent/terminal/transcription), includes `sequence` for terminal |
 | `session.error` | Session error |
 | `session.replay.data` | Replayed messages with sequence metadata |
+| `supervisor.output` | Supervisor Agent streaming output (broadcast to all) |
+| `supervisor.user_message` | User message broadcast for multi-device sync |
+| `supervisor.context_cleared` | Context cleared broadcast for multi-device sync |
 | `connection.workstation_offline` | Workstation disconnected |
 | `connection.workstation_online` | Workstation reconnected |
 

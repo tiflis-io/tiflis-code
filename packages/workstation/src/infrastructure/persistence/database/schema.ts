@@ -29,6 +29,7 @@ export const messages = sqliteTable('messages', {
   sessionId: text('session_id')
     .notNull()
     .references(() => sessions.id),
+  sequence: integer('sequence').notNull(), // Message order within session (1, 2, 3, ...)
   role: text('role').notNull(), // 'user' | 'assistant' | 'system'
   contentType: text('content_type').notNull(), // 'text' | 'audio' | 'transcription'
   content: text('content').notNull(),
