@@ -77,6 +77,35 @@ struct MessageBubbleContent: View {
     let isUser: Bool
     var onAction: ((ActionType) -> Void)?
 
+    /// Full text content for copying
+    private var fullTextContent: String {
+        message.contentBlocks.compactMap { block -> String? in
+            switch block {
+            case .text(_, let text):
+                return text
+            case .code(_, _, let code):
+                return code
+            case .thinking(_, let text):
+                return text
+            case .error(_, let text):
+                return text
+            case .status(_, let text):
+                return text
+            case .toolCall(_, let name, let input, let output, _):
+                var parts = [name]
+                if let input = input { parts.append("Input: \(input)") }
+                if let output = output { parts.append("Output: \(output)") }
+                return parts.joined(separator: "\n")
+            case .voiceInput(_, _, let transcription, _):
+                return transcription
+            case .voiceOutput(_, _, let text, _):
+                return text
+            case .actionButtons:
+                return nil
+            }
+        }.joined(separator: "\n\n")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             MessageContentView(
@@ -88,6 +117,25 @@ struct MessageBubbleContent: View {
         .padding(12)
         .background(bubbleBackground)
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contextMenu {
+            Button {
+                UIPasteboard.general.string = fullTextContent
+            } label: {
+                Label("Copy", systemImage: "doc.on.doc")
+            }
+
+            if isUser {
+                Button {
+                    onAction?(.sendMessage(fullTextContent))
+                } label: {
+                    Label("Resend", systemImage: "arrow.clockwise")
+                }
+            }
+
+            ShareLink(item: fullTextContent) {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        }
     }
 
     @ViewBuilder
