@@ -381,10 +381,17 @@ final class TerminalViewModel: ObservableObject {
     }
     
     func resizeTerminal(cols: Int, rows: Int) {
-        // Enforce minimum terminal size for stability with TUI apps
-        // Prevents display issues when terminal is too small (e.g., during keyboard transitions)
+        // Enforce minimum terminal size to match server constraints
+        // Server enforces minimum 24 rows (VT100 standard), so we must match to prevent resize loops
+        // If iOS sends 22 rows but server enforces 24, TUI apps will flicker as they redraw
         let safeCols = max(40, cols)
-        let safeRows = max(10, rows)
+        let safeRows = max(24, rows)  // Must match server's MIN_TERMINAL_ROWS
+
+        #if DEBUG
+        if rows < 24 {
+            print("[TerminalVM:\(session.id.prefix(8))] resizeTerminal: requested \(cols)×\(rows) → clamped to \(safeCols)×\(safeRows) (minimum 24 rows)")
+        }
+        #endif
 
         // Only resize if size actually changed
         guard terminalSize.cols != safeCols || terminalSize.rows != safeRows else {
