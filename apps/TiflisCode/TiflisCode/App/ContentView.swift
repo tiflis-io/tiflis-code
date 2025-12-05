@@ -201,6 +201,7 @@ struct SessionDetailView: View {
                     connectionService: appState.connectionService,
                     appState: appState
                 )
+                .id(session.id)  // Force SwiftUI to create new ViewModel for each session
             case .terminal:
                 TerminalView(
                     session: session,

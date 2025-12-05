@@ -52,6 +52,13 @@ final class AppState: ObservableObject {
     /// Loading state for supervisor chat
     @Published var supervisorIsLoading: Bool = false
 
+    /// Agent session messages - keyed by session ID, synced across devices
+    @Published var agentMessages: [String: [Message]] = [:]
+    /// Current streaming message IDs for agent sessions - keyed by session ID
+    var agentStreamingMessageIds: [String: String] = [:]
+    /// Loading states for agent sessions - keyed by session ID
+    @Published var agentIsLoading: [String: Bool] = [:]
+
     @AppStorage("tunnelURL") private var tunnelURL = ""
     @AppStorage("tunnelId") private var tunnelId = ""
 
@@ -168,6 +175,10 @@ final class AppState: ObservableObject {
             handleSupervisorUserMessage(message)
         case "supervisor.context_cleared":
             handleSupervisorContextCleared(message)
+        case "session.output":
+            handleSessionOutput(message)
+        case "session.user_message":
+            handleSessionUserMessage(message)
         default:
             break
         }
@@ -204,32 +215,50 @@ final class AppState: ObservableObject {
               let sessionId = payload["session_id"] as? String else {
             return
         }
-        
+
         print("📥 AppState: Received response for request ID: \(requestId), session ID: \(sessionId)")
-        
+
         // Find temporary session using request ID mapping
         guard let tempSessionId = pendingSessionCreations[requestId] else {
             print("⚠️ AppState: No pending session creation found for request ID: \(requestId)")
             return
         }
-        
+
         // Remove from pending
         pendingSessionCreations.removeValue(forKey: requestId)
-        
+
+        // Extract additional data from response
+        let workingDir = payload["working_dir"] as? String
+
+        // Check if session.created already added this session (race condition)
+        // If so, just remove the temp session and update selection
+        if sessions.contains(where: { $0.id == sessionId }) {
+            print("ℹ️ AppState: Session already exists from broadcast, removing temp session")
+            sessions.removeAll { $0.id == tempSessionId }
+            if selectedSessionId == tempSessionId {
+                selectedSessionId = sessionId
+            }
+            return
+        }
+
         // Find and update temporary session with actual session ID
         if let index = sessions.firstIndex(where: { $0.id == tempSessionId }) {
-            let updatedSession = sessions[index]
+            let tempSession = sessions[index]
+
             // Create new session with actual session ID from backend
+            // Include workingDir from response payload
             let newSession = Session(
                 id: sessionId,
-                type: updatedSession.type,
-                workspace: updatedSession.workspace,
-                project: updatedSession.project
+                type: tempSession.type,
+                workspace: tempSession.workspace,
+                project: tempSession.project,
+                worktree: tempSession.worktree,
+                workingDir: workingDir
             )
             sessions[index] = newSession
-            
+
             print("✅ AppState: Updated session from temp ID \(tempSessionId) to actual ID \(sessionId)")
-            
+
             // Update selected session ID if it was the temp one
             if selectedSessionId == tempSessionId {
                 selectedSessionId = sessionId
@@ -243,16 +272,16 @@ final class AppState: ObservableObject {
         // Handle session.created broadcast
         guard let sessionId = message["session_id"] as? String,
               let payload = message["payload"] as? [String: Any] else {
+            print("⚠️ AppState: session.created missing session_id or payload")
             return
         }
-        
-        // Check if we already have this session (from response handler)
-        if sessions.contains(where: { $0.id == sessionId }) {
-            return // Already handled
-        }
-        
-        // Create new session from broadcast
+
+        print("📥 AppState: Received session.created for session: \(sessionId)")
+        print("📥 AppState: session.created payload: \(payload)")
+
+        // Parse session data from broadcast
         let sessionType = payload["session_type"] as? String ?? "terminal"
+        print("📥 AppState: session_type = \(sessionType)")
         let workspace = payload["workspace"] as? String
         let project = payload["project"] as? String
         let worktree = payload["worktree"] as? String
@@ -280,6 +309,31 @@ final class AppState: ObservableObject {
             return
         }
 
+        // Check if session already exists (from response handler arriving first)
+        // If so, update it with additional data from broadcast (worktree, workingDir, terminalConfig)
+        if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
+            let existingSession = sessions[index]
+            // Only update if new data is available
+            let updatedSession = Session(
+                id: sessionId,
+                type: existingSession.type,
+                workspace: existingSession.workspace ?? workspace,
+                project: existingSession.project ?? project,
+                worktree: existingSession.worktree ?? worktree,
+                workingDir: existingSession.workingDir ?? workingDir,
+                terminalConfig: existingSession.terminalConfig ?? terminalConfig
+            )
+            sessions[index] = updatedSession
+            print("ℹ️ AppState: Updated existing session \(sessionId) with broadcast data")
+            return
+        }
+
+        // Also check if there's a temp session pending for this real session
+        // This handles the case where broadcast arrives before response
+        // We need to find the temp session by checking pendingSessionCreations
+        // But we don't have access to requestId here, so we skip this case
+        // The response handler will handle removing the temp session
+
         let session = Session(
             id: sessionId,
             type: type,
@@ -290,10 +344,14 @@ final class AppState: ObservableObject {
             terminalConfig: terminalConfig
         )
         sessions.append(session)
+        print("✅ AppState: Added new session from broadcast: \(sessionId), type: \(type)")
     }
     
     private func handleSessionTerminatedMessage(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else { return }
+
+        // Clean up agent messages for this session
+        clearAgentMessages(for: sessionId)
 
         // Remove terminated session
         sessions.removeAll { $0.id == sessionId }
@@ -411,6 +469,11 @@ final class AppState: ObservableObject {
             supervisorMessages = [welcomeMessage]
         }
 
+        // Restore agent session histories
+        if let agentHistories = payload["agentHistories"] as? [String: [[String: Any]]] {
+            restoreAgentHistories(agentHistories)
+        }
+
         // Store subscriptions for view models to re-subscribe
         // View models will handle re-subscription when they observe connection state
     }
@@ -461,6 +524,57 @@ final class AppState: ObservableObject {
                 content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
             )
             supervisorMessages = [welcomeMessage]
+        }
+    }
+
+    private func restoreAgentHistories(_ histories: [String: [[String: Any]]]) {
+        for (sessionId, history) in histories {
+            // Sort history by sequence to ensure correct order
+            let sortedHistory = history.sorted { item1, item2 in
+                let seq1 = item1["sequence"] as? Int ?? 0
+                let seq2 = item2["sequence"] as? Int ?? 0
+                return seq1 < seq2
+            }
+
+            var restoredMessages: [Message] = []
+
+            for historyItem in sortedHistory {
+                guard let role = historyItem["role"] as? String,
+                      let content = historyItem["content"] as? String else { continue }
+
+                let messageRole: Message.MessageRole
+                switch role {
+                case "user":
+                    messageRole = .user
+                case "assistant":
+                    messageRole = .assistant
+                default:
+                    messageRole = .assistant // system messages shown as assistant
+                }
+
+                // Parse content_blocks if available (for assistant messages with rich content)
+                var blocks: [MessageContentBlock] = []
+                if let contentBlocks = historyItem["content_blocks"] as? [[String: Any]], !contentBlocks.isEmpty {
+                    blocks = ContentParser.parseContentBlocks(contentBlocks)
+                }
+
+                // If no blocks parsed, create text block from content
+                if blocks.isEmpty {
+                    blocks = ContentParser.parse(content: content, contentType: "agent")
+                }
+
+                let message = Message(
+                    sessionId: sessionId,
+                    role: messageRole,
+                    contentBlocks: blocks
+                )
+                restoredMessages.append(message)
+            }
+
+            // Store restored messages for this session
+            if !restoredMessages.isEmpty {
+                agentMessages[sessionId] = restoredMessages
+            }
         }
     }
 
@@ -569,6 +683,145 @@ final class AppState: ObservableObject {
             content: "Context cleared. How can I help you?"
         )
         supervisorMessages = [welcomeMessage]
+    }
+
+    // MARK: - Agent Session Message Handlers
+
+    private func handleSessionOutput(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              let payload = message["payload"] as? [String: Any] else { return }
+
+        // Verify this is an agent session (not terminal)
+        guard let session = sessions.first(where: { $0.id == sessionId }),
+              session.type.isAgent else { return }
+
+        let isComplete = payload["is_complete"] as? Bool ?? false
+
+        // Parse content blocks if available
+        var blocks: [MessageContentBlock] = []
+        if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
+            blocks = ContentParser.parseContentBlocks(contentBlocks)
+        } else if let content = payload["content"] as? String, !content.isEmpty {
+            let contentType = payload["content_type"] as? String ?? "agent"
+            blocks = ContentParser.parse(content: content, contentType: contentType)
+        }
+
+        // Initialize messages array for this session if needed
+        if agentMessages[sessionId] == nil {
+            agentMessages[sessionId] = []
+        }
+
+        guard !blocks.isEmpty else {
+            // Empty blocks but is_complete means end of streaming
+            if isComplete {
+                agentIsLoading[sessionId] = false
+                if let streamingId = agentStreamingMessageIds[sessionId],
+                   let index = agentMessages[sessionId]?.firstIndex(where: { $0.id == streamingId }) {
+                    agentMessages[sessionId]?[index].isStreaming = false
+                }
+                agentStreamingMessageIds[sessionId] = nil
+            }
+            return
+        }
+
+        // Update or create streaming message
+        if let streamingId = agentStreamingMessageIds[sessionId],
+           let index = agentMessages[sessionId]?.firstIndex(where: { $0.id == streamingId }) {
+            // Append new blocks to existing message
+            agentMessages[sessionId]?[index].contentBlocks.append(contentsOf: blocks)
+            agentMessages[sessionId]?[index].isStreaming = !isComplete
+        } else {
+            // Create new assistant message
+            let newMessage = Message(
+                sessionId: sessionId,
+                role: .assistant,
+                contentBlocks: blocks,
+                isStreaming: !isComplete
+            )
+            agentMessages[sessionId]?.append(newMessage)
+            agentStreamingMessageIds[sessionId] = newMessage.id
+        }
+
+        if isComplete {
+            agentIsLoading[sessionId] = false
+            agentStreamingMessageIds[sessionId] = nil
+        }
+    }
+
+    private func handleSessionUserMessage(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              let payload = message["payload"] as? [String: Any],
+              let content = payload["content"] as? String,
+              let fromDeviceId = payload["from_device_id"] as? String else { return }
+
+        // Verify this is an agent session
+        guard let session = sessions.first(where: { $0.id == sessionId }),
+              session.type.isAgent else { return }
+
+        // Skip if this is our own message (we already added it locally)
+        let deviceId = DeviceIDManager().deviceID
+        guard fromDeviceId != deviceId else { return }
+
+        // Initialize messages array for this session if needed
+        if agentMessages[sessionId] == nil {
+            agentMessages[sessionId] = []
+        }
+
+        // Add user message from another device
+        let userMessage = Message(
+            sessionId: sessionId,
+            role: .user,
+            content: content
+        )
+        agentMessages[sessionId]?.append(userMessage)
+
+        // Show loading indicator since we're waiting for response
+        agentIsLoading[sessionId] = true
+    }
+
+    /// Get messages for an agent session
+    func getAgentMessages(for sessionId: String) -> [Message] {
+        return agentMessages[sessionId] ?? []
+    }
+
+    /// Set messages for an agent session
+    func setAgentMessages(_ messages: [Message], for sessionId: String) {
+        agentMessages[sessionId] = messages
+    }
+
+    /// Append a message to an agent session
+    func appendAgentMessage(_ message: Message, for sessionId: String) {
+        if agentMessages[sessionId] == nil {
+            agentMessages[sessionId] = []
+        }
+        agentMessages[sessionId]?.append(message)
+    }
+
+    /// Get loading state for an agent session
+    func getAgentIsLoading(for sessionId: String) -> Bool {
+        return agentIsLoading[sessionId] ?? false
+    }
+
+    /// Set loading state for an agent session
+    func setAgentIsLoading(_ isLoading: Bool, for sessionId: String) {
+        agentIsLoading[sessionId] = isLoading
+    }
+
+    /// Get streaming message ID for an agent session
+    func getAgentStreamingMessageId(for sessionId: String) -> String? {
+        return agentStreamingMessageIds[sessionId]
+    }
+
+    /// Set streaming message ID for an agent session
+    func setAgentStreamingMessageId(_ messageId: String?, for sessionId: String) {
+        agentStreamingMessageIds[sessionId] = messageId
+    }
+
+    /// Clear agent session messages
+    func clearAgentMessages(for sessionId: String) {
+        agentMessages[sessionId] = []
+        agentStreamingMessageIds[sessionId] = nil
+        agentIsLoading[sessionId] = false
     }
 
     // MARK: - Actions
@@ -717,6 +970,12 @@ final class AppState: ObservableObject {
         }
 
         print("🔴 AppState: Removing session from local state")
+
+        // Clean up agent messages for this session
+        if session.type.isAgent {
+            clearAgentMessages(for: session.id)
+        }
+
         // Remove session from local state immediately for responsive UI
         sessions.removeAll { $0.id == session.id }
         if selectedSessionId == session.id {

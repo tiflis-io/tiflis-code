@@ -347,5 +347,95 @@ export class ChatHistoryService {
     this.messageRepo.deleteBySession(sessionId);
     this.logger.info({ sessionId }, 'Supervisor history cleared');
   }
+
+  // ============================================================================
+  // Agent Session History Methods
+  // ============================================================================
+
+  /**
+   * Saves an agent session message to the database.
+   * Each agent session has its own isolated history.
+   * @param sessionId - The agent session ID
+   * @param role - Message role (user, assistant, system)
+   * @param content - Text content (summary for assistant messages)
+   * @param contentBlocks - Structured content blocks for rich UI
+   */
+  saveAgentMessage(
+    sessionId: string,
+    role: 'user' | 'assistant' | 'system',
+    content: string,
+    contentBlocks?: unknown[]
+  ): string {
+    const params: CreateMessageParams = {
+      sessionId,
+      role,
+      contentType: 'text',
+      content,
+      contentBlocks: contentBlocks ? JSON.stringify(contentBlocks) : undefined,
+      isComplete: true,
+    };
+
+    const saved = this.messageRepo.create(params);
+    this.logger.debug({ sessionId, messageId: saved.id, role, hasBlocks: !!contentBlocks }, 'Agent message saved');
+    return saved.id;
+  }
+
+  /**
+   * Gets agent session chat history.
+   * Returns messages sorted chronologically (oldest first).
+   */
+  getAgentHistory(sessionId: string, limit = 100): StoredMessage[] {
+    const rows = this.messageRepo.getBySession(sessionId, limit);
+    // Reverse to get chronological order (oldest first)
+    return rows.reverse().map((row) => {
+      // Parse contentBlocks from JSON if present
+      let contentBlocks: unknown[] | undefined;
+      if (row.contentBlocks) {
+        try {
+          contentBlocks = JSON.parse(row.contentBlocks);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      return {
+        id: row.id,
+        sessionId: row.sessionId,
+        sequence: row.sequence,
+        role: row.role as 'user' | 'assistant' | 'system',
+        contentType: row.contentType as 'text' | 'audio' | 'transcription',
+        content: row.content,
+        contentBlocks,
+        audioInputPath: row.audioInputPath,
+        audioOutputPath: row.audioOutputPath,
+        isComplete: row.isComplete ?? false,
+        createdAt: row.createdAt,
+      };
+    });
+  }
+
+  /**
+   * Clears agent session chat history.
+   */
+  clearAgentHistory(sessionId: string): void {
+    this.messageRepo.deleteBySession(sessionId);
+    this.logger.info({ sessionId }, 'Agent session history cleared');
+  }
+
+  /**
+   * Gets history for all active agent sessions.
+   * @param sessionIds - List of active agent session IDs
+   * @param limit - Max messages per session
+   */
+  getAllAgentHistories(sessionIds: string[], limit = 50): Map<string, StoredMessage[]> {
+    const histories = new Map<string, StoredMessage[]>();
+    for (const sessionId of sessionIds) {
+      const history = this.getAgentHistory(sessionId, limit);
+      if (history.length > 0) {
+        histories.set(sessionId, history);
+      }
+    }
+    return histories;
+  }
 }
 

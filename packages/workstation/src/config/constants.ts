@@ -118,10 +118,14 @@ export const AGENT_COMMANDS = {
   },
   opencode: {
     command: 'opencode',
-    /** Args for running headless agent that attaches to daemon */
-    runArgs: ['run', '--attach'],
+    /** Args for running headless agent with JSON output */
+    runArgs: ['run', '-f', 'json'],
     /** Args for starting the daemon */
     serveArgs: ['serve'],
+    /** Flag to resume existing session */
+    sessionFlag: '-s',
+    /** Flag to attach to daemon */
+    attachFlag: '--attach',
     description: 'OpenCode Agent (attach mode)',
     /** Default daemon URL */
     defaultDaemonUrl: 'http://localhost:4200',

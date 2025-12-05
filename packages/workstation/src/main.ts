@@ -17,7 +17,7 @@ import { TunnelClient } from './infrastructure/websocket/tunnel-client.js';
 import { MessageRouter, type MessageHandlers } from './infrastructure/websocket/message-router.js';
 import { FileSystemWorkspaceDiscovery } from './infrastructure/workspace/workspace-discovery.js';
 import { PtyManager } from './infrastructure/terminal/pty-manager.js';
-import { AgentSessionManager } from './infrastructure/agents/agent-session-manager.js';
+import { AgentSessionManager, type AgentSessionState } from './infrastructure/agents/agent-session-manager.js';
 import { AuthKey } from './domain/value-objects/auth-key.js';
 import { SessionId } from './domain/value-objects/session-id.js';
 import { DeviceId } from './domain/value-objects/device-id.js';
@@ -347,10 +347,34 @@ async function bootstrap(): Promise<void> {
         supervisorAgent.restoreHistory(historyForAgent);
       }
 
+      // Get agent session histories (each session has isolated history)
+      const agentSessionIds = sessions
+        .filter(s => s.session_type === 'cursor' || s.session_type === 'claude' || s.session_type === 'opencode')
+        .map(s => s.session_id);
+
+      const agentHistoriesMap = chatHistoryService.getAllAgentHistories(agentSessionIds);
+      const agentHistories: Record<string, Array<{
+        sequence: number;
+        role: string;
+        content: string;
+        content_blocks?: unknown[];
+        createdAt: string;
+      }>> = {};
+
+      for (const [sessionId, history] of agentHistoriesMap) {
+        agentHistories[sessionId] = history.map(msg => ({
+          sequence: msg.sequence,
+          role: msg.role,
+          content: msg.content,
+          content_blocks: msg.contentBlocks,
+          createdAt: msg.createdAt.toISOString(),
+        }));
+      }
+
       socket.send(JSON.stringify({
         type: 'sync.state',
         id: syncMessage.id,
-        payload: { sessions, subscriptions, supervisorHistory },
+        payload: { sessions, subscriptions, supervisorHistory, agentHistories },
       }));
       return Promise.resolve();
     },
@@ -585,11 +609,18 @@ async function bootstrap(): Promise<void> {
         session_id: string;
         payload: { content: string };
       };
-      
+
       try {
         // Check if this is an agent session
         const agentSession = agentSessionManager.getSession(execMessage.session_id);
         if (agentSession) {
+          // Save user message to database for history persistence
+          chatHistoryService.saveAgentMessage(
+            execMessage.session_id,
+            'user',
+            execMessage.payload.content
+          );
+
           await agentSessionManager.executeCommand(
             execMessage.session_id,
             execMessage.payload.content
@@ -924,6 +955,15 @@ async function bootstrap(): Promise<void> {
       .map((b) => b.content)
       .join('\n');
 
+    // Determine role based on block types
+    const hasErrorOrStatus = blocks.some((b) => b.block_type === 'error' || b.block_type === 'status');
+    const role: 'assistant' | 'system' = hasErrorOrStatus ? 'system' : 'assistant';
+
+    // Save to database for history persistence (only non-empty blocks)
+    if (blocks.length > 0) {
+      chatHistoryService.saveAgentMessage(sessionId, role, textContent, blocks);
+    }
+
     const outputEvent = {
       type: 'session.output',
       session_id: sessionId,
@@ -970,6 +1010,28 @@ async function bootstrap(): Promise<void> {
       // Save with all accumulated content blocks for history restoration
       chatHistoryService.saveSupervisorMessage('assistant', finalOutput, allBlocks);
     }
+  });
+
+  // Broadcast agent session creation to all clients
+  // Listen for agent sessions created from ANY source (API, supervisor tool, etc.)
+  agentSessionManager.on('sessionCreated', (state: AgentSessionState) => {
+    logger.info(
+      { sessionId: state.sessionId, agentType: state.agentType, workingDir: state.workingDir },
+      'Agent session created via event, broadcasting to clients'
+    );
+
+    // Broadcast session.created to all clients
+    const broadcastMessage: SessionCreatedMessage = {
+      type: 'session.created',
+      session_id: state.sessionId,
+      payload: {
+        session_type: state.agentType,
+        working_dir: state.workingDir,
+        // workspace/project are not available in AgentSessionState
+        // Clients will get full info from sync.state if needed
+      },
+    };
+    broadcaster.broadcastToAll(JSON.stringify(broadcastMessage));
   });
 
   // Stream terminal output to subscribed clients

@@ -191,17 +191,24 @@ export class HeadlessAgentExecutor extends EventEmitter {
 
   /**
    * Build opencode command.
-   * Format: opencode run --attach <daemon_url>
+   * Format: opencode run -f json [-s <session_id>] --attach <daemon_url> "prompt"
    *
    * OpenCode uses a daemon architecture: a single `opencode serve` instance
    * runs on the workstation, and agents connect via `opencode run --attach`.
    */
   private buildOpencodeCommand(prompt: string): { command: string; args: string[] } {
     const config = AGENT_COMMANDS.opencode;
-    const args = [...config.runArgs, this.opencodeDaemonUrl];
+    const args = [...config.runArgs];
 
-    // For opencode, prompt might be passed differently
-    // TODO: Verify opencode CLI interface for headless mode
+    // Add session continuation flag if we have a session ID
+    if (this.cliSessionId) {
+      args.push(config.sessionFlag, this.cliSessionId);
+    }
+
+    // Add attach flag and daemon URL
+    args.push(config.attachFlag, this.opencodeDaemonUrl);
+
+    // Add prompt as last argument
     args.push(prompt);
 
     return { command: config.command, args };

@@ -127,6 +127,12 @@ export class AgentOutputParser {
       if (toolBlock) {
         blocks.push(toolBlock);
       }
+    } else if (type === 'tool_call') {
+      // Cursor-style tool_call events with nested structure
+      const toolBlock = this.parseCursorToolCall(payload);
+      if (toolBlock) {
+        blocks.push(toolBlock);
+      }
     } else if (type === 'error' || payload.error) {
       const errorContent = this.extractErrorContent(payload);
       if (errorContent) {
@@ -274,6 +280,37 @@ export class AgentOutputParser {
   }
 
   /**
+   * Parse Cursor-style tool_call events.
+   *
+   * Cursor uses nested structure:
+   * {"type":"tool_call","subtype":"started","tool_call":{"readToolCall":{"args":{...}}}}
+   * {"type":"tool_call","subtype":"completed","tool_call":{"readToolCall":{"args":{},"result":{}}}}
+   */
+  private parseCursorToolCall(payload: Record<string, unknown>): ContentBlock | null {
+    const subtype = this.getString(payload, 'subtype');
+    const toolCallObj = payload.tool_call as Record<string, unknown> | undefined;
+
+    if (!toolCallObj) return null;
+
+    // Find tool name from keys like 'readToolCall', 'writeToolCall', 'bashToolCall'
+    const toolKey = Object.keys(toolCallObj).find(k => k.endsWith('ToolCall'));
+    if (!toolKey) return null;
+
+    const toolName = toolKey.replace('ToolCall', '');
+    const toolData = toolCallObj[toolKey] as Record<string, unknown> | undefined;
+    const args = toolData?.args;
+    const result = toolData?.result;
+
+    // Determine status based on subtype and result presence
+    let status: ToolStatus = 'running';
+    if (subtype === 'completed') {
+      status = result !== undefined ? 'completed' : 'failed';
+    }
+
+    return createToolBlock(toolName, status, args, result);
+  }
+
+  /**
    * Extract thinking content from payload.
    */
   private extractThinking(payload: Record<string, unknown>): string | null {
@@ -360,11 +397,17 @@ export class AgentOutputParser {
 
   /**
    * Extract session_id from payload (supports various formats).
+   *
+   * Supports:
+   * - Cursor/Claude: session_id at top level or in message/result
+   * - OpenCode: may use id or conversation_id
    */
   private extractSessionId(payload: Record<string, unknown>): string | null {
     const candidates = [
       payload.session_id,
       payload.sessionId,
+      payload.id,                    // OpenCode may use this
+      payload.conversation_id,       // Alternative for OpenCode
       (payload.message as Record<string, unknown> | undefined)?.session_id,
       (payload.message as Record<string, unknown> | undefined)?.sessionId,
       (payload.result as Record<string, unknown> | undefined)?.session_id,
