@@ -91,7 +91,7 @@ struct MessageBubbleContent: View {
                 return text
             case .status(_, let text):
                 return text
-            case .toolCall(_, let name, let input, let output, _):
+            case .toolCall(_, _, let name, let input, let output, _):
                 var parts = [name]
                 if let input = input { parts.append("Input: \(input)") }
                 if let output = output { parts.append("Output: \(output)") }

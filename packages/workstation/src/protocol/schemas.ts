@@ -117,14 +117,15 @@ export const SessionUnsubscribeSchema = z.object({
 // ============================================================================
 
 export const SessionExecutePayloadSchema = z.object({
-  text: z.string().optional(),
+  content: z.string().optional(), // Primary field for text content
+  text: z.string().optional(),    // Alias for content (backward compat)
   audio: z.string().optional(),
   audio_format: z.enum(['m4a', 'wav', 'mp3']).optional(),
   language: z.string().optional(),
   tts_enabled: z.boolean().optional(),
 }).refine(
-  (data) => data.text !== undefined || data.audio !== undefined,
-  { message: 'Either text or audio must be provided' }
+  (data) => data.content !== undefined || data.text !== undefined || data.audio !== undefined,
+  { message: 'Either content, text, or audio must be provided' }
 );
 
 export const SessionExecuteSchema = z.object({

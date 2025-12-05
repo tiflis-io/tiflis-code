@@ -141,11 +141,12 @@ final class ContentParser {
 
         case "tool":
             let name = metadata["tool_name"] as? String ?? "unknown"
+            let toolUseId = metadata["tool_use_id"] as? String
             let input = metadata["tool_input"] as? String
             let output = metadata["tool_output"] as? String
             let statusStr = metadata["tool_status"] as? String ?? "running"
             let status = ToolStatus(rawValue: statusStr) ?? .running
-            return .toolCall(id: UUID().uuidString, name: name, input: input, output: output, status: status)
+            return .toolCall(id: UUID().uuidString, toolUseId: toolUseId, name: name, input: input, output: output, status: status)
 
         case "thinking":
             let text = json["content"] as? String ?? ""
@@ -199,7 +200,7 @@ final class ContentParser {
         let statusStr = json["status"] as? String ?? "running"
         let status = ToolStatus(rawValue: statusStr) ?? .running
 
-        return .toolCall(id: UUID().uuidString, name: toolName, input: input, output: output, status: status)
+        return .toolCall(id: UUID().uuidString, toolUseId: nil, name: toolName, input: input, output: output, status: status)
     }
 
     // MARK: - Text and Code Block Parsing

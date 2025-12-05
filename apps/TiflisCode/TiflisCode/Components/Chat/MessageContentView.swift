@@ -31,7 +31,7 @@ struct MessageContentView: View {
         case .code(_, let language, let code):
             CodeBlockView(language: language, code: code)
 
-        case .toolCall(_, let name, let input, let output, let status):
+        case .toolCall(_, _, let name, let input, let output, let status):
             ToolCallView(name: name, input: input, output: output, status: status)
 
         case .thinking(_, let text):
@@ -151,9 +151,9 @@ struct VoiceOutputView: View {
             MessageContentView(
                 blocks: [
                     .status(id: "1", text: "Analyzing project structure..."),
-                    .toolCall(id: "2", name: "read_file", input: "{\"path\": \"package.json\"}", output: nil, status: .running),
+                    .toolCall(id: "2", toolUseId: nil, name: "read_file", input: "{\"path\": \"package.json\"}", output: nil, status: .running),
                     .thinking(id: "3", text: "I can see this is a Node.js project. Let me analyze the dependencies."),
-                    .toolCall(id: "4", name: "read_file", input: "{\"path\": \"package.json\"}", output: "{\"name\": \"my-app\"}", status: .completed),
+                    .toolCall(id: "4", toolUseId: nil, name: "read_file", input: "{\"path\": \"package.json\"}", output: "{\"name\": \"my-app\"}", status: .completed),
                     .text(id: "5", text: "Here's what I found in your project:"),
                     .code(id: "6", language: "typescript", code: "import express from 'express';\n\nconst app = express();\napp.listen(3000);"),
                     .error(id: "7", text: "File not found: config/missing.json"),

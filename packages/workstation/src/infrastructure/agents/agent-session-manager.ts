@@ -158,7 +158,9 @@ export class AgentSessionManager extends EventEmitter {
     state.isExecuting = true;
     state.lastActivityAt = Date.now();
 
-    // Create and add user message
+    // Create and add user message to in-memory history
+    // Note: We don't emit 'blocks' for user messages - iOS adds them locally
+    // and workstation saves them via chatHistoryService in session.execute handler
     const userBlocks = [createTextBlock(prompt)];
     const userMessage: StoredMessage = {
       id: randomUUID(),
@@ -167,7 +169,6 @@ export class AgentSessionManager extends EventEmitter {
       blocks: userBlocks,
     };
     state.messages.push(userMessage);
-    this.emit('blocks', sessionId, userBlocks, false);
 
     // Set CLI session ID for context preservation
     if (state.cliSessionId) {

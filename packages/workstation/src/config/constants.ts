@@ -107,7 +107,7 @@ export const AGENT_COMMANDS = {
   claude: {
     command: 'claude',
     /** Base args for claude CLI (prompt is passed via -p flag) */
-    baseArgs: ['--verbose', '--print', '--output-format', 'stream-json'],
+    baseArgs: ['--verbose', '--print', '--output-format', 'stream-json', '--dangerously-skip-permissions'],
     /** Flag to resume existing session (NOT --session-id!) */
     resumeFlag: '--resume',
     /** Flag for passing prompt */

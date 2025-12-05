@@ -269,6 +269,9 @@ async function bootstrap(): Promise<void> {
   // Create expected auth key
   const expectedAuthKey = new AuthKey(env.WORKSTATION_AUTH_KEY);
 
+  // Placeholder for late-bound message broadcaster
+  let messageBroadcaster: MessageBroadcasterImpl | null = null;
+
   // Create Supervisor Agent with LangGraph
   const supervisorAgent = new SupervisorAgent({
     sessionManager,
@@ -276,6 +279,7 @@ async function bootstrap(): Promise<void> {
     workspaceDiscovery,
     workspacesRoot: env.WORKSPACES_ROOT,
     logger,
+    getMessageBroadcaster: () => messageBroadcaster,
   });
   logger.info('Supervisor Agent initialized with LangGraph');
 
@@ -298,7 +302,6 @@ async function bootstrap(): Promise<void> {
   });
 
   // Placeholder for late-bound dependencies
-  let messageBroadcaster: MessageBroadcasterImpl | null = null;
   let createSession: CreateSessionUseCase | null = null;
   let terminateSession: TerminateSessionUseCase | null = null;
   let subscriptionService: SubscriptionService | null = null;
@@ -328,7 +331,29 @@ async function bootstrap(): Promise<void> {
       const client = clientRegistry.getBySocket(socket)
         ?? (syncMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(syncMessage.device_id)) : undefined);
       const subscriptions = client ? client.getSubscriptions() : [];
-      const sessions = sessionManager.getSessionInfos();
+
+      // Get in-memory sessions (terminal sessions + active agent sessions)
+      const inMemorySessions = sessionManager.getSessionInfos();
+
+      // Get persisted agent sessions from database (survives workstation restart)
+      const persistedAgentSessions = chatHistoryService.getActiveAgentSessions();
+      logger.debug({ persistedAgentSessions, inMemoryCount: inMemorySessions.length }, 'Sync: fetched sessions');
+
+      // Merge: in-memory sessions + persisted agent sessions not already in memory
+      const inMemorySessionIds = new Set(inMemorySessions.map(s => s.session_id));
+      const restoredAgentSessions = persistedAgentSessions
+        .filter(s => !inMemorySessionIds.has(s.sessionId))
+        .map(s => ({
+          session_id: s.sessionId,
+          session_type: s.sessionType as 'cursor' | 'claude' | 'opencode',
+          workspace: s.workspace,
+          project: s.project,
+          worktree: s.worktree,
+          working_dir: s.workingDir,
+          status: 'active' as const, // Persisted sessions are always active
+        }));
+
+      const sessions = [...inMemorySessions, ...restoredAgentSessions];
 
       // Get global supervisor history (shared across all devices)
       const supervisorHistory = chatHistoryService.getSupervisorHistory().map(msg => ({
@@ -370,6 +395,12 @@ async function bootstrap(): Promise<void> {
           createdAt: msg.createdAt.toISOString(),
         }));
       }
+
+      logger.info({
+        totalSessions: sessions.length,
+        sessionTypes: sessions.map(s => ({ id: s.session_id, type: s.session_type })),
+        agentHistoriesCount: Object.keys(agentHistories).length,
+      }, 'Sync: sending state to client');
 
       socket.send(JSON.stringify({
         type: 'sync.state',
@@ -579,11 +610,29 @@ async function bootstrap(): Promise<void> {
       const client = clientRegistry.getBySocket(socket)
         ?? (subscribeMessage.device_id ? clientRegistry.getByDeviceId(new DeviceId(subscribeMessage.device_id)) : undefined);
       if (client?.isAuthenticated) {
-        const result = subscriptionService.subscribe(
-          client.deviceId.value,
-          subscribeMessage.session_id
-        );
-        socket.send(JSON.stringify(result));
+        const sessionId = subscribeMessage.session_id;
+
+        // Check if this is an agent session (in-memory or persisted)
+        const agentSession = agentSessionManager.getSession(sessionId);
+        const isPersistedAgent = !agentSession && chatHistoryService.getActiveAgentSessions()
+          .some(s => s.sessionId === sessionId);
+
+        if (agentSession || isPersistedAgent) {
+          // For agent sessions, just track subscription without sessionManager validation
+          client.subscribe(new SessionId(sessionId));
+          logger.debug({ deviceId: client.deviceId.value, sessionId }, 'Client subscribed to agent session');
+          socket.send(JSON.stringify({
+            type: 'session.subscribed',
+            session_id: sessionId,
+          }));
+        } else {
+          // For terminal sessions, use full subscriptionService with master logic
+          const result = subscriptionService.subscribe(
+            client.deviceId.value,
+            sessionId
+          );
+          socket.send(JSON.stringify(result));
+        }
       }
       return Promise.resolve();
     },
@@ -607,23 +656,43 @@ async function bootstrap(): Promise<void> {
       const execMessage = message as {
         id: string;
         session_id: string;
-        payload: { content: string };
+        payload: { content?: string; text?: string };
       };
 
+      // Support both 'content' and 'text' fields for flexibility
+      const textContent = execMessage.payload.content ?? execMessage.payload.text ?? '';
+
       try {
-        // Check if this is an agent session
-        const agentSession = agentSessionManager.getSession(execMessage.session_id);
+        // Check if this is an agent session (in-memory)
+        let agentSession = agentSessionManager.getSession(execMessage.session_id);
+
+        // If not in memory, check if it's a persisted agent session and restore it
+        if (!agentSession) {
+          const persistedSessions = chatHistoryService.getActiveAgentSessions();
+          const persistedSession = persistedSessions.find(s => s.sessionId === execMessage.session_id);
+
+          if (persistedSession) {
+            logger.info({ sessionId: execMessage.session_id, sessionType: persistedSession.sessionType }, 'Restoring persisted agent session');
+            // Restore the session in agentSessionManager
+            agentSession = agentSessionManager.createSession(
+              persistedSession.sessionType as 'cursor' | 'claude' | 'opencode',
+              persistedSession.workingDir,
+              persistedSession.sessionId // Use same session ID
+            );
+          }
+        }
+
         if (agentSession) {
           // Save user message to database for history persistence
           chatHistoryService.saveAgentMessage(
             execMessage.session_id,
             'user',
-            execMessage.payload.content
+            textContent
           );
 
           await agentSessionManager.executeCommand(
             execMessage.session_id,
-            execMessage.payload.content
+            textContent
           );
           return;
         }
@@ -632,7 +701,7 @@ async function bootstrap(): Promise<void> {
         const sessionId = new SessionId(execMessage.session_id);
         const session = sessionManager.getSession(sessionId);
         if (session && isTerminalSession(session)) {
-          ptyManager.write(session, execMessage.payload.content + '\n');
+          ptyManager.write(session, textContent + '\n');
         }
       } catch (error) {
         logger.error({ error, sessionId: execMessage.session_id }, 'Failed to execute command');
@@ -948,6 +1017,9 @@ async function bootstrap(): Promise<void> {
   // Stream agent session output to subscribed clients
   const broadcaster = messageBroadcaster;
 
+  // Accumulator for agent message blocks - save only when complete
+  const agentMessageAccumulator = new Map<string, ContentBlock[]>();
+
   agentSessionManager.on('blocks', (sessionId: string, blocks: ContentBlock[], isComplete: boolean) => {
     // Build plain text content for backward compatibility
     const textContent = blocks
@@ -955,13 +1027,31 @@ async function bootstrap(): Promise<void> {
       .map((b) => b.content)
       .join('\n');
 
-    // Determine role based on block types
-    const hasErrorOrStatus = blocks.some((b) => b.block_type === 'error' || b.block_type === 'status');
-    const role: 'assistant' | 'system' = hasErrorOrStatus ? 'system' : 'assistant';
+    // Filter out status blocks for history persistence (they're transient UI hints)
+    const persistableBlocks = blocks.filter((b) => b.block_type !== 'status');
 
-    // Save to database for history persistence (only non-empty blocks)
-    if (blocks.length > 0) {
-      chatHistoryService.saveAgentMessage(sessionId, role, textContent, blocks);
+    // Accumulate blocks for this session
+    if (persistableBlocks.length > 0) {
+      const accumulated = agentMessageAccumulator.get(sessionId) ?? [];
+      accumulated.push(...persistableBlocks);
+      agentMessageAccumulator.set(sessionId, accumulated);
+    }
+
+    // Save to database only when message is complete
+    if (isComplete) {
+      const allBlocks = agentMessageAccumulator.get(sessionId) ?? [];
+      agentMessageAccumulator.delete(sessionId);
+
+      if (allBlocks.length > 0) {
+        const fullTextContent = allBlocks
+          .filter((b) => b.block_type === 'text')
+          .map((b) => b.content)
+          .join('\n');
+
+        const hasError = allBlocks.some((b) => b.block_type === 'error');
+        const role: 'assistant' | 'system' = hasError ? 'system' : 'assistant';
+        chatHistoryService.saveAgentMessage(sessionId, role, fullTextContent, allBlocks);
+      }
     }
 
     const outputEvent = {
@@ -1032,6 +1122,13 @@ async function bootstrap(): Promise<void> {
       },
     };
     broadcaster.broadcastToAll(JSON.stringify(broadcastMessage));
+
+    // Record session in database for history persistence
+    chatHistoryService.recordSessionCreated({
+      sessionId: state.sessionId,
+      sessionType: state.agentType,
+      workingDir: state.workingDir,
+    });
   });
 
   // Stream terminal output to subscribed clients

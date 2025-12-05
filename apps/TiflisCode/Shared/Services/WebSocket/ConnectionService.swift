@@ -69,10 +69,14 @@ protocol ConnectionServicing {
 
     /// WebSocket client for sending messages (read-only access)
     var webSocketClient: WebSocketClientProtocol { get }
-    
+
     /// Publisher for all incoming WebSocket messages
     /// View models can subscribe and filter by message type or session ID
     var messagePublisher: PassthroughSubject<[String: Any], Never> { get }
+
+    /// Requests state synchronization from workstation server
+    /// This removes stale sessions and restores active ones
+    func requestSync() async
 }
 
 /// Service that manages WebSocket connection lifecycle
@@ -228,16 +232,20 @@ extension ConnectionService: WebSocketClientDelegate {
     
     /// Requests state synchronization from workstation server
     /// This restores active sessions and subscriptions after app restart
-    private func requestSync() async {
+    func requestSync() async {
         let requestId = UUID().uuidString
         let message: [String: Any] = [
             "type": "sync",
             "id": requestId
         ]
-        
+
+        print("🔄 ConnectionService.requestSync: Sending sync request with id: \(requestId)")
+
         do {
             try _webSocketClient.sendMessage(message)
+            print("✅ ConnectionService.requestSync: Sync request sent successfully")
         } catch {
+            print("❌ ConnectionService.requestSync: Failed to send sync request: \(error)")
             // Sync failure is non-critical, sessions will be discovered via broadcasts
         }
     }

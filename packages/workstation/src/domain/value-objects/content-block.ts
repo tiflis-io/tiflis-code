@@ -66,6 +66,7 @@ export interface ToolBlock extends BaseContentBlock {
   content: string;
   metadata: {
     tool_name: string;
+    tool_use_id?: string;
     tool_input?: string;
     tool_output?: string;
     tool_status: ToolStatus;
@@ -206,7 +207,8 @@ export function createToolBlock(
   toolName: string,
   status: ToolStatus,
   input?: unknown,
-  output?: unknown
+  output?: unknown,
+  toolUseId?: string
 ): ToolBlock {
   const inputStr = input !== undefined ? JSON.stringify(input) : undefined;
   const outputStr = output !== undefined ? JSON.stringify(output) : undefined;
@@ -217,6 +219,7 @@ export function createToolBlock(
     content: toolName,
     metadata: {
       tool_name: toolName,
+      tool_use_id: toolUseId,
       tool_input: inputStr,
       tool_output: outputStr,
       tool_status: status,

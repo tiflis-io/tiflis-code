@@ -141,8 +141,8 @@ struct Message: Identifiable, Equatable {
     /// Updates a tool call status by ID
     mutating func updateToolCallStatus(blockId: String, output: String?, status: ToolStatus) {
         if let index = contentBlocks.firstIndex(where: { $0.id == blockId }) {
-            if case .toolCall(let id, let name, let input, _, _) = contentBlocks[index] {
-                contentBlocks[index] = MessageContentBlock.toolCall(id: id, name: name, input: input, output: output, status: status)
+            if case .toolCall(let id, let toolUseId, let name, let input, _, _) = contentBlocks[index] {
+                contentBlocks[index] = MessageContentBlock.toolCall(id: id, toolUseId: toolUseId, name: name, input: input, output: output, status: status)
             }
         }
     }
@@ -199,6 +199,7 @@ extension Message {
             .status(id: "s1", text: "Analyzing project structure..."),
             .toolCall(
                 id: "t1",
+                toolUseId: "toolu_mock_001",
                 name: "read_file",
                 input: "{\"path\": \"package.json\"}",
                 output: "{\"name\": \"my-app\", \"version\": \"1.0.0\"}",
@@ -207,6 +208,7 @@ extension Message {
             .thinking(id: "th1", text: "I can see this is a Node.js project. Let me check the main entry point."),
             .toolCall(
                 id: "t2",
+                toolUseId: "toolu_mock_002",
                 name: "read_file",
                 input: "{\"path\": \"src/index.ts\"}",
                 output: nil,

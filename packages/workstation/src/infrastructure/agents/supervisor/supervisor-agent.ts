@@ -15,6 +15,7 @@ import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../domain/ports/workspace-discovery.js';
+import type { MessageBroadcaster } from '../../../domain/ports/message-broadcaster.js';
 import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
@@ -37,6 +38,8 @@ export interface SupervisorAgentConfig {
   workspaceDiscovery: WorkspaceDiscovery;
   workspacesRoot: string;
   logger: Logger;
+  /** Optional getter for message broadcaster (late-bound) */
+  getMessageBroadcaster?: () => MessageBroadcaster | null;
 }
 
 /**
@@ -100,7 +103,8 @@ export class SupervisorAgent extends EventEmitter {
       ...createSessionTools(
         config.sessionManager,
         config.agentSessionManager,
-        config.workspaceDiscovery
+        config.workspaceDiscovery,
+        config.getMessageBroadcaster
       ),
       ...createFilesystemTools(config.workspacesRoot),
     ];

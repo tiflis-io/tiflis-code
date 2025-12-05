@@ -367,4 +367,5 @@ private final class MockConnectionService: ConnectionServicing {
 
     func connect() async throws {}
     func disconnect() {}
+    func requestSync() async {}
 }

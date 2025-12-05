@@ -11,6 +11,8 @@ import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../../domain/ports/workspace-discovery.js';
+import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
+import type { SessionTerminatedMessage } from '../../../../protocol/messages.js';
 import { isAgentType } from '../../../../domain/entities/agent-session.js';
 import { homedir } from 'os';
 
@@ -30,14 +32,29 @@ interface SessionInfo {
 export function createSessionTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
-  workspaceDiscovery: WorkspaceDiscovery
+  workspaceDiscovery: WorkspaceDiscovery,
+  getMessageBroadcaster?: () => MessageBroadcaster | null
 ) {
+  /**
+   * Helper to broadcast session termination.
+   */
+  const broadcastTermination = (sessionId: string) => {
+    const broadcaster = getMessageBroadcaster?.();
+    if (!broadcaster) return;
+    const message: SessionTerminatedMessage = {
+      type: 'session.terminated',
+      session_id: sessionId,
+    };
+    broadcaster.broadcastToAll(JSON.stringify(message));
+  };
   /**
    * Lists all active sessions.
    */
   const listSessions = tool(
     () => {
       const sessions = sessionManager.getAllSessions();
+      console.log('[list_sessions] getAllSessions returned:', sessions.length, 'sessions');
+      console.log('[list_sessions] Session details:', sessions.map(s => ({ id: s.id.value, type: s.type, status: s.status })));
       if (sessions.length === 0) {
         return 'No active sessions.';
       }
@@ -158,6 +175,7 @@ export function createSessionTools(
         }
 
         await sessionManager.terminateSession(id);
+        broadcastTermination(sessionId);
         return `Session "${sessionId}" terminated.`;
       } catch (error) {
         return `Error terminating session: ${error instanceof Error ? error.message : String(error)}`;
@@ -168,6 +186,67 @@ export function createSessionTools(
       description: 'Terminates an active session by its ID.',
       schema: z.object({
         sessionId: z.string().describe('ID of the session to terminate'),
+      }),
+    }
+  );
+
+  /**
+   * Terminates all sessions of a specific type or all sessions.
+   */
+  const terminateAllSessions = tool(
+    async ({ sessionType }: { sessionType?: 'terminal' | 'cursor' | 'claude' | 'opencode' | 'all' }) => {
+      try {
+        const sessions = sessionManager.getAllSessions();
+        const typeFilter = sessionType === 'all' || !sessionType ? null : sessionType;
+
+        const sessionsToTerminate = typeFilter
+          ? sessions.filter(s => s.type === typeFilter)
+          : sessions;
+
+        if (sessionsToTerminate.length === 0) {
+          return typeFilter
+            ? `No active ${typeFilter} sessions to terminate.`
+            : 'No active sessions to terminate.';
+        }
+
+        const terminated: string[] = [];
+        const errors: string[] = [];
+
+        for (const session of sessionsToTerminate) {
+          try {
+            // Terminate from agent session manager if it's an agent
+            if (isAgentType(session.type)) {
+              agentSessionManager.terminateSession(session.id.value);
+            }
+            await sessionManager.terminateSession(session.id);
+            broadcastTermination(session.id.value);
+            terminated.push(`${session.type}:${session.id.value}`);
+          } catch (error) {
+            errors.push(`${session.id.value}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+
+        let result = `Terminated ${terminated.length} session(s)`;
+        if (terminated.length > 0) {
+          result += `:\n${terminated.map(s => `  - ${s}`).join('\n')}`;
+        }
+        if (errors.length > 0) {
+          result += `\n\nErrors (${errors.length}):\n${errors.map(e => `  - ${e}`).join('\n')}`;
+        }
+
+        return result;
+      } catch (error) {
+        return `Error terminating sessions: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'terminate_all_sessions',
+      description: 'Terminates all active sessions, or all sessions of a specific type (terminal, cursor, claude, opencode).',
+      schema: z.object({
+        sessionType: z
+          .enum(['terminal', 'cursor', 'claude', 'opencode', 'all'])
+          .optional()
+          .describe('Type of sessions to terminate. Omit or use "all" to terminate all sessions.'),
       }),
     }
   );
@@ -215,5 +294,5 @@ export function createSessionTools(
     }
   );
 
-  return [listSessions, createAgentSession, createTerminalSession, terminateSession, getSessionInfo];
+  return [listSessions, createAgentSession, createTerminalSession, terminateSession, terminateAllSessions, getSessionInfo];
 }

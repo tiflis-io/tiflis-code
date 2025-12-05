@@ -20,31 +20,30 @@ struct ToolCallView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
-            Button {
+            // Use onTapGesture instead of Button to prevent ScrollView focus changes
+            HStack(spacing: 8) {
+                // Status icon
+                statusIcon
+
+                // Tool name
+                Text(displayName)
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                // Expand/collapse chevron
+                Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+            .contentShape(Rectangle())
+            .onTapGesture {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     isExpanded.toggle()
                 }
-            } label: {
-                HStack(spacing: 8) {
-                    // Status icon
-                    statusIcon
-
-                    // Tool name
-                    Text(displayName)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-
-                    // Expand/collapse chevron
-                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(12)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .accessibilityLabel("Tool call: \(displayName), \(status.rawValue)")
             .accessibilityHint("Double tap to \(isExpanded ? "collapse" : "expand") details")
 
@@ -69,7 +68,14 @@ struct ToolCallView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
 
-                            CodeBlockView(language: nil, code: unescapeString(output))
+                            // Render output as markdown text
+                            Text(markdownAttributedString(from: unescapeString(output)))
+                                .font(.footnote)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(8)
+                                .background(Color(.systemBackground).opacity(0.5))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
                         }
                     }
                 }
@@ -122,6 +128,18 @@ struct ToolCallView: View {
             .replacingOccurrences(of: "\\\"", with: "\"")
             .replacingOccurrences(of: "\\t", with: "\t")
             .replacingOccurrences(of: "\\\\", with: "\\")
+    }
+
+    /// Parse markdown string to AttributedString with full block element support
+    private func markdownAttributedString(from text: String) -> AttributedString {
+        // Try to parse as full markdown (supports tables, headings, lists, etc.)
+        if let attributed = try? AttributedString(
+            markdown: text,
+            options: .init(interpretedSyntax: .full)
+        ) {
+            return attributed
+        }
+        return AttributedString(text)
     }
 }
 

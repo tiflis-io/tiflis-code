@@ -66,6 +66,7 @@ export class ChatHistoryService {
     worktree?: string;
     workingDir: string;
   }): void {
+    this.logger.info({ sessionId: params.sessionId, sessionType: params.sessionType }, 'Recording session creation in database');
     try {
       const createParams: CreateSessionParams = {
         id: params.sessionId,
@@ -76,7 +77,7 @@ export class ChatHistoryService {
         workingDir: params.workingDir,
       };
       this.sessionRepo.create(createParams);
-      this.logger.debug({ sessionId: params.sessionId }, 'Session recorded in database');
+      this.logger.info({ sessionId: params.sessionId }, 'Session recorded in database successfully');
     } catch (error) {
       this.logger.error({ error, sessionId: params.sessionId }, 'Failed to record session');
     }
@@ -436,6 +437,34 @@ export class ChatHistoryService {
       }
     }
     return histories;
+  }
+
+  /**
+   * Gets all active agent sessions from database.
+   * Used to restore sessions after workstation restart.
+   */
+  getActiveAgentSessions(): Array<{
+    sessionId: string;
+    sessionType: string;
+    workspace?: string;
+    project?: string;
+    worktree?: string;
+    workingDir: string;
+  }> {
+    const activeSessions = this.sessionRepo.getActive();
+    this.logger.debug({ totalActive: activeSessions.length, sessions: activeSessions.map(s => ({ id: s.id, type: s.type, status: s.status })) }, 'getActiveAgentSessions: all active sessions');
+    const agentSessions = activeSessions
+      .filter(s => s.type === 'cursor' || s.type === 'claude' || s.type === 'opencode')
+      .map(s => ({
+        sessionId: s.id,
+        sessionType: s.type,
+        workspace: s.workspace ?? undefined,
+        project: s.project ?? undefined,
+        worktree: s.worktree ?? undefined,
+        workingDir: s.workingDir,
+      }));
+    this.logger.debug({ agentCount: agentSessions.length }, 'getActiveAgentSessions: filtered agent sessions');
+    return agentSessions;
   }
 }
 

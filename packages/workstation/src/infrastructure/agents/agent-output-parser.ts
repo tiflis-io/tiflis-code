@@ -38,6 +38,11 @@ export interface ParseResult {
  */
 export class AgentOutputParser {
   /**
+   * Maps tool_use_id to tool name for matching results with their calls.
+   */
+  private toolUseIdToName = new Map<string, string>();
+
+  /**
    * Parse a single JSON line and convert to ContentBlocks.
    *
    * @param jsonLine - Single line of JSON output from agent CLI
@@ -144,10 +149,12 @@ export class AgentOutputParser {
         blocks.push(createStatusBlock(systemContent));
       }
     } else if (type === 'user' || role === 'user') {
-      const textContent = this.extractTextContent(payload);
-      if (textContent) {
-        blocks.push(createTextBlock(textContent));
+      // Check for tool_result in user messages (Claude CLI sends results this way)
+      const toolResultBlocks = this.parseToolResults(payload);
+      if (toolResultBlocks.length > 0) {
+        blocks.push(...toolResultBlocks);
       }
+      // Skip other user messages - they're echo of input
     } else if (type === 'assistant' || role === 'assistant' || type === 'content_block_delta' || type === 'message') {
       const assistantBlocks = this.parseAssistantContent(payload);
       blocks.push(...assistantBlocks);
@@ -205,6 +212,13 @@ export class AgentOutputParser {
         const parsed = this.parseTextWithCodeBlocks(block.text);
         blocks.push(...parsed);
       } else if (blockType === 'tool_use') {
+        // Store tool_use_id -> name mapping for later tool_result matching
+        const toolUseId = block.id as string | undefined;
+        const toolName = block.name as string | undefined;
+        if (toolUseId && toolName) {
+          this.toolUseIdToName.set(toolUseId, toolName);
+        }
+
         const toolBlock = this.parseToolCall(block);
         if (toolBlock) {
           blocks.push(toolBlock);
@@ -266,6 +280,7 @@ export class AgentOutputParser {
       ?? this.getString(payload, 'name')
       ?? 'unknown';
 
+    const toolUseId = this.getString(payload, 'id');
     const input = payload.input ?? payload.tool_input;
     const output = payload.output ?? payload.tool_output;
 
@@ -276,8 +291,18 @@ export class AgentOutputParser {
       status = hasError ? 'failed' : 'completed';
     }
 
-    return createToolBlock(toolName, status, input, output);
+    return createToolBlock(toolName, status, input, output, toolUseId);
   }
+
+  /**
+   * Maps Cursor tool key + args hash to generated tool_use_id for matching.
+   */
+  private cursorToolKeyToId = new Map<string, string>();
+
+  /**
+   * Counter for generating unique Cursor tool IDs.
+   */
+  private cursorToolIdCounter = 0;
 
   /**
    * Parse Cursor-style tool_call events.
@@ -301,13 +326,77 @@ export class AgentOutputParser {
     const args = toolData?.args;
     const result = toolData?.result;
 
+    // Generate a stable key for this tool call based on tool name and args
+    // This allows us to match started/completed events
+    const argsKey = args ? JSON.stringify(args) : '';
+    const stableKey = `${toolKey}:${argsKey}`;
+
+    let toolUseId: string;
+    if (subtype === 'started') {
+      // Generate new ID for started event and store mapping
+      toolUseId = `cursor_tool_${++this.cursorToolIdCounter}`;
+      this.cursorToolKeyToId.set(stableKey, toolUseId);
+    } else {
+      // Look up ID for completed event
+      toolUseId = this.cursorToolKeyToId.get(stableKey) ?? `cursor_tool_${++this.cursorToolIdCounter}`;
+      // Clean up mapping after completion
+      this.cursorToolKeyToId.delete(stableKey);
+    }
+
     // Determine status based on subtype and result presence
     let status: ToolStatus = 'running';
     if (subtype === 'completed') {
       status = result !== undefined ? 'completed' : 'failed';
     }
 
-    return createToolBlock(toolName, status, args, result);
+    return createToolBlock(toolName, status, args, result, toolUseId);
+  }
+
+  /**
+   * Parse tool results from user messages.
+   *
+   * Claude CLI sends tool results as user messages with content array:
+   * {"type":"user","message":{"content":[{"tool_use_id":"toolu_xxx","type":"tool_result","content":"..."}]}}
+   */
+  private parseToolResults(payload: Record<string, unknown>): ContentBlock[] {
+    const blocks: ContentBlock[] = [];
+
+    // Check message.content for tool_result items
+    const message = payload.message as Record<string, unknown> | undefined;
+    const content = message?.content;
+
+    if (!Array.isArray(content)) {
+      return blocks;
+    }
+
+    for (const item of content) {
+      if (typeof item !== 'object' || item === null) continue;
+
+      const block = item as Record<string, unknown>;
+      if (block.type !== 'tool_result') continue;
+
+      const toolUseId = block.tool_use_id as string | undefined;
+      const resultContent = block.content;
+
+      // Determine if this is an error result
+      const isError = block.is_error === true;
+      const status: ToolStatus = isError ? 'failed' : 'completed';
+
+      // Look up the tool name from our mapping
+      const toolName = toolUseId ? this.toolUseIdToName.get(toolUseId) : undefined;
+
+      // Create a tool block with the result
+      // Include tool_use_id so iOS can match it with the pending tool block
+      blocks.push(createToolBlock(
+        toolName ?? 'tool',
+        status,
+        undefined, // input was already sent with tool_use
+        resultContent,
+        toolUseId
+      ));
+    }
+
+    return blocks;
   }
 
   /**
@@ -326,41 +415,6 @@ export class AgentOutputParser {
     }
 
     return null;
-  }
-
-  /**
-   * Extract text content from user/assistant messages.
-   */
-  private extractTextContent(payload: Record<string, unknown>): string | null {
-    const content = payload.content;
-
-    if (typeof content === 'string') {
-      return content;
-    }
-
-    if (Array.isArray(content)) {
-      return this.extractTextFromContentBlocks(content);
-    }
-
-    return null;
-  }
-
-  /**
-   * Extract text from content blocks array.
-   */
-  private extractTextFromContentBlocks(blocks: unknown[]): string {
-    return blocks
-      .map((block) => {
-        if (typeof block === 'object' && block !== null) {
-          const b = block as Record<string, unknown>;
-          if (b.type === 'text' && typeof b.text === 'string') {
-            return b.text;
-          }
-        }
-        return null;
-      })
-      .filter((text): text is string => text !== null)
-      .join('\n');
   }
 
   /**

@@ -13,7 +13,7 @@ import Foundation
 enum MessageContentBlock: Identifiable, Equatable {
     case text(id: String, text: String)
     case code(id: String, language: String?, code: String)
-    case toolCall(id: String, name: String, input: String?, output: String?, status: ToolStatus)
+    case toolCall(id: String, toolUseId: String?, name: String, input: String?, output: String?, status: ToolStatus)
     case thinking(id: String, text: String)
     case status(id: String, text: String)
     case error(id: String, text: String)
@@ -25,7 +25,7 @@ enum MessageContentBlock: Identifiable, Equatable {
         switch self {
         case .text(let id, _),
              .code(let id, _, _),
-             .toolCall(let id, _, _, _, _),
+             .toolCall(let id, _, _, _, _, _),
              .thinking(let id, _),
              .status(let id, _),
              .error(let id, _),
@@ -36,6 +36,16 @@ enum MessageContentBlock: Identifiable, Equatable {
         }
     }
 
+    /// Returns the tool_use_id for tool calls, used for matching results with their calls
+    var toolUseId: String? {
+        switch self {
+        case .toolCall(_, let toolUseId, _, _, _, _):
+            return toolUseId
+        default:
+            return nil
+        }
+    }
+
     /// Check equality for Equatable conformance
     static func == (lhs: MessageContentBlock, rhs: MessageContentBlock) -> Bool {
         switch (lhs, rhs) {
@@ -43,8 +53,8 @@ enum MessageContentBlock: Identifiable, Equatable {
             return id1 == id2 && text1 == text2
         case let (.code(id1, lang1, code1), .code(id2, lang2, code2)):
             return id1 == id2 && lang1 == lang2 && code1 == code2
-        case let (.toolCall(id1, name1, input1, output1, status1), .toolCall(id2, name2, input2, output2, status2)):
-            return id1 == id2 && name1 == name2 && input1 == input2 && output1 == output2 && status1 == status2
+        case let (.toolCall(id1, toolUseId1, name1, input1, output1, status1), .toolCall(id2, toolUseId2, name2, input2, output2, status2)):
+            return id1 == id2 && toolUseId1 == toolUseId2 && name1 == name2 && input1 == input2 && output1 == output2 && status1 == status2
         case let (.thinking(id1, text1), .thinking(id2, text2)):
             return id1 == id2 && text1 == text2
         case let (.status(id1, text1), .status(id2, text2)):
@@ -141,6 +151,7 @@ extension MessageContentBlock {
 
     static let mockToolCallRunning = MessageContentBlock.toolCall(
         id: "block-3",
+        toolUseId: "toolu_mock_123",
         name: "read_file",
         input: "{\"path\": \"src/main.swift\"}",
         output: nil,
@@ -149,6 +160,7 @@ extension MessageContentBlock {
 
     static let mockToolCallCompleted = MessageContentBlock.toolCall(
         id: "block-4",
+        toolUseId: "toolu_mock_456",
         name: "read_file",
         input: "{\"path\": \"src/main.swift\"}",
         output: "import SwiftUI\n\n@main\nstruct MyApp: App { ... }",
@@ -157,6 +169,7 @@ extension MessageContentBlock {
 
     static let mockToolCallFailed = MessageContentBlock.toolCall(
         id: "block-5",
+        toolUseId: "toolu_mock_789",
         name: "write_file",
         input: "{\"path\": \"/readonly/file.txt\"}",
         output: "Permission denied",

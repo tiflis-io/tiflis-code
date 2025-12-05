@@ -12,6 +12,7 @@ import Combine
 @main
 struct TiflisCodeApp: App {
     @StateObject private var appState = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // Install crash handlers early in app launch
@@ -25,6 +26,16 @@ struct TiflisCodeApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(appState)
+                .onChange(of: scenePhase) { _, newPhase in
+                    print("📱 ScenePhase changed to: \(newPhase)")
+                    if newPhase == .active {
+                        // Sync state when app becomes active
+                        print("📱 App became active, requesting sync...")
+                        Task {
+                            await appState.requestSync()
+                        }
+                    }
+                }
         }
     }
 }
@@ -42,7 +53,7 @@ final class AppState: ObservableObject {
     @Published var workspacesRoot: String = ""
     @Published var tunnelVersion: String = ""
     @Published var tunnelProtocolVersion: String = ""
-    @Published var sessions: [Session] = Session.mockSessions
+    @Published var sessions: [Session] = [Session(id: "supervisor", type: .supervisor)]
     @Published var selectedSessionId: String? = "supervisor"
 
     /// Supervisor chat messages - persisted across navigation
@@ -363,30 +374,38 @@ final class AppState: ObservableObject {
     }
     
     private func handleSyncStateMessage(_ message: [String: Any]) {
+        print("🔄 handleSyncStateMessage received: \(message)")
         // Handle sync.state response to restore sessions after app restart
         guard let payload = message["payload"] as? [String: Any],
               let sessionsArray = payload["sessions"] as? [[String: Any]] else {
+            print("⚠️ handleSyncStateMessage: Invalid payload format")
             return
         }
 
+        print("🔄 handleSyncStateMessage: Server has \(sessionsArray.count) sessions")
+
         // Build set of active session IDs from server
         let serverSessionIds = Set(sessionsArray.compactMap { $0["session_id"] as? String })
+        print("🔄 handleSyncStateMessage: Server session IDs: \(serverSessionIds)")
 
         // Detect stale sessions: sessions we have locally but no longer exist on server
         // This happens when:
         // 1. Server restarted and PTY processes died
         // 2. Session was terminated while app was in background
+        print("🔄 handleSyncStateMessage: Local sessions count: \(sessions.count)")
+        print("🔄 handleSyncStateMessage: Local session IDs: \(sessions.map { $0.id })")
+
         let staleSessions = sessions.filter { session in
             // Skip supervisor (it's a singleton that always exists conceptually)
             guard session.type != .supervisor else { return false }
             return !serverSessionIds.contains(session.id)
         }
 
+        print("🔄 handleSyncStateMessage: Found \(staleSessions.count) stale sessions")
+
         // Remove stale sessions
         for staleSession in staleSessions {
-            #if DEBUG
             print("🗑️ AppState: Removing stale session \(staleSession.id) (not in server sync)")
-            #endif
             sessions.removeAll { $0.id == staleSession.id }
 
             // If currently viewing this session, navigate to supervisor
@@ -394,6 +413,8 @@ final class AppState: ObservableObject {
                 selectedSessionId = "supervisor"
             }
         }
+
+        print("🔄 handleSyncStateMessage: After cleanup, sessions count: \(sessions.count)")
 
         // Note: subscriptions are handled by individual view models when they subscribe
         // We don't need to restore them here as view models will auto-subscribe on appear
@@ -727,8 +748,17 @@ final class AppState: ObservableObject {
         // Update or create streaming message
         if let streamingId = agentStreamingMessageIds[sessionId],
            let index = agentMessages[sessionId]?.firstIndex(where: { $0.id == streamingId }) {
-            // Append new blocks to existing message
-            agentMessages[sessionId]?[index].contentBlocks.append(contentsOf: blocks)
+            // Process blocks: update existing tool blocks by tool_use_id, append new ones
+            for block in blocks {
+                if let newToolUseId = block.toolUseId,
+                   let existingIndex = agentMessages[sessionId]?[index].contentBlocks.firstIndex(where: { $0.toolUseId == newToolUseId }) {
+                    // Update existing tool block with new data (result/status)
+                    agentMessages[sessionId]?[index].contentBlocks[existingIndex] = block
+                } else {
+                    // Append new block
+                    agentMessages[sessionId]?[index].contentBlocks.append(block)
+                }
+            }
             agentMessages[sessionId]?[index].isStreaming = !isComplete
         } else {
             // Create new assistant message
@@ -842,7 +872,19 @@ final class AppState: ObservableObject {
     func disconnect() {
         connectionService.disconnect()
     }
-    
+
+    /// Requests state synchronization from workstation server
+    /// This removes stale sessions and restores active ones
+    func requestSync() async {
+        print("🔄 AppState.requestSync called, connectionState: \(connectionState)")
+        guard connectionState == .connected else {
+            print("⚠️ AppState.requestSync: Not connected, skipping")
+            return
+        }
+        print("🔄 AppState.requestSync: Calling connectionService.requestSync()")
+        await connectionService.requestSync()
+    }
+
     func selectSession(_ session: Session) {
         selectedSessionId = session.id
     }
