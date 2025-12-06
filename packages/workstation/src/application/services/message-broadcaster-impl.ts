@@ -37,10 +37,17 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     const clients = this.deps.clientRegistry.getAll();
     const authenticatedCount = clients.filter((c) => c.isAuthenticated).length;
 
+    this.logger.info(
+      { totalClients: clients.length, authenticatedClients: authenticatedCount, messagePreview: message.slice(0, 100) },
+      'broadcastToAll called'
+    );
+
     if (authenticatedCount > 0) {
       // Send once to tunnel - it will forward to all connected clients
       const sent = this.deps.tunnelClient.send(message);
-      this.logger.debug({ sent, authenticatedClients: authenticatedCount }, 'Broadcast to all');
+      this.logger.info({ sent, authenticatedClients: authenticatedCount }, 'Broadcast to all - message sent');
+    } else {
+      this.logger.warn({ totalClients: clients.length }, 'broadcastToAll - no authenticated clients, message not sent');
     }
   }
 

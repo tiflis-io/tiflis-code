@@ -280,6 +280,7 @@ async function bootstrap(): Promise<void> {
     workspacesRoot: env.WORKSPACES_ROOT,
     logger,
     getMessageBroadcaster: () => messageBroadcaster,
+    getChatHistoryService: () => chatHistoryService,
   });
   logger.info('Supervisor Agent initialized with LangGraph');
 
@@ -472,7 +473,10 @@ async function bootstrap(): Promise<void> {
             from_device_id: deviceId, // So sender can skip duplicate
           },
         };
+        logger.info({ deviceId, messageType: 'supervisor.user_message' }, 'Broadcasting user message to all clients');
         messageBroadcaster.broadcastToAll(JSON.stringify(userMessageEvent));
+      } else {
+        logger.warn({ deviceId }, 'Cannot broadcast user message - messageBroadcaster is null');
       }
 
       // Acknowledge command receipt
@@ -1001,6 +1005,7 @@ async function bootstrap(): Promise<void> {
   terminateSession = new TerminateSessionUseCase({
     sessionManager,
     messageBroadcaster,
+    chatHistoryService,
     logger,
   });
 

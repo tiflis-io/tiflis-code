@@ -7,6 +7,7 @@
 import type { Logger } from 'pino';
 import type { SessionManager } from '../../domain/ports/session-manager.js';
 import type { MessageBroadcaster } from '../../domain/ports/message-broadcaster.js';
+import type { ChatHistoryService } from '../services/chat-history-service.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
 import { SessionNotFoundError } from '../../domain/errors/domain-errors.js';
 import type { ResponseMessage, SessionTerminatedMessage } from '../../protocol/messages.js';
@@ -14,6 +15,7 @@ import type { ResponseMessage, SessionTerminatedMessage } from '../../protocol/m
 export interface TerminateSessionDeps {
   sessionManager: SessionManager;
   messageBroadcaster: MessageBroadcaster;
+  chatHistoryService: ChatHistoryService;
   logger: Logger;
 }
 
@@ -41,26 +43,49 @@ export class TerminateSessionUseCase {
 
   /**
    * Terminates a session.
+   * Sessions can exist in:
+   * 1. In-memory sessionManager (active terminals/agents)
+   * 2. SQLite database (persisted agent sessions that survive restart)
+   * We try both sources to ensure complete cleanup.
    */
   async execute(params: TerminateSessionParams): Promise<TerminateSessionResult> {
     const { requestId, sessionId } = params;
     const id = new SessionId(sessionId);
 
-    // Check session exists
+    this.logger.info({ sessionId }, 'Attempting to terminate session');
+
+    // Check if session exists in memory
     const session = this.deps.sessionManager.getSession(id);
-    if (!session) {
-      throw new SessionNotFoundError(sessionId);
-    }
+    this.logger.info({ sessionId, foundInMemory: !!session, sessionType: session?.type }, 'Session lookup result');
 
     // Cannot terminate supervisor
-    if (session.type === 'supervisor') {
+    if (session?.type === 'supervisor') {
       throw new Error('Cannot terminate supervisor session');
     }
 
-    // Terminate session
-    await this.deps.sessionManager.terminateSession(id);
+    let terminatedInMemory = false;
+    let terminatedInDb = false;
 
-    this.logger.info({ sessionId }, 'Session terminated');
+    // Terminate from in-memory store if present
+    if (session) {
+      await this.deps.sessionManager.terminateSession(id);
+      terminatedInMemory = true;
+      this.logger.info({ sessionId }, 'Session terminated from in-memory store');
+    }
+
+    // Also terminate in database (for persisted agent sessions)
+    terminatedInDb = this.deps.chatHistoryService.terminateSession(sessionId);
+    if (terminatedInDb) {
+      this.logger.info({ sessionId }, 'Session terminated in database');
+    }
+
+    // If session wasn't found in either place, throw error
+    if (!terminatedInMemory && !terminatedInDb) {
+      this.logger.warn({ sessionId }, 'Session not found for termination in any store');
+      throw new SessionNotFoundError(sessionId);
+    }
+
+    this.logger.info({ sessionId, terminatedInMemory, terminatedInDb }, 'Session terminated');
 
     // Build response
     const response: ResponseMessage = {

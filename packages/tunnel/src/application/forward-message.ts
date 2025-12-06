@@ -93,18 +93,25 @@ export class ForwardMessageUseCase {
     const clients = this.clientRegistry.getByTunnelId(tunnelId);
     let sentCount = 0;
 
+    // Parse message type for logging
+    let messageType = 'unknown';
+    try {
+      const parsed = JSON.parse(message) as { type?: string };
+      messageType = parsed.type ?? 'unknown';
+    } catch {
+      // ignore
+    }
+
     for (const client of clients) {
       if (client.send(message)) {
         sentCount++;
       }
     }
 
-    if (clients.length > 0) {
-      this.logger.debug(
-        { tunnelId: tunnelId.value, totalClients: clients.length, sent: sentCount },
-        'Forwarded message to clients'
-      );
-    }
+    this.logger.info(
+      { tunnelId: tunnelId.value, totalClients: clients.length, sent: sentCount, messageType },
+      'forwardToClients'
+    );
 
     return sentCount;
   }

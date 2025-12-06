@@ -12,6 +12,7 @@ import type { SessionManager } from '../../../../domain/ports/session-manager.js
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../../domain/ports/workspace-discovery.js';
 import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
+import type { ChatHistoryService } from '../../../../application/services/chat-history-service.js';
 import type { SessionTerminatedMessage } from '../../../../protocol/messages.js';
 import { isAgentType } from '../../../../domain/entities/agent-session.js';
 import { homedir } from 'os';
@@ -33,7 +34,8 @@ export function createSessionTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
   workspaceDiscovery: WorkspaceDiscovery,
-  getMessageBroadcaster?: () => MessageBroadcaster | null
+  getMessageBroadcaster?: () => MessageBroadcaster | null,
+  getChatHistoryService?: () => ChatHistoryService | null
 ) {
   /**
    * Helper to broadcast session termination.
@@ -49,24 +51,40 @@ export function createSessionTools(
   };
   /**
    * Lists all active sessions.
+   * Shows both in-memory sessions and persisted agent sessions from database.
    */
   const listSessions = tool(
     () => {
-      const sessions = sessionManager.getAllSessions();
-      console.log('[list_sessions] getAllSessions returned:', sessions.length, 'sessions');
-      console.log('[list_sessions] Session details:', sessions.map(s => ({ id: s.id.value, type: s.type, status: s.status })));
-      if (sessions.length === 0) {
-        return 'No active sessions.';
-      }
+      const chatHistoryService = getChatHistoryService?.();
 
-      const sessionList: SessionInfo[] = sessions.map((s) => ({
+      // Get in-memory sessions
+      const inMemorySessions = sessionManager.getAllSessions();
+      const sessionList: SessionInfo[] = inMemorySessions.map((s) => ({
         id: s.id.value,
         type: s.type,
         status: s.status,
         workingDir: s.workingDir,
       }));
 
-      return `Active sessions:\n${sessionList
+      // Get persisted agent sessions not in memory
+      const persistedSessions = chatHistoryService?.getActiveAgentSessions() ?? [];
+      const inMemoryIds = new Set(inMemorySessions.map(s => s.id.value));
+      const persistedOnly = persistedSessions
+        .filter(s => !inMemoryIds.has(s.sessionId))
+        .map(s => ({
+          id: s.sessionId,
+          type: s.sessionType,
+          status: 'persisted',
+          workingDir: s.workingDir,
+        }));
+
+      const allSessions = [...sessionList, ...persistedOnly];
+
+      if (allSessions.length === 0) {
+        return 'No active sessions.';
+      }
+
+      return `Active sessions:\n${allSessions
         .map((s) => `- [${s.type}] ${s.id} (${s.status}) - ${s.workingDir}`)
         .join('\n')}`;
     },
@@ -157,6 +175,7 @@ export function createSessionTools(
 
   /**
    * Terminates a session.
+   * Checks both in-memory store and database for the session.
    */
   const terminateSession = tool(
     async ({ sessionId }: { sessionId: string }) => {
@@ -165,16 +184,29 @@ export function createSessionTools(
         const id = new SessionId(sessionId);
         const session = sessionManager.getSession(id);
 
-        if (!session) {
+        let terminatedInMemory = false;
+        let terminatedInDb = false;
+
+        // Terminate from in-memory if found
+        if (session) {
+          // Terminate from agent session manager if it's an agent
+          if (isAgentType(session.type)) {
+            agentSessionManager.terminateSession(sessionId);
+          }
+          await sessionManager.terminateSession(id);
+          terminatedInMemory = true;
+        }
+
+        // Also terminate in database (for persisted agent sessions)
+        const chatHistoryService = getChatHistoryService?.();
+        if (chatHistoryService) {
+          terminatedInDb = chatHistoryService.terminateSession(sessionId);
+        }
+
+        if (!terminatedInMemory && !terminatedInDb) {
           return `Session "${sessionId}" not found.`;
         }
 
-        // Terminate from agent session manager if it's an agent
-        if (isAgentType(session.type)) {
-          agentSessionManager.terminateSession(sessionId);
-        }
-
-        await sessionManager.terminateSession(id);
         broadcastTermination(sessionId);
         return `Session "${sessionId}" terminated.`;
       } catch (error) {
@@ -192,18 +224,28 @@ export function createSessionTools(
 
   /**
    * Terminates all sessions of a specific type or all sessions.
+   * Checks both in-memory sessions and persisted agent sessions in database.
    */
   const terminateAllSessions = tool(
     async ({ sessionType }: { sessionType?: 'terminal' | 'cursor' | 'claude' | 'opencode' | 'all' }) => {
       try {
-        const sessions = sessionManager.getAllSessions();
         const typeFilter = sessionType === 'all' || !sessionType ? null : sessionType;
+        const chatHistoryService = getChatHistoryService?.();
 
-        const sessionsToTerminate = typeFilter
-          ? sessions.filter(s => s.type === typeFilter)
-          : sessions;
+        // Get in-memory sessions
+        const inMemorySessions = sessionManager.getAllSessions();
+        const inMemoryToTerminate = typeFilter
+          ? inMemorySessions.filter(s => s.type === typeFilter)
+          : inMemorySessions;
 
-        if (sessionsToTerminate.length === 0) {
+        // Get persisted agent sessions from database
+        const persistedSessions = chatHistoryService?.getActiveAgentSessions() ?? [];
+        const inMemoryIds = new Set(inMemorySessions.map(s => s.id.value));
+        const persistedToTerminate = persistedSessions
+          .filter(s => !inMemoryIds.has(s.sessionId)) // Not already in memory
+          .filter(s => !typeFilter || s.sessionType === typeFilter);
+
+        if (inMemoryToTerminate.length === 0 && persistedToTerminate.length === 0) {
           return typeFilter
             ? `No active ${typeFilter} sessions to terminate.`
             : 'No active sessions to terminate.';
@@ -212,17 +254,31 @@ export function createSessionTools(
         const terminated: string[] = [];
         const errors: string[] = [];
 
-        for (const session of sessionsToTerminate) {
+        // Terminate in-memory sessions
+        for (const session of inMemoryToTerminate) {
           try {
             // Terminate from agent session manager if it's an agent
             if (isAgentType(session.type)) {
               agentSessionManager.terminateSession(session.id.value);
             }
             await sessionManager.terminateSession(session.id);
+            // Also terminate in database
+            chatHistoryService?.terminateSession(session.id.value);
             broadcastTermination(session.id.value);
             terminated.push(`${session.type}:${session.id.value}`);
           } catch (error) {
             errors.push(`${session.id.value}: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+
+        // Terminate persisted-only sessions (not in memory)
+        for (const session of persistedToTerminate) {
+          try {
+            chatHistoryService?.terminateSession(session.sessionId);
+            broadcastTermination(session.sessionId);
+            terminated.push(`${session.sessionType}:${session.sessionId}`);
+          } catch (error) {
+            errors.push(`${session.sessionId}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
 

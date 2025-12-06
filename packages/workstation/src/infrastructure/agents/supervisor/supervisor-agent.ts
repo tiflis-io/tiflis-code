@@ -16,6 +16,7 @@ import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../domain/ports/workspace-discovery.js';
 import type { MessageBroadcaster } from '../../../domain/ports/message-broadcaster.js';
+import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
 import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
@@ -40,6 +41,8 @@ export interface SupervisorAgentConfig {
   logger: Logger;
   /** Optional getter for message broadcaster (late-bound) */
   getMessageBroadcaster?: () => MessageBroadcaster | null;
+  /** Optional getter for chat history service (late-bound) */
+  getChatHistoryService?: () => ChatHistoryService | null;
 }
 
 /**
@@ -104,7 +107,8 @@ export class SupervisorAgent extends EventEmitter {
         config.sessionManager,
         config.agentSessionManager,
         config.workspaceDiscovery,
-        config.getMessageBroadcaster
+        config.getMessageBroadcaster,
+        config.getChatHistoryService
       ),
       ...createFilesystemTools(config.workspacesRoot),
     ];

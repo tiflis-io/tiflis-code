@@ -671,13 +671,23 @@ final class AppState: ObservableObject {
     }
 
     private func handleSupervisorUserMessage(_ message: [String: Any]) {
+        print("📨 handleSupervisorUserMessage received: \(message)")
         guard let payload = message["payload"] as? [String: Any],
               let content = payload["content"] as? String,
-              let fromDeviceId = payload["from_device_id"] as? String else { return }
+              let fromDeviceId = payload["from_device_id"] as? String else {
+            print("⚠️ handleSupervisorUserMessage: Invalid payload")
+            return
+        }
 
         // Skip if this is our own message (we already added it locally)
         let deviceId = DeviceIDManager().deviceID
-        guard fromDeviceId != deviceId else { return }
+        print("📨 handleSupervisorUserMessage: fromDeviceId=\(fromDeviceId), myDeviceId=\(deviceId)")
+        guard fromDeviceId != deviceId else {
+            print("📨 handleSupervisorUserMessage: Skipping own message")
+            return
+        }
+
+        print("📨 handleSupervisorUserMessage: Adding message from other device: \(content.prefix(50))...")
 
         // Add user message from another device
         let userMessage = Message(

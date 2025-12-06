@@ -221,6 +221,23 @@ export class ChatHistoryService {
   }
 
   /**
+   * Terminates a session in the database.
+   * Marks it as terminated so it won't appear in active sessions.
+   * @returns true if session was found and terminated, false if not found
+   */
+  terminateSession(sessionId: string): boolean {
+    const session = this.sessionRepo.getById(sessionId);
+    if (!session) {
+      this.logger.debug({ sessionId }, 'Session not found in database for termination');
+      return false;
+    }
+
+    this.sessionRepo.terminate(sessionId);
+    this.logger.info({ sessionId }, 'Session terminated in database');
+    return true;
+  }
+
+  /**
    * Cleanup old terminated sessions.
    */
   cleanupOldSessions(olderThanDays = 30): number {
