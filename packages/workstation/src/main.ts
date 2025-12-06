@@ -660,11 +660,13 @@ async function bootstrap(): Promise<void> {
       const execMessage = message as {
         id: string;
         session_id: string;
+        device_id?: string; // Injected by tunnel
         payload: { content?: string; text?: string };
       };
 
       // Support both 'content' and 'text' fields for flexibility
       const textContent = execMessage.payload.content ?? execMessage.payload.text ?? '';
+      const deviceId = execMessage.device_id;
 
       try {
         // Check if this is an agent session (in-memory)
@@ -693,6 +695,22 @@ async function bootstrap(): Promise<void> {
             'user',
             textContent
           );
+
+          // Broadcast user message to ALL clients for sync
+          // (so other devices see the message immediately)
+          if (messageBroadcaster && deviceId) {
+            const userMessageEvent = {
+              type: 'session.user_message',
+              session_id: execMessage.session_id,
+              payload: {
+                content: textContent,
+                timestamp: Date.now(),
+                from_device_id: deviceId,
+              },
+            };
+            logger.info({ deviceId, sessionId: execMessage.session_id }, 'Broadcasting agent user message to all clients');
+            messageBroadcaster.broadcastToAll(JSON.stringify(userMessageEvent));
+          }
 
           await agentSessionManager.executeCommand(
             execMessage.session_id,
