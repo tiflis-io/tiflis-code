@@ -189,11 +189,17 @@ export function createSessionTools(
     },
     {
       name: 'create_terminal_session',
-      description: 'Creates a new terminal session in a workspace, project, or home directory.',
+      description: `Creates a new terminal session. All parameters are optional:
+- No parameters: opens terminal in workspaces root directory
+- workspace only: opens terminal in that workspace directory
+- workspace + project: opens terminal in that project directory
+- workspace + project + worktree: opens terminal in that worktree directory
+
+Use this tool when user asks to "open terminal", "create terminal", or similar requests.`,
       schema: z.object({
-        workspace: z.string().optional().describe('Name of the workspace'),
-        project: z.string().optional().describe('Name of the project within the workspace'),
-        worktree: z.string().optional().describe('Optional worktree name'),
+        workspace: z.string().optional().describe('Name of the workspace. Omit to open in workspaces root.'),
+        project: z.string().optional().describe('Name of the project within the workspace. Requires workspace.'),
+        worktree: z.string().optional().describe('Worktree name. Requires workspace and project.'),
       }),
     }
   );
