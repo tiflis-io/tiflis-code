@@ -107,6 +107,7 @@ export class SupervisorAgent extends EventEmitter {
         config.sessionManager,
         config.agentSessionManager,
         config.workspaceDiscovery,
+        config.workspacesRoot,
         config.getMessageBroadcaster,
         config.getChatHistoryService
       ),

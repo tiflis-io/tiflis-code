@@ -15,7 +15,6 @@ import type { MessageBroadcaster } from '../../../../domain/ports/message-broadc
 import type { ChatHistoryService } from '../../../../application/services/chat-history-service.js';
 import type { SessionTerminatedMessage } from '../../../../protocol/messages.js';
 import { isAgentType } from '../../../../domain/entities/agent-session.js';
-import { homedir } from 'os';
 
 /**
  * Session info for display.
@@ -34,6 +33,7 @@ export function createSessionTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
   workspaceDiscovery: WorkspaceDiscovery,
+  workspacesRoot: string,
   getMessageBroadcaster?: () => MessageBroadcaster | null,
   getChatHistoryService?: () => ChatHistoryService | null
 ) {
@@ -168,8 +168,8 @@ export function createSessionTools(
           // Only workspace - open in workspace directory
           workingDir = workspaceDiscovery.resolvePath(workspace);
         } else {
-          // No workspace - use home directory
-          workingDir = homedir();
+          // No workspace - use workspaces root
+          workingDir = workspacesRoot;
         }
 
         // Verify path exists
