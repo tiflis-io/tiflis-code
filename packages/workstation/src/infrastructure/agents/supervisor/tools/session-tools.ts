@@ -149,12 +149,38 @@ export function createSessionTools(
    * Creates a new terminal session.
    */
   const createTerminalSession = tool(
-    async ({ workingDir }: { workingDir?: string }) => {
+    async ({
+      workspace,
+      project,
+      worktree,
+    }: {
+      workspace?: string;
+      project?: string;
+      worktree?: string;
+    }) => {
       try {
-        const dir = workingDir ?? homedir();
+        let workingDir: string;
+
+        if (workspace && project) {
+          // Both workspace and project specified - resolve full path
+          workingDir = workspaceDiscovery.resolvePath(workspace, project, worktree);
+        } else if (workspace) {
+          // Only workspace - open in workspace directory
+          workingDir = workspaceDiscovery.resolvePath(workspace);
+        } else {
+          // No workspace - use home directory
+          workingDir = homedir();
+        }
+
+        // Verify path exists
+        const exists = await workspaceDiscovery.pathExists(workingDir);
+        if (!exists) {
+          return `Error: Path does not exist: ${workingDir}`;
+        }
+
         const session = await sessionManager.createSession({
           sessionType: 'terminal',
-          workingDir: dir,
+          workingDir,
         });
         return `Created terminal session: ${session.id.value}\nWorking directory: ${session.workingDir}`;
       } catch (error) {
@@ -163,12 +189,11 @@ export function createSessionTools(
     },
     {
       name: 'create_terminal_session',
-      description: 'Creates a new terminal session. Optionally specify a working directory.',
+      description: 'Creates a new terminal session in a workspace, project, or home directory.',
       schema: z.object({
-        workingDir: z
-          .string()
-          .optional()
-          .describe('Optional working directory path. Defaults to home directory.'),
+        workspace: z.string().optional().describe('Name of the workspace'),
+        project: z.string().optional().describe('Name of the project within the workspace'),
+        worktree: z.string().optional().describe('Optional worktree name'),
       }),
     }
   );

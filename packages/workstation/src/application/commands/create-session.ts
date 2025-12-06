@@ -58,6 +58,8 @@ export class CreateSessionUseCase {
   async execute(params: CreateSessionParams): Promise<CreateSessionResult> {
     const { requestId, sessionType, workspace, project, worktree } = params;
 
+    this.logger.info({ requestId, sessionType, workspace, project, worktree }, 'CreateSession execute called');
+
     let workingDir: string;
     let workspacePath: WorkspacePath | null = null;
 
@@ -66,6 +68,8 @@ export class CreateSessionUseCase {
       // Determine what working directory to use based on provided workspace/project
       const hasRealWorkspace = workspace && workspace !== 'home';
       const hasRealProject = project && project !== 'default';
+
+      this.logger.info({ hasRealWorkspace, hasRealProject, workspace, project }, 'Terminal session path logic');
 
       if (!hasRealWorkspace) {
         // No workspace - use workspaces root (home)
