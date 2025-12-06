@@ -63,11 +63,23 @@ export class CreateSessionUseCase {
 
     // Terminal sessions can be created without workspace/project - use workspaces root
     if (sessionType === 'terminal') {
-      // For terminal sessions, if workspace/project are empty or special values, use workspaces root
-      if (!workspace || workspace === 'home' || !project || project === 'default') {
+      // Determine what working directory to use based on provided workspace/project
+      const hasRealWorkspace = workspace && workspace !== 'home';
+      const hasRealProject = project && project !== 'default';
+
+      if (!hasRealWorkspace) {
+        // No workspace - use workspaces root (home)
         workingDir = this.deps.workspacesRoot;
-        // Terminal sessions don't have workspace/project, set to null for broadcast
         workspacePath = null;
+      } else if (!hasRealProject) {
+        // Workspace but no project - open terminal in workspace directory
+        const workspaceDir = this.deps.workspaceDiscovery.resolvePath(workspace);
+        const workspaceExists = await this.deps.workspaceDiscovery.pathExists(workspaceDir);
+        if (!workspaceExists) {
+          throw new WorkspaceNotFoundError(workspace);
+        }
+        workingDir = workspaceDir;
+        workspacePath = new WorkspacePath(workspace, '', undefined);
       } else {
         // Terminal session with specific workspace/project - validate and use it
         const workspaceExists = await this.deps.workspaceDiscovery.pathExists(
