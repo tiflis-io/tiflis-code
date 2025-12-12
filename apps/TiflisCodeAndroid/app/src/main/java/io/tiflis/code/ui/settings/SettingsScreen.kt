@@ -302,7 +302,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.PrivacyTip, contentDescription = null)
                     },
                     modifier = Modifier.clickableListItem {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tiflis.io/privacy"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/tiflis-io/tiflis-code/blob/main/PRIVACY.md"))
                         context.startActivity(intent)
                     }
                 )
@@ -315,7 +315,7 @@ fun SettingsScreen(
                         Icon(Icons.Default.Description, contentDescription = null)
                     },
                     modifier = Modifier.clickableListItem {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://tiflis.io/terms"))
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/tiflis-io/tiflis-code/blob/main/TERMS.md"))
                         context.startActivity(intent)
                     }
                 )
