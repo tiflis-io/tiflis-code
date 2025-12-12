@@ -1,0 +1,33 @@
+{
+  "name": "tiflis-code",
+  "private": true,
+  "description": "Voice-controlled AI agents on your workstation from anywhere",
+  "author": "Roman Barinov <rbarinov@gmail.com>",
+  "license": "FSL-1.1-NC",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tiflis-io/tiflis-code.git"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev": "pnpm -r --parallel dev",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "clean": "pnpm -r clean && rm -rf node_modules",
+    "version:tunnel:patch": "cd packages/tunnel && npm version patch --no-git-tag-version",
+    "version:tunnel:minor": "cd packages/tunnel && npm version minor --no-git-tag-version",
+    "version:tunnel:major": "cd packages/tunnel && npm version major --no-git-tag-version",
+    "version:workstation:patch": "cd packages/workstation && npm version patch --no-git-tag-version",
+    "version:workstation:minor": "cd packages/workstation && npm version minor --no-git-tag-version",
+    "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.0"
+  },
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

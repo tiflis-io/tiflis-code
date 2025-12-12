@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+  Licensed under the FSL-1.1-NC. See LICENSE file for details.
+-->
+<full-backup-content>
+    <!-- Exclude sensitive data from backup -->
+    <exclude domain="sharedpref" path="encrypted_prefs.xml"/>
+    <exclude domain="sharedpref" path="secure_storage.xml"/>
+</full-backup-content>

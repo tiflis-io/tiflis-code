@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+  Licensed under the FSL-1.1-NC. See LICENSE file for details.
+-->
+<resources>
+    <!-- Splash screen -->
+    <color name="splash_background">#111111</color>
+
+    <!-- Primary brand colors -->
+    <color name="tiflis_primary">#6366F1</color>
+    <color name="tiflis_primary_dark">#4F46E5</color>
+    <color name="tiflis_secondary">#8B5CF6</color>
+
+    <!-- Session type colors -->
+    <color name="session_supervisor">#6366F1</color>
+    <color name="session_cursor">#3B82F6</color>
+    <color name="session_claude">#F97316</color>
+    <color name="session_opencode">#10B981</color>
+    <color name="session_terminal">#64748B</color>
+
+    <!-- Status colors -->
+    <color name="status_connected">#22C55E</color>
+    <color name="status_connecting">#F59E0B</color>
+    <color name="status_disconnected">#6B7280</color>
+    <color name="status_error">#EF4444</color>
+
+    <!-- Tool status colors -->
+    <color name="tool_running">#3B82F6</color>
+    <color name="tool_completed">#22C55E</color>
+    <color name="tool_failed">#EF4444</color>
+
+    <!-- Message colors -->
+    <color name="message_user_bg">#6366F1</color>
+    <color name="message_user_text">#FFFFFF</color>
+    <color name="message_assistant_bg_light">#F3F4F6</color>
+    <color name="message_assistant_bg_dark">#374151</color>
+
+    <!-- Code block colors -->
+    <color name="code_bg_light">#F8FAFC</color>
+    <color name="code_bg_dark">#1E293B</color>
+    <color name="code_border_light">#E2E8F0</color>
+    <color name="code_border_dark">#334155</color>
+</resources>

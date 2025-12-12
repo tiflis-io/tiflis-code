@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2E5AA6"/>
+      <stop offset="100%" stop-color="#6F4ABF"/>
+    </linearGradient>
+  </defs>
+  <path d="M 14 20 L 10 26 L 10 42 L 14 48" fill="none" stroke="#2E5AA6" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M 50 20 L 54 26 L 54 42 L 50 48" fill="none" stroke="#6F4ABF" stroke-width="2.6" stroke-linecap="round"/>
+  <text x="14" y="46" font-family="monospace" font-size="23" fill="url(#accent)">›</text>
+  <text x="32" y="47" text-anchor="middle" font-family="system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="47" font-weight="500" fill="#fff">t</text>
+</svg>

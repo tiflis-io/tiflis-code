@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+  Licensed under the FSL-1.1-NC. See LICENSE file for details.
+-->
+<resources>
+    <!-- Splash screen theme for Android 12+ (API 31+) - dark background, transparent icon -->
+    <style name="Theme.TiflisCode.Splash" parent="Theme.TiflisCode">
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_empty</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

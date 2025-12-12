@@ -1,0 +1,62 @@
+# Docker Compose for local development of tiflis-code-workstation
+# 
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+
+version: '3.8'
+
+services:
+  workstation:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tiflis-workstation
+    restart: unless-stopped
+    
+    ports:
+      - "3002:3002"
+    
+    volumes:
+      # Persist data directory
+      - workstation-data:/data
+      # Mount workspaces (read-only for safety)
+      - ${WORKSPACES_ROOT:-~/work}:/workspaces:ro
+    
+    environment:
+      # Server
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3002
+      HOST: 0.0.0.0
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      
+      # Tunnel Connection
+      TUNNEL_URL: ${TUNNEL_URL:?Tunnel URL is required}
+      TUNNEL_API_KEY: ${TUNNEL_API_KEY:?Tunnel API key is required}
+      
+      # Workstation Configuration
+      WORKSTATION_NAME: ${WORKSTATION_NAME:-Docker Workstation}
+      WORKSTATION_AUTH_KEY: ${WORKSTATION_AUTH_KEY:?Workstation auth key is required}
+      
+      # Workspaces
+      WORKSPACES_ROOT: /workspaces
+      
+      # Data Storage
+      DATA_DIR: /data
+      
+      # Speech Services (optional)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      DEFAULT_LANGUAGE: ${DEFAULT_LANGUAGE:-en}
+    
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  workstation-data:
+    driver: local
+

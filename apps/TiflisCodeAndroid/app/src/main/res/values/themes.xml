@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+  Licensed under the FSL-1.1-NC. See LICENSE file for details.
+-->
+<resources>
+    <style name="Theme.TiflisCode" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <!-- Splash screen theme for pre-Android 12 - fallback without splash attributes -->
+    <style name="Theme.TiflisCode.Splash" parent="Theme.TiflisCode">
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

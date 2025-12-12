@@ -1,0 +1,94 @@
+# Docker Compose configuration with Traefik reverse proxy
+# Provides automatic HTTPS via Let's Encrypt
+#
+# Usage:
+#   docker compose -f docker-compose.traefik.yml up -d
+#
+# Environment variables required:
+#   - TUNNEL_DOMAIN: Your domain (e.g., tunnel.example.com)
+#   - LETSENCRYPT_EMAIL: Email for Let's Encrypt notifications
+#   - TUNNEL_REGISTRATION_API_KEY: API key for workstation registration
+#
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+
+services:
+  traefik:
+    image: traefik:v3.0
+    command:
+      # Enable Docker provider
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      
+      # Entry points
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      
+      # Redirect HTTP to HTTPS
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      
+      # Let's Encrypt configuration
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      
+      # API dashboard (optional, disable in production)
+      - "--api.dashboard=false"
+      
+      # Logging
+      - "--log.level=INFO"
+      - "--accesslog=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "traefik-letsencrypt:/letsencrypt"
+    restart: unless-stopped
+    networks:
+      - tunnel-network
+
+  tunnel:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      HOST: 0.0.0.0
+      LOG_LEVEL: info
+      TUNNEL_REGISTRATION_API_KEY: ${TUNNEL_REGISTRATION_API_KEY}
+      # Enable trust proxy since we're behind Traefik
+      TRUST_PROXY: "true"
+      # Public URL with wss:// protocol
+      PUBLIC_BASE_URL: "wss://${TUNNEL_DOMAIN}"
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      
+      # HTTPS router for WebSocket
+      - "traefik.http.routers.tunnel.rule=Host(`${TUNNEL_DOMAIN}`)"
+      - "traefik.http.routers.tunnel.entrypoints=websecure"
+      - "traefik.http.routers.tunnel.tls=true"
+      - "traefik.http.routers.tunnel.tls.certresolver=letsencrypt"
+      
+      # Service configuration
+      - "traefik.http.services.tunnel.loadbalancer.server.port=3001"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+    networks:
+      - tunnel-network
+
+volumes:
+  traefik-letsencrypt:
+
+networks:
+  tunnel-network:
+    driver: bridge
+

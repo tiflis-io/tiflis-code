@@ -1,0 +1,148 @@
+# Tiflis Code - Xcode Project Configuration
+# This file is used by XcodeGen to generate the Xcode project
+# Install: brew install xcodegen
+# Generate: xcodegen generate
+
+name: TiflisCode
+
+options:
+  bundleIdPrefix: io.tiflis
+  deploymentTarget:
+    iOS: "18.0"
+    watchOS: "11.0"
+  xcodeVersion: "16.0"
+  generateEmptyDirectories: true
+  groupSortPosition: top
+
+packages:
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    from: "1.5.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    ENABLE_USER_SCRIPT_SANDBOXING: false
+    DEVELOPMENT_TEAM: ""
+
+targets:
+  TiflisCode:
+    type: application
+    platform: iOS
+    sources:
+      - path: TiflisCode
+        excludes:
+          - "**/*.xcassets"
+      - path: Shared
+      - path: TiflisCode/Resources/Assets.xcassets
+    resources:
+      - path: TiflisCode/Resources/Assets.xcassets
+      - path: TiflisCode/Resources/Info.plist
+    dependencies:
+      - package: SwiftTerm
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.tiflis.TiflisCode
+        INFOPLIST_FILE: TiflisCode/Resources/Info.plist
+        PRODUCT_NAME: "Tiflis Code"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: true
+        TARGETED_DEVICE_FAMILY: "1,2"
+    entitlements:
+      path: TiflisCode/Resources/TiflisCode.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.io.tiflis.TiflisCode
+    info:
+      path: TiflisCode/Resources/Info.plist
+      properties:
+        UILaunchScreen: {}
+        NSMicrophoneUsageDescription: "Microphone access is required to record voice commands for AI agents."
+        NSCameraUsageDescription: "Camera access is required to scan QR codes for connecting to your workstation."
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+
+  TiflisCodeWatch:
+    type: application
+    platform: watchOS
+    sources:
+      - path: TiflisCodeWatch
+      - path: Shared
+        excludes:
+          # Exclude iOS-only files that won't compile on watchOS
+          - "Services/CrashReporter/**"
+          - "Services/Audio/**"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.tiflis.TiflisCode.watchkitapp
+        PRODUCT_NAME: "Tiflis Code Watch"
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+    entitlements:
+      path: TiflisCodeWatch/Resources/TiflisCodeWatch.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.io.tiflis.TiflisCode
+    info:
+      path: TiflisCodeWatch/Resources/Info.plist
+      properties:
+        NSMicrophoneUsageDescription: "Microphone access is required to record voice commands for AI agents."
+        WKApplication: true
+        WKCompanionAppBundleIdentifier: io.tiflis.TiflisCode
+    dependencies:
+      - target: TiflisCode
+        embed: false
+        link: false
+
+  TiflisCodeTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: TiflisCodeTests
+    dependencies:
+      - target: TiflisCode
+
+  TiflisCodeUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: TiflisCodeUITests
+    dependencies:
+      - target: TiflisCode
+
+schemes:
+  TiflisCode:
+    build:
+      targets:
+        TiflisCode: all
+        TiflisCodeTests: [test]
+    run:
+      config: Debug
+      simulateLocation:
+        allow: true
+    test:
+      config: Debug
+      targets:
+        - TiflisCodeTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
+
+  TiflisCodeWatch:
+    build:
+      targets:
+        TiflisCodeWatch: all
+    run:
+      config: Debug
+      executable: TiflisCodeWatch
+
