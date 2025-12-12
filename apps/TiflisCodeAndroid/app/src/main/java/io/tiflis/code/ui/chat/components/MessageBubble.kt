@@ -7,13 +7,10 @@ package io.tiflis.code.ui.chat.components
 
 import android.content.Intent
 import android.widget.TextView
-import android.view.MotionEvent
-import android.view.ViewConfiguration
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.indication
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,28 +20,25 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
-import androidx.compose.material3.ripple
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.pointer.pointerInteropFilter
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import io.tiflis.code.R
 import io.tiflis.code.domain.models.Message
 import io.tiflis.code.domain.models.MessageContentBlock
@@ -59,7 +53,6 @@ import io.noties.markwon.Markwon
  * Mirrors the iOS MessageBubble view with full feature parity.
  * Supports long-press context menu for copy, resend, and share actions.
  */
-@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MessageBubble(
     message: Message,
@@ -106,11 +99,9 @@ fun MessageBubble(
         }
 
         Box {
-            val interactionSource = remember { MutableInteractionSource() }
-            val scope = rememberCoroutineScope()
-            var longPressJob by remember { mutableStateOf<Job?>(null) }
-            var pressOffset by remember { mutableStateOf(Offset.Zero) }
-            val longPressTimeoutMs = ViewConfiguration.getLongPressTimeout().toLong()
+            // Get long press timeout from view configuration
+            val viewConfiguration = LocalViewConfiguration.current
+            val longPressTimeoutMs = viewConfiguration.longPressTimeoutMillis
 
             Box(
                 modifier = Modifier
@@ -125,57 +116,27 @@ fun MessageBubble(
                             MaterialTheme.colorScheme.surfaceContainerHighest
                         }
                     )
-                    .indication(interactionSource, ripple())
-                    .pointerInteropFilter { event ->
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                pressOffset = Offset(event.x, event.y)
-                                // Start ripple
-                                scope.launch {
-                                    interactionSource.emit(PressInteraction.Press(pressOffset))
+                    // Use pointerInput to detect long press even when child elements consume events.
+                    // We use PointerEventPass.Final to see events after children process them.
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+
+                            // Wait for finger release with timeout
+                            // Use PointerEventPass.Final to see events even if children consumed them
+                            val released = withTimeoutOrNull(longPressTimeoutMs) {
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Final)
+                                    if (event.changes.all { !it.pressed }) {
+                                        break
+                                    }
                                 }
-                                // Start long press timer
-                                longPressJob?.cancel()
-                                longPressJob = scope.launch {
-                                    delay(longPressTimeoutMs)
-                                    showContextMenu = true
-                                }
-                                true // Consume to ensure we get all subsequent events
                             }
-                            MotionEvent.ACTION_UP -> {
-                                longPressJob?.cancel()
-                                longPressJob = null
-                                // End ripple
-                                scope.launch {
-                                    interactionSource.emit(
-                                        PressInteraction.Release(PressInteraction.Press(pressOffset))
-                                    )
-                                }
-                                true
+
+                            // If timeout (released is null), finger was held down = long press
+                            if (released == null) {
+                                showContextMenu = true
                             }
-                            MotionEvent.ACTION_CANCEL -> {
-                                longPressJob?.cancel()
-                                longPressJob = null
-                                // Cancel ripple
-                                scope.launch {
-                                    interactionSource.emit(
-                                        PressInteraction.Cancel(PressInteraction.Press(pressOffset))
-                                    )
-                                }
-                                true
-                            }
-                            MotionEvent.ACTION_MOVE -> {
-                                // Cancel if moved too far (touch slop)
-                                val dx = event.x - pressOffset.x
-                                val dy = event.y - pressOffset.y
-                                val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
-                                if (dx * dx + dy * dy > touchSlop * touchSlop) {
-                                    longPressJob?.cancel()
-                                    longPressJob = null
-                                }
-                                true
-                            }
-                            else -> false
                         }
                     }
                     .padding(12.dp)
