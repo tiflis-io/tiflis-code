@@ -138,8 +138,10 @@ fun ChatScreen(
 
     // Scroll to bottom on initial load
     LaunchedEffect(sessionId) {
-        if (totalItems > 0) {
-            listState.scrollToItem(totalItems - 1)
+        // Wait for layout to have items, then scroll to last
+        val itemCount = listState.layoutInfo.totalItemsCount
+        if (itemCount > 0) {
+            listState.scrollToItem(itemCount - 1)
         }
     }
 
@@ -147,9 +149,12 @@ fun ChatScreen(
     // This ensures we always see the tail of the streaming response including typing indicator
     val lastMessageBlocksSize = messages.lastOrNull()?.contentBlocks?.size ?: 0
     LaunchedEffect(messages.size, lastMessageBlocksSize, isStreaming) {
-        if (totalItems > 0 && isAtBottom) {
-            // Use scrollToItem for instant scroll to always show latest content
-            listState.scrollToItem(totalItems - 1)
+        if (isAtBottom) {
+            // Use actual item count from layoutInfo (accounts for split segments)
+            val itemCount = listState.layoutInfo.totalItemsCount
+            if (itemCount > 0) {
+                listState.scrollToItem(itemCount - 1)
+            }
         }
     }
 
@@ -395,11 +400,15 @@ fun ChatScreen(
                     // Scroll to bottom FAB - floating over chat area (like Telegram)
                     // Semi-transparent, subtle but visible
                     // Show when more than 100px from bottom
-                    if (!isAtBottom && totalItems > 0) {
+                    if (!isAtBottom && listState.layoutInfo.totalItemsCount > 0) {
                         SmallFloatingActionButton(
                             onClick = {
                                 scope.launch {
-                                    listState.scrollToItem(totalItems - 1)
+                                    // Use actual item count from layoutInfo (accounts for split segments)
+                                    val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                                    if (lastIndex >= 0) {
+                                        listState.scrollToItem(lastIndex)
+                                    }
                                 }
                             },
                             modifier = Modifier
@@ -425,7 +434,11 @@ fun ChatScreen(
             PromptInputBar(
                 onSendText = { text ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    scope.launch { listState.scrollToItem(totalItems) } // Scroll to bottom on send
+                    // Scroll to bottom using actual item count (accounts for split segments)
+                    scope.launch {
+                        val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                        if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                    }
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(text = text)
                     } else {
@@ -434,7 +447,11 @@ fun ChatScreen(
                 },
                 onSendAudio = { audioData ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    scope.launch { listState.scrollToItem(totalItems) } // Scroll to bottom on send
+                    // Scroll to bottom using actual item count (accounts for split segments)
+                    scope.launch {
+                        val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                        if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                    }
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(audio = audioData)
                     } else {
