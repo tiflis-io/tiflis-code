@@ -71,13 +71,14 @@ struct ChatView: View {
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
                         LazyVStack(spacing: 16) {
-                            ForEach(viewModel.messages) { message in
-                                MessageBubble(
-                                    message: message,
+                            ForEach(viewModel.displaySegments) { segment in
+                                MessageSegmentBubble(
+                                    segment: segment,
+                                    originalMessage: viewModel.getMessage(for: segment.messageId),
                                     sessionType: session.type,
                                     onAction: viewModel.handleAction
                                 )
-                                .id(message.id)
+                                .id(segment.id)
                             }
 
                             // Typing indicator - show when waiting for response or during streaming

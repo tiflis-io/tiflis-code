@@ -71,6 +71,18 @@ final class ChatViewModel: ObservableObject {
         return appState.agentScrollTriggers[session.id] ?? 0
     }
 
+    /// Display segments computed from messages - splits long assistant responses into multiple bubbles
+    var displaySegments: [SplitMessageSegment] {
+        messages.flatMap { message in
+            MessageSplitter.split(message: message)
+        }
+    }
+
+    /// Get original message for a segment ID
+    func getMessage(for messageId: String) -> Message? {
+        messages.first { $0.id == messageId }
+    }
+
     // MARK: - Dependencies
 
     let session: Session

@@ -37,6 +37,8 @@ import io.tiflis.code.data.audio.AudioPlayerService
 import io.tiflis.code.domain.models.Message
 import io.tiflis.code.domain.models.SessionType
 import io.tiflis.code.ui.chat.components.MessageBubble
+import io.tiflis.code.ui.chat.components.MessageSegmentBubble
+import io.tiflis.code.ui.chat.components.MessageSplitter
 import io.tiflis.code.ui.chat.components.PromptInputBar
 import io.tiflis.code.ui.chat.components.TypingIndicatorBubble
 import io.tiflis.code.ui.common.ConnectionIndicatorWithPopover
@@ -335,10 +337,18 @@ fun ChatScreen(
                             }
                         }
 
+                        // Split messages into display segments for long responses
+                        val displaySegments = visibleMessages.flatMap { message ->
+                            MessageSplitter.split(message)
+                        }
+
                         items(
-                            items = visibleMessages,
+                            items = displaySegments,
                             key = { it.id }
-                        ) { message ->
+                        ) { segment ->
+                            // Get original message for context menu (copy full content)
+                            val originalMessage = visibleMessages.find { it.id == segment.messageId }
+
                             // Stable callback to prevent recomposition issues
                             val onResendCallback = remember<(String) -> Unit>(sessionId, sessionType) {
                                 { text ->
@@ -350,8 +360,15 @@ fun ChatScreen(
                                     }
                                 }
                             }
-                            MessageBubble(
-                                message = message,
+
+                            // Use reduced spacing for continuation segments
+                            if (segment.isContinuation) {
+                                Spacer(modifier = Modifier.height((-4).dp))
+                            }
+
+                            MessageSegmentBubble(
+                                segment = segment,
+                                originalMessage = originalMessage,
                                 sessionType = sessionType,
                                 onCopyCode = copyToClipboard,
                                 onPlayAudioForMessage = playAudioForMessage,
