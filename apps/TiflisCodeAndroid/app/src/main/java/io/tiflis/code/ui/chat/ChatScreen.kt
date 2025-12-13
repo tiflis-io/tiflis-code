@@ -418,6 +418,7 @@ fun ChatScreen(
             // Input bar
             PromptInputBar(
                 onSendText = { text ->
+                    focusManager.clearFocus() // Dismiss keyboard before scrolling
                     userScrolledAway = false // Reset scroll state on send
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(text = text)
@@ -426,6 +427,7 @@ fun ChatScreen(
                     }
                 },
                 onSendAudio = { audioData ->
+                    focusManager.clearFocus() // Dismiss keyboard before scrolling
                     userScrolledAway = false // Reset scroll state on send
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(audio = audioData)

@@ -149,12 +149,14 @@ struct ChatView: View {
                 isRecording: $viewModel.isRecording,
                 isGenerating: isStreaming,
                 onSend: {
+                    hideKeyboard()
                     forceScrollToBottom()
                     viewModel.sendMessage()
                 },
                 onStop: viewModel.stopGeneration,
                 onStartRecording: viewModel.startRecording,
                 onStopRecording: {
+                    hideKeyboard()
                     forceScrollToBottom()
                     viewModel.stopRecording()
                 }
