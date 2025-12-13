@@ -70,6 +70,9 @@ protocol ConnectionServicing: AnyObject {
     /// WebSocket client for sending messages (read-only access)
     var webSocketClient: WebSocketClientProtocol { get }
 
+    /// Command sender for safe command sending with retry and queue support
+    var commandSender: CommandSending { get }
+
     /// Publisher for all incoming WebSocket messages
     /// View models can subscribe and filter by message type or session ID
     var messagePublisher: PassthroughSubject<[String: Any], Never> { get }
@@ -147,6 +150,17 @@ final class ConnectionService: ConnectionServicing {
     /// WebSocket client for sending messages (exposed for view models)
     var webSocketClient: WebSocketClientProtocol {
         return _webSocketClient
+    }
+
+    /// Command sender for safe command sending with retry and queue support
+    /// Lazy initialization to avoid circular reference during init
+    private lazy var _commandSender: CommandSender = CommandSender(
+        connectionService: self,
+        webSocketClient: _webSocketClient
+    )
+
+    var commandSender: CommandSending {
+        return _commandSender
     }
     
     // MARK: - Stored Credentials
@@ -244,18 +258,17 @@ extension ConnectionService: WebSocketClientDelegate {
     /// Requests state synchronization from workstation server
     /// This restores active sessions and subscriptions after app restart
     func requestSync() async {
-        let requestId = UUID().uuidString
-        let message: [String: Any] = [
-            "type": "sync",
-            "id": requestId
-        ]
+        print("🔄 ConnectionService.requestSync: Sending sync request")
 
-        print("🔄 ConnectionService.requestSync: Sending sync request with id: \(requestId)")
+        let config = CommandBuilder.sync()
+        let result = await _commandSender.send(config)
 
-        do {
-            try _webSocketClient.sendMessage(message)
+        switch result {
+        case .success:
             print("✅ ConnectionService.requestSync: Sync request sent successfully")
-        } catch {
+        case .queued:
+            print("📦 ConnectionService.requestSync: Sync request queued")
+        case .failure(let error):
             print("❌ ConnectionService.requestSync: Failed to send sync request: \(error)")
             // Sync failure is non-critical, sessions will be discovered via broadcasts
         }

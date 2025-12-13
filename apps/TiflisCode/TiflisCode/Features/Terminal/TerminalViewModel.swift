@@ -60,10 +60,11 @@ final class TerminalViewModel: ObservableObject {
     }
     
     // MARK: - Dependencies
-    
+
     private var session: Session  // Changed to var so we can update it when session ID changes
     private let webSocketClient: WebSocketClientProtocol
     private let connectionService: ConnectionServicing
+    private let commandSender: CommandSending
     
     // MARK: - State
 
@@ -147,6 +148,7 @@ final class TerminalViewModel: ObservableObject {
         self.session = session
         self.webSocketClient = webSocketClient
         self.connectionService = connectionService
+        self.commandSender = connectionService.commandSender
         
         // Track the initial session ID (might be temporary)
         knownSessionIds.insert(session.id)
@@ -271,13 +273,11 @@ final class TerminalViewModel: ObservableObject {
         isMaster = false
         serverTerminalSize = nil
 
-        let message: [String: Any] = [
-            "type": "session.subscribe",
-            "session_id": session.id
-        ]
+        let config = CommandBuilder.sessionSubscribe(sessionId: session.id)
+        let result = await commandSender.send(config)
 
-        do {
-            try webSocketClient.sendMessage(message)
+        switch result {
+        case .success, .queued:
             isSubscribed = true
 
             // Reset replay flag when subscribing (new subscription = fresh load)
@@ -289,8 +289,8 @@ final class TerminalViewModel: ObservableObject {
             // Always request replay from beginning when subscribing
             // This ensures we load fresh state from server each time we return to terminal
             await recoverSessionState()
-        } catch {
-            self.error = "Failed to subscribe: \(error.localizedDescription)"
+        case .failure(let error):
+            self.error = error.localizedDescription
             terminalState = .disconnected
         }
     }
@@ -346,19 +346,17 @@ final class TerminalViewModel: ObservableObject {
         isMaster = false
         serverTerminalSize = nil
 
-        // Send unsubscribe message to server
-        let message: [String: Any] = [
-            "type": "session.unsubscribe",
-            "session_id": session.id
-        ]
+        // Send unsubscribe message to server (fire and forget, non-critical)
+        let config = CommandBuilder.sessionUnsubscribe(sessionId: session.id)
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            // Don't set error here - we're unsubscribing, errors are expected if disconnected
-            #if DEBUG
-            print("[TerminalVM:\(session.id.prefix(8))] Failed to send unsubscribe: \(error.localizedDescription)")
-            #endif
+        Task { @MainActor [weak self, sessionId = session.id] in
+            let result = await self?.commandSender.send(config)
+            if case .failure(let error) = result {
+                // Don't set error here - we're unsubscribing, errors are expected if disconnected
+                #if DEBUG
+                print("[TerminalVM:\(sessionId.prefix(8))] Failed to send unsubscribe: \(error)")
+                #endif
+            }
         }
     }
     
@@ -370,18 +368,14 @@ final class TerminalViewModel: ObservableObject {
     }
     
     func sendInput(_ text: String) {
-        let message: [String: Any] = [
-            "type": "session.input",
-            "session_id": session.id,
-            "payload": [
-                "data": text
-            ]
-        ]
-        
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to send input: \(error.localizedDescription)"
+        let config = CommandBuilder.terminalInput(sessionId: session.id, data: text)
+
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+            }
         }
     }
     
@@ -469,33 +463,38 @@ final class TerminalViewModel: ObservableObject {
         let resizeStartTime = Date()
         #endif
 
-        let message: [String: Any] = [
-            "type": "session.resize",
-            "session_id": session.id,
-            "payload": [
-                "cols": pending.cols,
-                "rows": pending.rows
-            ]
-        ]
+        let config = CommandBuilder.terminalResize(
+            sessionId: session.id,
+            cols: pending.cols,
+            rows: pending.rows
+        )
 
-        do {
-            try webSocketClient.sendMessage(message)
-            // Track when resize was sent for debounce logic
-            lastResizeSentTime = Date()
-            // Track the actual size we sent to prevent duplicate requests
-            lastSentServerSize = (cols: pending.cols, rows: pending.rows)
-        } catch {
-            self.error = "Failed to resize terminal: \(error.localizedDescription)"
-        }
-
-        // Clear pending resize after sending
+        // Clear pending resize before sending
+        let sentSize = (cols: pending.cols, rows: pending.rows)
         pendingResize = nil
 
-        #if DEBUG
-        let resizeDuration = Date().timeIntervalSince(resizeStartTime)
-        lastSizeCalculationTime = Date()
-        print("[TerminalViewModel] Terminal resize sent to server: \(pending.cols)×\(pending.rows), \(String(format: "%.3f", resizeDuration * 1000))ms")
-        #endif
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+
+            switch result {
+            case .success:
+                // Track when resize was sent for debounce logic
+                self.lastResizeSentTime = Date()
+                // Track the actual size we sent to prevent duplicate requests
+                self.lastSentServerSize = sentSize
+                #if DEBUG
+                let resizeDuration = Date().timeIntervalSince(resizeStartTime)
+                self.lastSizeCalculationTime = Date()
+                print("[TerminalViewModel] Terminal resize sent to server: \(sentSize.cols)×\(sentSize.rows), \(String(format: "%.3f", resizeDuration * 1000))ms")
+                #endif
+            case .queued:
+                // Resize queued - track size anyway to prevent duplicates
+                self.lastSentServerSize = sentSize
+            case .failure(let error):
+                self.error = error.localizedDescription
+            }
+        }
     }
     
     // MARK: - Message Handling
@@ -856,19 +855,18 @@ final class TerminalViewModel: ObservableObject {
 
     /// Requests replay of messages since a specific sequence number
     private func requestReplay(sinceSequence: Int) {
-        let message: [String: Any] = [
-            "type": "session.replay",
-            "session_id": session.id,
-            "payload": [
-                "since_sequence": sinceSequence,
-                "limit": 500
-            ]
-        ]
+        let config = CommandBuilder.terminalReplay(
+            sessionId: session.id,
+            sinceSequence: sinceSequence,
+            limit: 500
+        )
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to request replay: \(error.localizedDescription)"
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+            }
         }
     }
     
@@ -992,22 +990,18 @@ final class TerminalViewModel: ObservableObject {
         // Reset replay flag to allow loading replay again
         // This ensures we can reload history when returning to terminal
         hasLoadedReplay = false
-        
+
         // Always request all history from beginning
         // This ensures we load fresh state from server each time
-        let message: [String: Any] = [
-            "type": "session.replay",
-            "session_id": session.id,
-            "payload": [
-                "since_timestamp": 0,
-                "limit": 100
-            ]
-        ]
-        
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to request replay: \(error.localizedDescription)"
+        let config = CommandBuilder.terminalReplayByTimestamp(
+            sessionId: session.id,
+            sinceTimestamp: 0,
+            limit: 100
+        )
+
+        let result = await commandSender.send(config)
+        if case .failure(let error) = result {
+            self.error = error.localizedDescription
         }
     }
     

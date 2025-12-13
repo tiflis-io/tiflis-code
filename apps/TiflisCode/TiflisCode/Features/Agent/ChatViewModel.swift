@@ -76,6 +76,7 @@ final class ChatViewModel: ObservableObject {
     let session: Session
     private let connectionService: ConnectionServicing
     private let webSocketClient: WebSocketClientProtocol
+    private let commandSender: CommandSending
     private let deviceId: String
     private weak var appState: AppState?
 
@@ -95,6 +96,7 @@ final class ChatViewModel: ObservableObject {
         self.session = session
         self.connectionService = connectionService
         self.webSocketClient = connectionService.webSocketClient
+        self.commandSender = connectionService.commandSender
         self.deviceId = deviceId
         self.appState = appState
 
@@ -390,52 +392,40 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func sendSupervisorCommand(_ command: String) {
-        let requestId = UUID().uuidString
-        let message: [String: Any] = [
-            "type": "supervisor.command",
-            "id": requestId,
-            "payload": [
-                "command": command
-            ]
-        ]
+        let config = CommandBuilder.supervisorCommand(command)
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to send command: \(error.localizedDescription)"
-            isLoading = false
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
         }
     }
 
     private func sendSessionExecute(_ content: String) {
-        let requestId = UUID().uuidString
-        let message: [String: Any] = [
-            "type": "session.execute",
-            "id": requestId,
-            "session_id": session.id,
-            "payload": [
-                "content": content
-            ]
-        ]
+        let config = CommandBuilder.sessionExecute(sessionId: session.id, content: content)
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to send message: \(error.localizedDescription)"
-            isLoading = false
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
         }
     }
 
     private func subscribeToSession() {
-        let message: [String: Any] = [
-            "type": "session.subscribe",
-            "session_id": session.id
-        ]
+        let config = CommandBuilder.sessionSubscribe(sessionId: session.id)
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to subscribe: \(error.localizedDescription)"
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+            }
         }
     }
 
@@ -514,43 +504,37 @@ final class ChatViewModel: ObservableObject {
     }
 
     private func sendSupervisorVoiceCommand(_ recording: VoiceRecordingResult, messageId: String) {
-        let requestId = UUID().uuidString
-        let message: [String: Any] = [
-            "type": "supervisor.command",
-            "id": requestId,
-            "payload": [
-                "audio": recording.audioBase64,
-                "audio_format": recording.format,
-                "message_id": messageId
-            ]
-        ]
+        let config = CommandBuilder.supervisorVoiceCommand(
+            audioBase64: recording.audioBase64,
+            format: recording.format,
+            messageId: messageId
+        )
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to send voice command: \(error.localizedDescription)"
-            isLoading = false
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
         }
     }
 
     private func sendSessionVoiceExecute(_ recording: VoiceRecordingResult, messageId: String) {
-        let requestId = UUID().uuidString
-        let message: [String: Any] = [
-            "type": "session.execute",
-            "id": requestId,
-            "session_id": session.id,
-            "payload": [
-                "audio": recording.audioBase64,
-                "audio_format": recording.format,
-                "message_id": messageId
-            ]
-        ]
+        let config = CommandBuilder.sessionVoiceExecute(
+            sessionId: session.id,
+            audioBase64: recording.audioBase64,
+            format: recording.format,
+            messageId: messageId
+        )
 
-        do {
-            try webSocketClient.sendMessage(message)
-        } catch {
-            self.error = "Failed to send voice message: \(error.localizedDescription)"
-            isLoading = false
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure(let error) = result {
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
         }
     }
 
@@ -558,17 +542,15 @@ final class ChatViewModel: ObservableObject {
         if session.type == .supervisor {
             // Send clear context command to server
             // Server will broadcast supervisor.context_cleared to all clients
-            let requestId = UUID().uuidString
-            let message: [String: Any] = [
-                "type": "supervisor.clear_context",
-                "id": requestId
-            ]
+            let config = CommandBuilder.supervisorClearContext()
 
-            do {
-                try webSocketClient.sendMessage(message)
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                let result = await self.commandSender.send(config)
+                if case .failure(let error) = result {
+                    self.error = error.localizedDescription
+                }
                 // Don't clear locally - wait for server broadcast (handleSupervisorContextCleared)
-            } catch {
-                self.error = "Failed to clear context: \(error.localizedDescription)"
             }
         } else {
             // Clear agent session messages
@@ -578,34 +560,21 @@ final class ChatViewModel: ObservableObject {
 
     /// Stop current generation (cancel supervisor or agent command)
     func stopGeneration() {
-        let requestId = UUID().uuidString
-
+        let config: CommandConfig
         if session.type == .supervisor {
-            // Cancel supervisor execution
-            let message: [String: Any] = [
-                "type": "supervisor.cancel",
-                "id": requestId
-            ]
-
-            do {
-                try webSocketClient.sendMessage(message)
-                isLoading = false
-            } catch {
-                self.error = "Failed to cancel: \(error.localizedDescription)"
-            }
+            config = CommandBuilder.supervisorCancel()
         } else {
-            // Cancel agent session command
-            let message: [String: Any] = [
-                "type": "session.cancel",
-                "id": requestId,
-                "session_id": session.id
-            ]
+            config = CommandBuilder.sessionCancel(sessionId: session.id)
+        }
 
-            do {
-                try webSocketClient.sendMessage(message)
-                isLoading = false
-            } catch {
-                self.error = "Failed to cancel: \(error.localizedDescription)"
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            switch result {
+            case .success, .queued:
+                self.isLoading = false
+            case .failure(let error):
+                self.error = error.localizedDescription
             }
         }
     }
@@ -678,6 +647,9 @@ private final class MockConnectionService: ConnectionServicing {
     private let _webSocketClient: WebSocketClientProtocol
     var webSocketClient: WebSocketClientProtocol { _webSocketClient }
 
+    private lazy var _commandSender: MockCommandSender = MockCommandSender()
+    var commandSender: CommandSending { _commandSender }
+
     init(webSocketClient: WebSocketClientProtocol) {
         _webSocketClient = webSocketClient
     }
@@ -687,4 +659,25 @@ private final class MockConnectionService: ConnectionServicing {
     func requestSync() async {}
     func sendMessage(_ message: String) throws {}
     func checkConnectionHealth() {}
+}
+
+@MainActor
+private final class MockCommandSender: CommandSending {
+    var pendingCommandCount: Int { 0 }
+
+    func send(_ config: CommandConfig) async -> CommandSendResult {
+        return .success
+    }
+
+    func sendThrowing(_ config: CommandConfig) async throws {
+        // No-op for mock
+    }
+
+    func cancelPendingCommands(for sessionId: String) {
+        // No-op for mock
+    }
+
+    func cancelAllPendingCommands() {
+        // No-op for mock
+    }
 }

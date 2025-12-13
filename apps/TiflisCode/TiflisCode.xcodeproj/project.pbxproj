@@ -7,6 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		03096CEE78C5496D95D853E6 /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */; };
+		7CFFD4553D874BF9B5AA0F9E /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */; };
+		D9200F27C4EA41BAB283138D /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3838ABB07245BD85DA444C /* CommandSending.swift */; };
+		4535D54918294C90A5FAEA71 /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3838ABB07245BD85DA444C /* CommandSending.swift */; };
+		C5F25969E2D34929927FB092 /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CDE89646F44D468869622D /* CommandSender.swift */; };
+		C2F7B7E8DD824497842CFDA9 /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CDE89646F44D468869622D /* CommandSender.swift */; };
+		3B0AAB647A674C2EAE77EB67 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */; };
+		FEF04DB792854124B0CCC667 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */; };
 		050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		08E1CCC679862E9ABCDF6A8C /* CancelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B805F2C22BC3492A11AE6942 /* CancelView.swift */; };
 		0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
@@ -117,6 +125,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSendError.swift; sourceTree = "<group>"; };
+		9B3838ABB07245BD85DA444C /* CommandSending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSending.swift; sourceTree = "<group>"; };
+		F1CDE89646F44D468869622D /* CommandSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSender.swift; sourceTree = "<group>"; };
+		CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBuilder.swift; sourceTree = "<group>"; };
 		0879370583002DA2D718CF50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0B4CC7A25F1ECFCBEA3CAD66 /* TiflisCodeWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeWatchApp.swift; sourceTree = "<group>"; };
 		0C734ED3376BD4F3D6E4488D /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
@@ -281,6 +293,7 @@
 		339E88F4A771837E1D7CB66F /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */,
 				8C5E70F9FE87A722D9D13259 /* AgentType.swift */,
 				3E96900D8413F72E4B064E10 /* ConnectionState.swift */,
 				F742B2C565A5712825647601 /* Message.swift */,
@@ -452,6 +465,9 @@
 		A01EF65F15C0494100BD754D /* WebSocket */ = {
 			isa = PBXGroup;
 			children = (
+				CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */,
+				F1CDE89646F44D468869622D /* CommandSender.swift */,
+				9B3838ABB07245BD85DA444C /* CommandSending.swift */,
 				DD369F38E321907820448CEA /* ConnectionService.swift */,
 				CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */,
 				B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */,
@@ -730,6 +746,10 @@
 				F780D9AF3F8218D3D1EEFD4F /* WatchSetupView.swift in Sources */,
 				8444949C9D527E419E60EBB7 /* WatchVoiceButton.swift in Sources */,
 				A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */,
+				03096CEE78C5496D95D853E6 /* CommandSendError.swift in Sources */,
+				D9200F27C4EA41BAB283138D /* CommandSending.swift in Sources */,
+				C5F25969E2D34929927FB092 /* CommandSender.swift in Sources */,
+				3B0AAB647A674C2EAE77EB67 /* CommandBuilder.swift in Sources */,
 				A61CAD060921D84F841049E2 /* WebSocketClientProtocol.swift in Sources */,
 				DBF5E596AC5FA8C67D5824CC /* WebSocketMessage.swift in Sources */,
 			);
@@ -794,6 +814,10 @@
 				2EC90A4214BF14D328792549 /* WatchConnectivityManager.swift in Sources */,
 				5496CA4F56413377B69CD14A /* WatchConnectivityProtocol.swift in Sources */,
 				D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */,
+				7CFFD4553D874BF9B5AA0F9E /* CommandSendError.swift in Sources */,
+				4535D54918294C90A5FAEA71 /* CommandSending.swift in Sources */,
+				C2F7B7E8DD824497842CFDA9 /* CommandSender.swift in Sources */,
+				FEF04DB792854124B0CCC667 /* CommandBuilder.swift in Sources */,
 				536A7FE56FE78B6C906137F9 /* WebSocketClientProtocol.swift in Sources */,
 				F98803747A1C889C9EF80109 /* WebSocketMessage.swift in Sources */,
 			);

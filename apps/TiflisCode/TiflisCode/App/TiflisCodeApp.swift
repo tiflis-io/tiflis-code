@@ -1523,17 +1523,6 @@ final class AppState: ObservableObject {
         print("📤 AppState: createSessionOnBackend called - type: \(type), agentName: \(agentName ?? "nil"), workspace: \(workspace), project: \(project)")
         print("📤 AppState: Connection state: \(connectionState)")
 
-        guard connectionState == .authenticated else {
-            // Not authenticated - remove temp session
-            print("❌ AppState: Not authenticated, removing temp session")
-            sessions.removeAll { $0.id == tempSessionId }
-            return
-        }
-
-        // Generate request ID
-        let requestId = UUID().uuidString
-        print("📤 AppState: Generated request ID: \(requestId)")
-
         // Map SessionType to backend session_type
         let sessionType: String
         switch type {
@@ -1551,36 +1540,36 @@ final class AppState: ObservableObject {
             return
         }
 
-        // Build create_session message payload
-        var payload: [String: Any] = [
-            "session_type": sessionType,
-            "workspace": workspace,
-            "project": project
-        ]
+        // Generate request ID for tracking response
+        let requestId = UUID().uuidString
+        print("📤 AppState: Generated request ID: \(requestId)")
 
-        // Include agent_name only if it's an alias (different from base type)
-        if let name = agentName {
-            payload["agent_name"] = name
-        }
-
-        let message: [String: Any] = [
-            "type": "supervisor.create_session",
-            "id": requestId,
-            "payload": payload
-        ]
-
-        print("📤 AppState: Sending supervisor.create_session message: \(message)")
-        
         // Store request ID -> temp session ID mapping for response handling
         pendingSessionCreations[requestId] = tempSessionId
-        
-        do {
-            // Send message
-            try connectionService.webSocketClient.sendMessage(message)
-            print("✅ AppState: supervisor.create_session message sent successfully")
-        } catch {
-            // Failed to send - remove temp session
-            print("❌ AppState: Failed to send create_session message: \(error)")
+
+        // Build command using CommandBuilder
+        let config = CommandBuilder.createSession(
+            sessionType: sessionType,
+            agentName: agentName,
+            workspace: workspace,
+            project: project,
+            requestId: requestId
+        )
+
+        print("📤 AppState: Sending supervisor.create_session via CommandSender")
+
+        // Send via CommandSender with atomic auth check and retry
+        let result = await connectionService.commandSender.send(config)
+
+        switch result {
+        case .success:
+            print("✅ AppState: supervisor.create_session sent successfully")
+        case .queued:
+            print("📦 AppState: supervisor.create_session queued (will send when authenticated)")
+        case .failure(let error):
+            // Failed to send - remove temp session and pending mapping
+            print("❌ AppState: Failed to send create_session: \(error)")
+            pendingSessionCreations.removeValue(forKey: requestId)
             sessions.removeAll { $0.id == tempSessionId }
         }
     }
@@ -1623,34 +1612,24 @@ final class AppState: ObservableObject {
     }
 
     private func terminateSessionOnBackend(sessionId: String) async {
-        // Use connectionService.connectionState directly for most up-to-date state
-        let serviceState = connectionService.connectionState
-        print("🔴 AppState.terminateSessionOnBackend called for session: \(sessionId), appState.connectionState: \(connectionState), service.connectionState: \(serviceState)")
-        // Must be fully authenticated (not just connected to tunnel) to send messages to workstation
-        guard serviceState == .authenticated else {
-            print("⚠️ AppState: Not authenticated (service: \(serviceState)), session terminated locally only")
-            return
-        }
+        print("🔴 AppState.terminateSessionOnBackend called for session: \(sessionId)")
 
-        // Generate request ID
-        let requestId = UUID().uuidString
+        // Build command using CommandBuilder
+        let config = CommandBuilder.terminateSession(sessionId: sessionId)
 
-        // Build terminate_session message per protocol
-        let message: [String: Any] = [
-            "type": "supervisor.terminate_session",
-            "id": requestId,
-            "payload": [
-                "session_id": sessionId
-            ]
-        ]
+        print("📤 AppState: Sending supervisor.terminate_session via CommandSender")
 
-        print("📤 AppState: Sending supervisor.terminate_session for session: \(sessionId)")
+        // Send via CommandSender with atomic auth check and retry
+        // This ensures the command is sent even during brief disconnections
+        let result = await connectionService.commandSender.send(config)
 
-        do {
-            try connectionService.webSocketClient.sendMessage(message)
+        switch result {
+        case .success:
             print("✅ AppState: supervisor.terminate_session sent successfully")
-        } catch {
-            print("❌ AppState: Failed to send terminate_session message: \(error)")
+        case .queued:
+            print("📦 AppState: supervisor.terminate_session queued (will send when authenticated)")
+        case .failure(let error):
+            print("❌ AppState: Failed to send terminate_session: \(error)")
             // Session is already removed from local state, backend will clean up eventually
         }
     }
