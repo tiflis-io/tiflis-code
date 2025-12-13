@@ -6,6 +6,8 @@
 package io.tiflis.code
 
 import android.content.Intent
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -31,6 +33,11 @@ class MainActivity : ComponentActivity() {
         installSplashScreen()
 
         super.onCreate(savedInstanceState)
+
+        // Lock to portrait on phones, allow all orientations on tablets
+        if (!isTablet()) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
         // Enable edge-to-edge display
         enableEdgeToEdge()
@@ -69,6 +76,15 @@ class MainActivity : ComponentActivity() {
                 DeepLinkHandler.pendingConnectionData = data
             }
         }
+    }
+
+    /**
+     * Check if the device is a tablet (large screen).
+     * Tablets have screen size >= 600dp on the smallest dimension.
+     */
+    private fun isTablet(): Boolean {
+        val screenLayout = resources.configuration.screenLayout and Configuration.SCREENLAYOUT_SIZE_MASK
+        return screenLayout >= Configuration.SCREENLAYOUT_SIZE_LARGE
     }
 }
 
