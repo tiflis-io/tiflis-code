@@ -11,6 +11,7 @@ import io.tiflis.code.data.audio.AudioRecorderService
 import io.tiflis.code.data.network.NetworkMonitor
 import io.tiflis.code.data.storage.DeviceIdManager
 import io.tiflis.code.data.storage.SecureStorage
+import io.tiflis.code.data.websocket.CommandSender
 import io.tiflis.code.data.websocket.ConnectionService
 import io.tiflis.code.data.websocket.WebSocketClient
 import dagger.Module
@@ -51,12 +52,21 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideCommandSender(
+        webSocketClient: WebSocketClient
+    ): CommandSender {
+        return CommandSender(webSocketClient)
+    }
+
+    @Provides
+    @Singleton
     fun provideConnectionService(
         webSocketClient: WebSocketClient,
         secureStorage: SecureStorage,
-        deviceIdManager: DeviceIdManager
+        deviceIdManager: DeviceIdManager,
+        commandSender: CommandSender
     ): ConnectionService {
-        return ConnectionService(webSocketClient, secureStorage, deviceIdManager)
+        return ConnectionService(webSocketClient, secureStorage, deviceIdManager, commandSender)
     }
 
     @Provides

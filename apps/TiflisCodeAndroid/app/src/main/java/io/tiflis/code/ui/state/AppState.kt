@@ -15,6 +15,8 @@ import androidx.lifecycle.viewModelScope
 import io.tiflis.code.data.network.NetworkChange
 import io.tiflis.code.data.network.NetworkMonitor
 import io.tiflis.code.data.storage.SecureStorage
+import io.tiflis.code.data.websocket.CommandBuilder
+import io.tiflis.code.data.websocket.CommandSendResult
 import io.tiflis.code.data.websocket.ConnectionService
 import io.tiflis.code.data.websocket.WebSocketMessage
 import io.tiflis.code.domain.models.*
@@ -293,15 +295,27 @@ class AppState @Inject constructor(
         )
         _sessions.value = _sessions.value + tempSession
 
-        // Send create request to server
-        val payload = buildMap<String, Any?> {
-            put("session_type", type.name.lowercase())
-            if (agentName != null) put("agent_name", agentName)
-            if (finalWorkspace != null) put("workspace", finalWorkspace)
-            if (finalProject != null) put("project", finalProject)
-            if (worktree != null) put("worktree", worktree)
+        // Send create request to server via CommandSender
+        viewModelScope.launch {
+            val config = CommandBuilder.createSession(
+                sessionType = type.name.lowercase(),
+                agentName = agentName,
+                workspace = finalWorkspace,
+                project = finalProject,
+                worktree = worktree,
+                requestId = tempId
+            )
+            val result = connectionService.commandSender.send(config)
+            when (result) {
+                is CommandSendResult.Success -> Log.d(TAG, "Create session sent successfully")
+                is CommandSendResult.Queued -> Log.d(TAG, "Create session queued")
+                is CommandSendResult.Failure -> {
+                    Log.w(TAG, "Failed to create session: ${result.error.message}")
+                    // Remove temp session on failure
+                    _sessions.value = _sessions.value.filter { it.id != tempId }
+                }
+            }
         }
-        connectionService.sendMessage("supervisor.create_session", payload, tempId)
     }
 
     /**
@@ -309,13 +323,23 @@ class AppState @Inject constructor(
      */
     fun terminateSession(sessionId: String) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val requestId = UUID.randomUUID().toString()
-        connectionService.sendMessage("supervisor.terminate_session", mapOf("session_id" to actualId), requestId)
 
-        // Remove from local state immediately
+        // Remove from local state immediately for responsive UI
         _sessions.value = _sessions.value.filter { it.id != sessionId && it.id != actualId }
         subscribedSessions.remove(actualId)
         streamingMessageIds.remove(actualId)
+        connectionService.commandSender.cancelPendingCommands(actualId)
+
+        // Send terminate request to server via CommandSender
+        viewModelScope.launch {
+            val config = CommandBuilder.terminateSession(actualId)
+            val result = connectionService.commandSender.send(config)
+            when (result) {
+                is CommandSendResult.Success -> Log.d(TAG, "Terminate session sent successfully")
+                is CommandSendResult.Queued -> Log.d(TAG, "Terminate session queued")
+                is CommandSendResult.Failure -> Log.w(TAG, "Failed to terminate session: ${result.error.message}")
+            }
+        }
     }
 
     /**
@@ -326,13 +350,16 @@ class AppState @Inject constructor(
         val actualId = tempIdMapping[sessionId] ?: sessionId
         if (subscribedSessions.contains(actualId)) return
 
-        // session_id must be at top level, not in payload
-        val message = buildMap<String, Any?> {
-            put("type", "session.subscribe")
-            put("session_id", actualId)
-        }
-        connectionService.sendMessage(message)
         subscribedSessions.add(actualId)
+
+        viewModelScope.launch {
+            val config = CommandBuilder.sessionSubscribe(actualId)
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                subscribedSessions.remove(actualId)
+                Log.w(TAG, "Failed to subscribe to session: ${result.error.message}")
+            }
+        }
     }
 
     /**
@@ -341,13 +368,13 @@ class AppState @Inject constructor(
      */
     fun unsubscribeFromSession(sessionId: String) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        // session_id must be at top level, not in payload
-        val message = buildMap<String, Any?> {
-            put("type", "session.unsubscribe")
-            put("session_id", actualId)
-        }
-        connectionService.sendMessage(message)
         subscribedSessions.remove(actualId)
+
+        viewModelScope.launch {
+            val config = CommandBuilder.sessionUnsubscribe(actualId)
+            connectionService.commandSender.send(config)
+            // Fire and forget - non-critical
+        }
     }
 
     /**
@@ -356,15 +383,15 @@ class AppState @Inject constructor(
      * Unlike subscribeToSession, this always sends subscribe even if already subscribed.
      */
     fun refreshSession(sessionId: String) {
-        if (!connectionState.value.isConnected) return
-
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val message = buildMap<String, Any?> {
-            put("type", "session.subscribe")
-            put("session_id", actualId)
+
+        viewModelScope.launch {
+            val config = CommandBuilder.sessionSubscribe(actualId)
+            val result = connectionService.commandSender.send(config)
+            if (result !is CommandSendResult.Failure) {
+                subscribedSessions.add(actualId)
+            }
         }
-        connectionService.sendMessage(message)
-        subscribedSessions.add(actualId)
     }
 
     // MARK: - Messaging
@@ -435,7 +462,27 @@ class AppState @Inject constructor(
         _supervisorIsLoading.value = true
 
         Log.d(TAG, "Sending supervisor command: messageId=$actualMessageId hasText=${text != null} hasAudio=${audio != null}")
-        connectionService.sendMessage("supervisor.command", payload, requestId)
+
+        // Send via CommandSender for retry/queue support
+        viewModelScope.launch {
+            val config = if (audio != null) {
+                CommandBuilder.supervisorVoiceCommand(
+                    audioBase64 = Base64.encodeToString(audio, Base64.NO_WRAP),
+                    format = "m4a",
+                    messageId = actualMessageId
+                )
+            } else {
+                CommandBuilder.supervisorCommand(
+                    command = text ?: "",
+                    messageId = actualMessageId
+                )
+            }
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to send supervisor command: ${result.error.message}")
+                _supervisorIsLoading.value = false
+            }
+        }
     }
 
     /**
@@ -510,14 +557,30 @@ class AppState @Inject constructor(
 
         Log.d(TAG, "Sending agent command: sessionId=$actualId messageId=$actualMessageId hasText=${text != null} hasAudio=${audio != null}")
 
-        // session_id at top level per protocol
-        val message = buildMap<String, Any?> {
-            put("type", "session.execute")
-            put("id", requestId)
-            put("session_id", actualId)
-            if (payload.isNotEmpty()) put("payload", payload)
+        // Send via CommandSender for retry/queue support
+        viewModelScope.launch {
+            val config = if (audio != null) {
+                CommandBuilder.sessionVoiceExecute(
+                    sessionId = actualId,
+                    audioBase64 = Base64.encodeToString(audio, Base64.NO_WRAP),
+                    format = "m4a",
+                    messageId = actualMessageId
+                )
+            } else {
+                CommandBuilder.sessionExecute(
+                    sessionId = actualId,
+                    text = text ?: "",
+                    messageId = actualMessageId
+                )
+            }
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to send agent command: ${result.error.message}")
+                _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
+                    put(actualId, false)
+                }
+            }
         }
-        connectionService.sendMessage(message)
     }
 
     /**
@@ -525,10 +588,17 @@ class AppState @Inject constructor(
      * Protocol: { type: "supervisor.clear_context", id: string }
      */
     fun clearSupervisorContext() {
-        val requestId = UUID.randomUUID().toString()
-        connectionService.sendMessage("supervisor.clear_context", emptyMap(), requestId)
+        // Clear local state immediately for responsive UI
         _supervisorMessages.value = emptyList()
         streamingMessageIds.remove(SUPERVISOR_SESSION_ID)
+
+        viewModelScope.launch {
+            val config = CommandBuilder.supervisorClearContext()
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to clear supervisor context: ${result.error.message}")
+            }
+        }
     }
 
     /**
@@ -536,10 +606,16 @@ class AppState @Inject constructor(
      * Protocol: { type: "supervisor.cancel", id: string }
      */
     fun cancelSupervisorOperation() {
-        val requestId = UUID.randomUUID().toString()
-        connectionService.sendMessage("supervisor.cancel", emptyMap(), requestId)
-        // Clear loading state immediately on cancel
+        // Clear loading state immediately on cancel for responsive UI
         _supervisorIsLoading.value = false
+
+        viewModelScope.launch {
+            val config = CommandBuilder.supervisorCancel()
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to cancel supervisor operation: ${result.error.message}")
+            }
+        }
     }
 
     /**
@@ -548,16 +624,18 @@ class AppState @Inject constructor(
      */
     fun cancelAgentOperation(sessionId: String) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val requestId = UUID.randomUUID().toString()
-        val message = buildMap<String, Any?> {
-            put("type", "session.cancel")
-            put("id", requestId)
-            put("session_id", actualId)
-        }
-        connectionService.sendMessage(message)
-        // Clear loading state immediately on cancel
+
+        // Clear loading state immediately on cancel for responsive UI
         _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
             put(actualId, false)
+        }
+
+        viewModelScope.launch {
+            val config = CommandBuilder.sessionCancel(actualId)
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to cancel agent operation: ${result.error.message}")
+            }
         }
     }
 
@@ -569,12 +647,14 @@ class AppState @Inject constructor(
      */
     fun sendTerminalInput(sessionId: String, input: String) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val message = buildMap<String, Any?> {
-            put("type", "session.input")
-            put("session_id", actualId)
-            put("payload", mapOf("data" to input))
+
+        viewModelScope.launch {
+            val config = CommandBuilder.terminalInput(actualId, input)
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to send terminal input: ${result.error.message}")
+            }
         }
-        connectionService.sendMessage(message)
     }
 
     /**
@@ -583,12 +663,12 @@ class AppState @Inject constructor(
      */
     fun resizeTerminal(sessionId: String, cols: Int, rows: Int) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val message = buildMap<String, Any?> {
-            put("type", "session.resize")
-            put("session_id", actualId)
-            put("payload", mapOf("cols" to cols, "rows" to rows))
+
+        viewModelScope.launch {
+            val config = CommandBuilder.terminalResize(actualId, cols, rows)
+            // Fire and forget - only latest resize matters
+            connectionService.commandSender.send(config)
         }
-        connectionService.sendMessage(message)
     }
 
     /**
@@ -597,16 +677,14 @@ class AppState @Inject constructor(
      */
     fun requestTerminalReplay(sessionId: String, sinceSequence: Long? = null, limit: Int? = null) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
-        val payload = buildMap<String, Any?> {
-            if (sinceSequence != null) put("since_sequence", sinceSequence)
-            if (limit != null) put("limit", limit)
+
+        viewModelScope.launch {
+            val config = CommandBuilder.terminalReplay(actualId, sinceSequence, limit)
+            val result = connectionService.commandSender.send(config)
+            if (result is CommandSendResult.Failure) {
+                Log.w(TAG, "Failed to request terminal replay: ${result.error.message}")
+            }
         }
-        val message = buildMap<String, Any?> {
-            put("type", "session.replay")
-            put("session_id", actualId)
-            if (payload.isNotEmpty()) put("payload", payload)
-        }
-        connectionService.sendMessage(message)
     }
 
     // MARK: - Settings

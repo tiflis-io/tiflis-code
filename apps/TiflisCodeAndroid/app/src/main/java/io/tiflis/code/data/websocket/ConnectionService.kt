@@ -25,7 +25,8 @@ import javax.inject.Singleton
 class ConnectionService @Inject constructor(
     private val webSocketClient: WebSocketClient,
     private val secureStorage: SecureStorage,
-    private val deviceIdManager: DeviceIdManager
+    private val deviceIdManager: DeviceIdManager,
+    val commandSender: CommandSender
 ) {
     companion object {
         private const val TAG = "ConnectionService"
@@ -169,8 +170,15 @@ class ConnectionService @Inject constructor(
      * Protocol requires: { type: "sync", id: string }
      */
     fun requestSyncState() {
-        val requestId = java.util.UUID.randomUUID().toString()
-        sendMessage("sync", emptyMap(), requestId)
+        scope.launch {
+            val config = CommandBuilder.sync()
+            val result = commandSender.send(config)
+            when (result) {
+                is CommandSendResult.Success -> Log.d(TAG, "Sync request sent successfully")
+                is CommandSendResult.Queued -> Log.d(TAG, "Sync request queued")
+                is CommandSendResult.Failure -> Log.w(TAG, "Failed to send sync request: ${result.error.message}")
+            }
+        }
     }
 
     /**
