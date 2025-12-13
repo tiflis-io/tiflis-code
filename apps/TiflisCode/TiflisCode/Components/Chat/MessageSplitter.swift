@@ -10,16 +10,16 @@ import Foundation
 
 /// Configuration for message splitting
 struct MessageSplitterConfig {
-    /// Maximum height units per segment (~2 screens worth)
-    /// Based on: ~25 lines per screen, so 50 units ≈ 2 screens
+    /// Maximum height units per segment (~1 screen worth)
+    /// Based on: ~25 lines per screen
     let maxHeightUnitsPerSegment: Int
 
     /// Minimum height units to consider splitting
     let minHeightUnitsToSplit: Int
 
     static let `default` = MessageSplitterConfig(
-        maxHeightUnitsPerSegment: 50,
-        minHeightUnitsToSplit: 60
+        maxHeightUnitsPerSegment: 17,
+        minHeightUnitsToSplit: 20
     )
 }
 
@@ -190,7 +190,7 @@ enum MessageSplitter {
             // Collapsed tool call: icon + name + status ≈ 3 lines
             return 3
 
-        case .thinking(_, let text):
+        case .thinking:
             // Collapsed by default: header only ≈ 2 lines
             // But if expanded, would be more - use collapsed estimate
             return 2

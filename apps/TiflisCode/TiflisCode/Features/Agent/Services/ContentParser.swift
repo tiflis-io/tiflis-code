@@ -75,7 +75,7 @@ final class ContentParser {
 
         for block in blocks {
             switch block {
-            case .toolCall(let id, let toolUseId, let name, let input, let output, let status):
+            case .toolCall(_, let toolUseId, let name, let input, let output, let status):
                 // If we have a tool_use_id, try to merge with existing block
                 if let useId = toolUseId, !useId.isEmpty {
                     if let existingIndex = toolBlocksByUseId[useId] {

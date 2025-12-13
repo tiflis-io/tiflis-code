@@ -49,6 +49,8 @@
 		5496CA4F56413377B69CD14A /* WatchConnectivityProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE992A7B1CC8D0EE90701C5 /* WatchConnectivityProtocol.swift */; };
 		5607EE86E132A6B3016D3FE2 /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F7302C908845E1CDC4EB29 /* ErrorView.swift */; };
 		630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */; };
+		AA1B2C3D4E5F6A7B8C9D0E1F /* MessageSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */; };
+		CC3D4E5F6A7B8C9D0E1F2A3B /* MessageSegmentBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */; };
 		63F277EA60B33B71A6081536 /* WatchAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E32699B7F1F374845E25B8 /* WatchAppState.swift */; };
 		6A038B6789808CF20CD61768 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 5A15037F4628204D7C405F29 /* SwiftTerm */; };
 		6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */; };
@@ -168,6 +170,8 @@
 		9CA25CE2D696FA9BD6310BE1 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
+		BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSplitter.swift; sourceTree = "<group>"; };
+		DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSegmentBubble.swift; sourceTree = "<group>"; };
 		A58729FE7BEAFC8D368635F3 /* KeyboardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTheme.swift; sourceTree = "<group>"; };
 		A59B45A0EBC9A24221BF78BF /* WatchSessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSessionListView.swift; sourceTree = "<group>"; };
 		ADED53C77EDCB0FC57714BF9 /* CrashLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLogView.swift; sourceTree = "<group>"; };
@@ -226,6 +230,8 @@
 				7CA73AD70C740907E24776F1 /* CodeBlockView.swift */,
 				B6F7302C908845E1CDC4EB29 /* ErrorView.swift */,
 				A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */,
+				DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */,
+				BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */,
 				E66E4FC156D6B0054B2BCBA7 /* MessageContentView.swift */,
 				861C8E9521B9F35E6255C252 /* PromptInputBar.swift */,
 				EB05908B6D9DF22B91DD2ABC /* StatusView.swift */,
@@ -791,6 +797,8 @@
 				C83E4E3EB0AB84B4B385DFD7 /* KeychainManager.swift in Sources */,
 				F05D50732CB17199DA7B2972 /* Message.swift in Sources */,
 				630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */,
+				CC3D4E5F6A7B8C9D0E1F2A3B /* MessageSegmentBubble.swift in Sources */,
+				AA1B2C3D4E5F6A7B8C9D0E1F /* MessageSplitter.swift in Sources */,
 				E134B360B8876346342FA484 /* MessageContentBlock.swift in Sources */,
 				BE7FD40F3B033EB39C753F1E /* MessageContentView.swift in Sources */,
 				4DFE844E46CDAA43FD6718AB /* PromptInputBar.swift in Sources */,

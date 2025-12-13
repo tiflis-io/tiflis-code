@@ -15,11 +15,10 @@ import java.util.UUID
  * Configuration for message splitting.
  */
 data class MessageSplitterConfig(
-    /** Maximum height units per segment (~2 screens worth) */
-    /** Based on: ~25 lines per screen, so 50 units ≈ 2 screens */
-    val maxHeightUnitsPerSegment: Int = 50,
+    /** Maximum height units per segment (~17 lines per bubble) */
+    val maxHeightUnitsPerSegment: Int = 17,
     /** Minimum height units to consider splitting */
-    val minHeightUnitsToSplit: Int = 60
+    val minHeightUnitsToSplit: Int = 20
 )
 
 /**
