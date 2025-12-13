@@ -114,11 +114,27 @@ fun ChatScreen(
     var showClearContextDialog by remember { mutableStateOf(false) }
     var showTerminateDialog by remember { mutableStateOf(false) }
 
-    // Track if user has scrolled away from bottom
-    var userScrolledAway by remember { mutableStateOf(false) }
-
     // Total items in the list: messages + typing indicator (if streaming)
     val totalItems = messages.size + if (isStreaming) 1 else 0
+
+    // Track distance from bottom in pixels for FAB visibility
+    // Show FAB when more than 100px from bottom
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+            if (lastVisibleItem == null || layoutInfo.totalItemsCount == 0) {
+                true // Empty list = at bottom
+            } else {
+                val lastItemIndex = lastVisibleItem.index
+                val lastItemOffset = lastVisibleItem.offset + lastVisibleItem.size
+                val viewportEnd = layoutInfo.viewportEndOffset
+                // At bottom if last item is visible and within 100px of viewport end
+                lastItemIndex >= layoutInfo.totalItemsCount - 1 &&
+                    (lastItemOffset - viewportEnd) <= 100
+            }
+        }
+    }
 
     // Scroll to bottom on initial load
     LaunchedEffect(sessionId) {
@@ -131,18 +147,9 @@ fun ChatScreen(
     // This ensures we always see the tail of the streaming response including typing indicator
     val lastMessageBlocksSize = messages.lastOrNull()?.contentBlocks?.size ?: 0
     LaunchedEffect(messages.size, lastMessageBlocksSize, isStreaming) {
-        if (totalItems > 0 && !userScrolledAway) {
+        if (totalItems > 0 && isAtBottom) {
             // Use scrollToItem for instant scroll to always show latest content
             listState.scrollToItem(totalItems - 1)
-        }
-    }
-
-    // Detect user scroll - only mark as scrolled away if user manually scrolls up
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            // Only mark as scrolled away if not at the bottom
-            userScrolledAway = lastVisibleIndex < totalItems - 1
         }
     }
 
@@ -352,7 +359,6 @@ fun ChatScreen(
                             // Stable callback to prevent recomposition issues
                             val onResendCallback = remember<(String) -> Unit>(sessionId, sessionType) {
                                 { text ->
-                                    userScrolledAway = false
                                     if (sessionType == SessionType.SUPERVISOR) {
                                         appState.sendSupervisorCommand(text = text)
                                     } else {
@@ -388,12 +394,12 @@ fun ChatScreen(
 
                     // Scroll to bottom FAB - floating over chat area (like Telegram)
                     // Semi-transparent, subtle but visible
-                    if (userScrolledAway && totalItems > 0) {
+                    // Show when more than 100px from bottom
+                    if (!isAtBottom && totalItems > 0) {
                         SmallFloatingActionButton(
                             onClick = {
                                 scope.launch {
                                     listState.scrollToItem(totalItems - 1)
-                                    userScrolledAway = false
                                 }
                             },
                             modifier = Modifier
@@ -419,7 +425,7 @@ fun ChatScreen(
             PromptInputBar(
                 onSendText = { text ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    userScrolledAway = false // Reset scroll state on send
+                    scope.launch { listState.scrollToItem(totalItems) } // Scroll to bottom on send
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(text = text)
                     } else {
@@ -428,7 +434,7 @@ fun ChatScreen(
                 },
                 onSendAudio = { audioData ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    userScrolledAway = false // Reset scroll state on send
+                    scope.launch { listState.scrollToItem(totalItems) } // Scroll to bottom on send
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(audio = audioData)
                     } else {
