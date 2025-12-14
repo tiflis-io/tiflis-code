@@ -2,7 +2,7 @@
 
 > Technology stack, architecture, and best practices for server-side components.
 
-**Last Updated:** 2025-12-08
+**Last Updated:** 2025-12-14
 
 ---
 
@@ -68,6 +68,14 @@ This document defines the development standards for **tiflis-code-tunnel** and *
 | **drizzle-kit**    | Database migrations                          |
 
 > **Storage Strategy**: SQLite for metadata (messages, sessions, timestamps), file system for audio blobs. No external database required.
+
+### Speech Services
+
+| Service | Providers | Purpose |
+|---------|-----------|---------|
+| **STT (Speech-to-Text)** | OpenAI Whisper, ElevenLabs, Deepgram | Voice command transcription |
+| **TTS (Text-to-Speech)** | OpenAI (tts-1), ElevenLabs | Response audio synthesis |
+| **Summarization** | Same as Agent LLM | Condenses responses before TTS (~3 sentences) |
 
 ### Development Tools
 
@@ -239,6 +247,78 @@ src/
 
 ---
 
+## Supervisor Agent Architecture
+
+The Supervisor Agent is a LangGraph-based orchestrator that manages sessions and workspaces via natural language.
+
+### LangGraph Integration
+
+```typescript
+// Supervisor agent graph structure
+StateGraph<SupervisorState>
+  ├── chatNode (LLM with tools)
+  ├── toolNode (tool execution)
+  └── conditional routing based on tool calls
+```
+
+**Tools Available:**
+
+| Tool | Purpose |
+|------|---------|
+| `list_workspaces` | Discover workspaces in WORKSPACES_ROOT |
+| `list_projects` | List projects in a workspace |
+| `create_worktree` | Create git worktree for branched work |
+| `switch_worktree` | Switch to existing worktree |
+| `create_session` | Spawn agent/terminal session |
+| `terminate_session` | End a session |
+| `list_sessions` | List active sessions |
+| `list_directory` | Navigate filesystem |
+
+### Agent Session Manager
+
+Manages headless agent processes (Cursor, Claude, OpenCode):
+
+```typescript
+class AgentSessionManager {
+  // Events emitted
+  on('blocks', (sessionId, blocks) => {})
+  on('sessionCreated', (session) => {})
+  on('sessionTerminated', (sessionId) => {})
+  on('cliSessionIdDiscovered', (sessionId, cliSessionId) => {})
+
+  // Session lifecycle
+  async createSession(type, workspace, project, worktree?)
+  async executeCommand(sessionId, command, messageId?)
+  async terminateSession(sessionId)
+}
+```
+
+**Agent CLI Commands:**
+
+| Agent | CLI Command | Key Flags |
+|-------|-------------|-----------|
+| Cursor | `cursor-agent` | `--force --approve-mcps` |
+| Claude | `claude` | `--dangerously-skip-permissions --verbose` (with stream-json) |
+| OpenCode | `opencode run` | `--attach` (headless mode) |
+
+### Content Blocks System
+
+Server emits structured content blocks for rich UI rendering:
+
+| Block Type | Description | Metadata |
+|------------|-------------|----------|
+| `text` | Plain text | — |
+| `code` | Code content | `language` |
+| `tool` | Tool execution | `tool_name`, `tool_input`, `tool_output`, `tool_status` |
+| `thinking` | Reasoning | — |
+| `status` | Transient status | — |
+| `error` | Error | `error_code` |
+| `voice_input` | User voice | `audio_url`, `has_audio`, `duration` |
+| `voice_output` | TTS audio | `message_id`, `has_audio`, `duration` |
+| `action_buttons` | Interactive | `buttons[]` with `id`, `title`, `action`, `style` |
+
+---
+
 ## Protocol Message Handling
 
 ### Zod Schema Validation
@@ -404,6 +484,7 @@ const colors = {
 | **Graceful Degradation**          | Queue messages during brief disconnections                  |
 | **Large Message Support**         | WebSocket maxPayload set to 50MB for audio sync             |
 | **HTTP Polling API**              | REST API for watchOS clients (WebSocket blocked by Apple)   |
+| **Message Queue for HTTP Clients**| Per-device message queues with sequence numbers             |
 
 ### Workstation Server Requirements
 
@@ -414,6 +495,8 @@ const colors = {
 | **Subscription Recovery** | Restore client subscriptions after reconnect           |
 | **Message Buffering**     | Buffer messages during disconnection                   |
 | **Client State Sync**     | Support `sync` message for state recovery              |
+| **Agent Session History** | Persist and replay agent chat history (last 50 messages) |
+| **Streaming Blocks Sync** | Track current streaming blocks for devices joining mid-generation |
 
 ### HTTP Polling API (Tunnel Server)
 
@@ -426,6 +509,49 @@ REST API for watchOS clients (WebSocket is blocked by Apple on watchOS 9+).
 - `src/infrastructure/http/watch-api-route.ts` — Route handlers
 - `src/application/http-client-operations.ts` — Use case implementation
 - `src/domain/entities/http-client.ts` — Entity definition
+
+### Message Broadcasting
+
+The workstation server broadcasts messages to different client scopes:
+
+```typescript
+class MessageBroadcaster {
+  // Broadcast to all authenticated clients (supervisor output, global state)
+  broadcastToAll(message: WebSocketMessage)
+
+  // Broadcast to session subscribers only (agent/terminal output)
+  broadcastToSubscribers(sessionId: string, message: WebSocketMessage)
+
+  // Send to specific device (auth responses, resize results)
+  sendToClient(deviceId: string, message: WebSocketMessage)
+}
+```
+
+**Integration with HTTP Polling:**
+
+Messages for HTTP polling clients (watchOS) are automatically routed to the per-device message queue instead of WebSocket.
+
+### Chat History Service
+
+Manages persistent storage for supervisor and agent chat histories:
+
+```typescript
+class ChatHistoryService {
+  // Supervisor history (global, shared across devices)
+  async getSupervisorHistory(limit?: number): Promise<Message[]>
+  async addSupervisorMessage(role, content, contentBlocks?)
+  async clearSupervisorHistory()
+
+  // Agent session history (per-session, isolated)
+  async getSessionHistory(sessionId, limit?): Promise<Message[]>
+  async addSessionMessage(sessionId, role, content, contentBlocks?)
+  async clearSessionHistory(sessionId)
+
+  // Audio storage
+  async storeAudio(messageId, type, data): Promise<string>
+  async getAudio(messageId, type): Promise<Buffer | null>
+}
+```
 
 ---
 

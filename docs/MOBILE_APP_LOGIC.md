@@ -126,6 +126,45 @@ Cancel in-progress AI responses:
 - **Protocol**: Sends `supervisor.cancel` or `session.cancel` command
 - **Feedback**: Shows "Cancelled by user" status block
 
+### Message Splitting (v1.10)
+
+Long assistant responses are automatically split into multiple chat bubbles for improved readability:
+
+- **Max Lines Per Segment**: 17 lines (estimated height units)
+- **Min Threshold to Split**: 20 height units
+- **Preserves Context**: Each segment shows segment index (e.g., "1/3")
+- **Avatar/Timestamp**: Only shown on first segment
+
+```swift
+struct SplitMessageSegment {
+    let segmentIndex: Int
+    let totalSegments: Int
+    let isContinuation: Bool  // true for segments after first
+    let content: [MessageContentBlock]
+}
+```
+
+### Portrait-Only Locking
+
+App is locked to portrait mode on iPhone to ensure consistent UI experience and prevent layout issues during voice recording.
+
+### Scroll-to-Bottom FAB
+
+Floating action button appears when user scrolls >100px from bottom:
+
+- Uses actual item count (accounting for message splitting)
+- Smooth scroll animation on tap
+- Auto-hides when near bottom
+
+### On-Demand Audio Loading
+
+Audio data excluded from sync to reduce bandwidth. Audio loaded on-demand:
+
+1. Voice blocks show `has_audio: true` without actual data
+2. User taps play → `audio.request` sent with `message_id`
+3. Server responds with `audio.response` containing base64 audio
+4. Client caches audio locally for subsequent plays
+
 ---
 
 ## watchOS App (WIP)
@@ -778,6 +817,31 @@ The terminal uses **SwiftTerm** library for terminal emulation. The implementati
 - Batch replay for performance, `Coordinator` pattern for size tracking
 - Keyboard focus restoration when drawer closes via `@Environment(\.isDrawerOpen)`
 
+### Terminal ViewModel State Machine
+
+The terminal uses a sophisticated state machine for reliable output handling:
+
+```swift
+enum TerminalState {
+    case disconnected      // Not connected to session
+    case subscribing       // Waiting for session.subscribed
+    case replaying         // Loading historical output
+    case buffering         // Replay complete, buffering live messages
+    case live              // Real-time output streaming
+    case sessionLost       // Session terminated or connection lost
+}
+```
+
+**Key Features:**
+
+- **Master/Non-Master Model**: First subscriber becomes "master" and controls terminal size
+- **Sequence Tracking**: Gap detection with automatic targeted replay
+- **Replay Buffer**: Captures live messages during replay, applies after load complete
+- **Pending Feed Buffer**: Buffers output before view is ready (1000 item limit)
+- **TUI App Detection**: Detects alternate screen mode (vim, htop, Claude) via escape sequences
+  - Disables auto-scroll in TUI mode
+  - Prevents forced resize after clear in TUI mode
+
 ### Terminal Session Lifecycle
 
 Session Creation → View Init → SwiftTerm Setup → WebSocket Subscribe → Replay → Live Updates → Termination
@@ -1101,6 +1165,30 @@ final class ChatViewModel: ObservableObject {
     func clearContext() { ... }  // Supervisor only
 }
 ```
+
+### Message Content Blocks
+
+The app supports 10 different content block types:
+
+| Block Type | Description | UI Rendering |
+|------------|-------------|--------------|
+| `text` | Plain text content | Markdown rendering |
+| `code` | Code with language | Syntax highlighted |
+| `toolCall` | Tool execution | Collapsible with status indicator |
+| `thinking` | AI reasoning | Expandable, dimmed styling |
+| `status` | Transient status | Filtered from history |
+| `error` | Error message | Red styling |
+| `cancel` | User cancellation | "Cancelled by user" indicator |
+| `voiceInput` | User voice + transcription | Waveform + transcription text |
+| `voiceOutput` | TTS audio | Audio player with duration |
+| `actionButtons` | Interactive buttons | Button row with actions |
+
+**Action Button Actions:**
+
+- `send:<message>` — Send message to current session
+- `url:<url>` — Open URL in browser
+- `session:<type>` — Create new session of type
+- Custom strings — Handled by app logic
 
 ---
 

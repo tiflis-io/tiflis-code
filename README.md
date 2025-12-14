@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Your AI coding assistants, in your pocket.</strong><br>
-  <em>Voice-control Cursor, Claude Code & OpenCode from iPhone and Apple Watch — anywhere.</em>
+  <em>Voice-control Cursor, Claude Code & OpenCode from iPhone, Android, and Apple Watch — anywhere.</em>
 </p>
 
 <p align="center">
@@ -21,9 +21,11 @@
 <p align="center">
   <img src="https://img.shields.io/badge/iOS-18.0%2B-007AFF?logo=apple" alt="iOS 18+">
   <img src="https://img.shields.io/badge/watchOS-11.0%2B-007AFF?logo=apple" alt="watchOS 11+">
+  <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android" alt="Android 8+">
   <img src="https://img.shields.io/badge/Node.js-22%20LTS-339933?logo=nodedotjs" alt="Node.js 22">
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript" alt="TypeScript">
   <img src="https://img.shields.io/badge/Swift-5.x-FA7343?logo=swift" alt="Swift">
+  <img src="https://img.shields.io/badge/Kotlin-2.x-7F52FF?logo=kotlin" alt="Kotlin">
   <img src="https://img.shields.io/badge/license-FSL--1.1--NC-blue" alt="FSL-1.1-NC">
 </p>
 
@@ -113,15 +115,16 @@ tail -f logs/app.log
 
 Tiflis Code includes a **complete PTY terminal** on your phone — with full ANSI support, scrollback, and keyboard input.
 
-### 📱 Native Apple Experience
+### 📱 Native Mobile Experience
 
-| Platform        | Features                                                    |
-| --------------- | ----------------------------------------------------------- |
-| **iPhone**      | Full chat UI, terminal, voice recording, sidebar navigation |
-| **iPad**        | Optimized layout with persistent sidebar                    |
-| **Apple Watch** | Voice commands, session list, audio responses               |
+| Platform        | Features                                                    | Status    |
+| --------------- | ----------------------------------------------------------- | --------- |
+| **iPhone**      | Full chat UI, terminal, voice recording, sidebar navigation | ✅ Ready  |
+| **iPad**        | Optimized layout with persistent sidebar                    | ✅ Ready  |
+| **Android**     | Full chat UI, voice I/O, adaptive layout, deep linking      | ✅ Ready  |
+| **Apple Watch** | Voice commands, session list, audio responses               | 🚧 WIP    |
 
-Built with **SwiftUI** following Apple Human Interface Guidelines. Supports light & dark modes.
+Built with **SwiftUI** (iOS/watchOS) and **Jetpack Compose** (Android). Supports light & dark modes.
 
 ### 🔐 Privacy & Security
 
@@ -143,15 +146,15 @@ Built with **SwiftUI** following Apple Human Interface Guidelines. Supports ligh
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                                                                         │
 │  ┌─────────────┐                                     ┌───────────────┐  │
-│  │             │         ┌─────────────┐             │               │  │
-│  │   iPhone    │◄───────►│             │◄───────────►│  Workstation  │  │
+│  │   iPhone    │         ┌─────────────┐             │               │  │
+│  │   Android   │◄───────►│             │◄───────────►│  Workstation  │  │
 │  │             │   WSS   │   Tunnel    │    WSS      │    Server     │  │
 │  └─────────────┘         │   Server    │             │               │  │
 │                          │             │             │  ┌─────────┐  │  │
 │  ┌─────────────┐         │  (Your VPS) │             │  │ Claude  │  │  │
-│  │             │         │             │             │  │ Cursor  │  │  │
+│  │             │  HTTP   │             │             │  │ Cursor  │  │  │
 │  │ Apple Watch │◄───────►│             │             │  │OpenCode │  │  │
-│  │             │         └─────────────┘             │  └─────────┘  │  │
+│  │             │ Polling └─────────────┘             │  └─────────┘  │  │
 │  └─────────────┘                                     │               │  │
 │                                                      │  (Your Mac)   │  │
 │  Anywhere in the world                               └───────────────┘  │
@@ -161,11 +164,13 @@ Built with **SwiftUI** following Apple Human Interface Guidelines. Supports ligh
 
 ### Components
 
-| Component              | Description                  | Technology          |
-| ---------------------- | ---------------------------- | ------------------- |
-| **Mobile App**         | iOS & watchOS client         | Swift, SwiftUI      |
-| **Tunnel Server**      | Secure relay (deploy on VPS) | TypeScript, Node.js |
-| **Workstation Server** | Runs on your machine         | TypeScript, Node.js |
+| Component              | Description                  | Technology               |
+| ---------------------- | ---------------------------- | ------------------------ |
+| **iOS App**            | iPhone & iPad client         | Swift, SwiftUI           |
+| **watchOS App**        | Apple Watch companion (WIP)  | Swift, SwiftUI           |
+| **Android App**        | Android client               | Kotlin, Jetpack Compose  |
+| **Tunnel Server**      | Secure relay (deploy on VPS) | TypeScript, Node.js      |
+| **Workstation Server** | Runs on your machine         | TypeScript, Node.js      |
 
 ### How It Works
 

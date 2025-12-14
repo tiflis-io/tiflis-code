@@ -1,7 +1,5 @@
 # TiflisCode Android
 
-> **Status:** 🚧 In active development, not yet ready for production use.
-
 Native Android client for TiflisCode - Remote AI agent control via secure tunnel.
 
 ## Overview
@@ -61,20 +59,56 @@ domain/
 
 ## Features
 
+### Implemented
+
 - **Supervisor Agent** - AI orchestrator for session management
 - **Agent Sessions** - Cursor, Claude Code, OpenCode support
-- **Terminal** - PTY shell access (placeholder, requires Termux library)
-- **Voice Input** - Audio recording for voice commands
-- **QR Code Setup** - Magic link connection via QR scan
+- **Voice Input** - Audio recording (M4A, 16kHz, 32kbps)
+- **Voice Output** - TTS playback with audio format auto-detection
+- **QR Code Setup** - Magic link connection via CameraX + ML Kit
+- **Multi-device Sync** - Message deduplication by device ID
+- **Adaptive Layout** - Phone (drawer) / Tablet (split view)
+- **Deep Linking** - `tiflis://connect?data=<base64>` magic links
+- **Secure Storage** - EncryptedSharedPreferences for credentials
+- **Network Monitoring** - Real-time WiFi/Cellular detection
+
+### Connection Features
+
+- **Dual Heartbeat** - Network ping/pong (15s) + Application heartbeat (10s)
+- **Exponential Backoff** - 1s → 30s max reconnection delay
+- **Command Queue** - Queues commands when disconnected (50 max, 60s expiry)
+- **Smart Retry** - 3 retries with 500ms → 4s backoff
+
+### In Progress
+
+- **Terminal** - PTY shell access (placeholder, custom ANSI emulator planned)
 
 ## Protocol
 
-Uses the same WebSocket protocol as iOS client (v1.8):
+Uses the same WebSocket protocol as iOS client (v1.10):
 
 - Single multiplexed WebSocket connection
 - JSON message format with snake_case fields
-- Heartbeat with ping/pong (15s interval)
-- Exponential backoff reconnection
+- Dual heartbeat: transport ping/pong (15s) + application heartbeat (10s)
+- Exponential backoff reconnection (1s → 30s max)
+- On-demand audio loading via `audio.request`/`audio.response`
+
+### Message Content Blocks
+
+Supports all 10 content block types:
+
+| Block Type | Description |
+|------------|-------------|
+| `text` | Plain text with markdown |
+| `code` | Syntax highlighted code |
+| `toolCall` | Tool execution with status |
+| `thinking` | AI reasoning (expandable) |
+| `status` | Transient status messages |
+| `error` | Error messages |
+| `cancel` | Cancellation indicator |
+| `voiceInput` | Voice recording + transcription |
+| `voiceOutput` | TTS audio playback |
+| `actionButtons` | Interactive buttons |
 
 ## Kotlin Best Practices (CRITICAL)
 
@@ -138,11 +172,9 @@ Button(onClick = { scope.launch { onRefresh() } })
 
 ## TODO
 
-- [ ] Full Termux terminal emulator integration
-- [ ] QR code scanner with CameraX
-- [ ] Voice output (TTS) playback
-- [ ] Syntax highlighting for code blocks
-- [ ] WearOS support (future)
+- [ ] Custom terminal emulator (ANSI parsing)
+- [ ] Syntax highlighting for code blocks (Markwon + Prism4j integrated)
+- [ ] WearOS companion app (future)
 
 ## License
 

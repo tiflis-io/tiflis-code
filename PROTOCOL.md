@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.9-blue" alt="Version 1.9">
+  <img src="https://img.shields.io/badge/version-1.10-blue" alt="Version 1.10">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket%20%7C%20HTTP-green" alt="WebSocket | HTTP">
 </p>
@@ -26,7 +26,19 @@
 
 ## Changelog
 
-### Version 1.9 (Current)
+### Version 1.10 (Current)
+- **Added:** `audio.request` / `audio.response` messages for on-demand audio retrieval
+- **Added:** `current_streaming_blocks` in `session.subscribed` for devices joining mid-generation
+- **Added:** `executingStates` map in `sync.state` for per-session execution status
+- **Added:** `supervisorIsExecuting` flag in `sync.state` for supervisor processing state
+- **Added:** Terminal master/non-master client model for resize authority
+- **Added:** Sequence-based gap detection and targeted replay for terminal sessions
+- **Added:** Agent session history replay on subscription (last 50 messages)
+- **Enhanced:** `session.subscribed` now includes `history` and `is_executing` fields
+- **Enhanced:** Terminal replay supports `first_sequence`, `last_sequence`, `current_sequence` metadata
+- **Enhanced:** Action buttons now support `send:`, `url:`, `session:`, and custom actions
+
+### Version 1.9
 - **Added:** Application-level `heartbeat` message for end-to-end connectivity verification
 - **Added:** `heartbeat.ack` response with workstation uptime
 - **Added:** Extended connection states: `verified`, `degraded` for accurate status display
@@ -798,6 +810,43 @@ Sent after TTS synthesis of response:
 
 **Note:** Long responses are automatically summarized to ~3 sentences before TTS synthesis to keep audio concise.
 
+### 4.9 Audio Request/Response (On-Demand Audio)
+
+Audio data is excluded from `sync.state` to reduce message size. Clients can request audio on-demand:
+
+```typescript
+// Request audio for a specific message
+// Mobile → Workstation
+{
+  type: "audio.request",
+  id: string,
+  payload: {
+    message_id: string,             // Message ID containing voice block
+    audio_type: "input" | "output"  // Voice input or TTS output
+  }
+}
+
+// Response with audio data
+// Workstation → Mobile
+{
+  type: "audio.response",
+  id: string,
+  payload: {
+    message_id: string,
+    audio_type: "input" | "output",
+    audio?: string,           // Base64 encoded audio (if found)
+    error?: string            // Error message (if not found)
+  }
+}
+```
+
+**Client Implementation:**
+
+1. On `sync.state` or `session.subscribed`, voice blocks have `has_audio: true` without actual data
+2. When user taps play button, send `audio.request` with `message_id`
+3. On `audio.response`, cache audio locally and start playback
+4. Handle `error` gracefully (show "Audio unavailable")
+
 ---
 
 ## 5. Session Commands
@@ -816,10 +865,20 @@ Sent after TTS synthesis of response:
   type: "session.subscribed",
   session_id: string,
   payload?: {
-    // For terminal sessions only:
+    // For terminal sessions:
     is_master?: boolean,  // Whether this client controls terminal size
     cols?: number,        // Current terminal columns
-    rows?: number         // Current terminal rows
+    rows?: number,        // Current terminal rows
+
+    // For agent sessions:
+    is_executing?: boolean,           // Is agent currently executing a command?
+    history?: Array<{                 // Message history (last 50 messages)
+      role: "user" | "assistant",
+      content: string,
+      content_blocks?: ContentBlock[],
+      timestamp: number
+    }>,
+    current_streaming_blocks?: ContentBlock[]  // In-progress response blocks (if is_executing=true)
   }
 }
 
@@ -1245,16 +1304,28 @@ Sent after TTS synthesis of agent response:
     sessions: Array<{
       session_id: string,
       session_type: string,
-      status: string
+      status: string,
+      workspace?: string,
+      project?: string,
+      worktree?: string,
+      working_dir?: string,
+      agent_alias?: string      // Custom alias name (e.g., "zai")
     }>,
-    subscriptions: string[],  // Session IDs client was subscribed to
+    subscriptions: string[],    // Session IDs client was subscribed to
     supervisorHistory?: Array<{
       role: "user" | "assistant",
       content: string,
       content_blocks?: ContentBlock[],
       sequence: number,
       createdAt: string
-    }>
+    }>,
+
+    // Execution state (for UI indicators)
+    supervisorIsExecuting?: boolean,       // Is supervisor currently processing?
+    executingStates?: Record<string, boolean>,  // Map of session_id → is_executing
+
+    // In-progress streaming (for devices joining mid-generation)
+    currentStreamingBlocks?: ContentBlock[]    // Supervisor's current response blocks
   }
 }
 ```
@@ -1383,6 +1454,8 @@ function handleTerminalOutput(payload) {
 | `supervisor.command` | Natural language command to Supervisor Agent |
 | `supervisor.clear_context` | Clear Supervisor chat history |
 | `supervisor.cancel` | Cancel Supervisor command execution |
+| `heartbeat` | Application-level connectivity check |
+| `audio.request` | Request audio data for a message |
 | `session.subscribe` | Subscribe to session output |
 | `session.unsubscribe` | Unsubscribe from session |
 | `session.execute` | Execute command (text/audio) |
@@ -1400,10 +1473,12 @@ function handleTerminalOutput(payload) {
 | `pong` | Heartbeat response |
 | `response` | Response to command (by id) |
 | `error` | Error response |
+| `heartbeat.ack` | Heartbeat acknowledgment with workstation uptime |
+| `audio.response` | Audio data response (or error if unavailable) |
 | `sync.state` | State sync data (audio excluded, use `has_audio` flags) |
 | `session.created` | Session was created |
 | `session.terminated` | Session was terminated |
-| `session.subscribed` | Subscribed to session (includes `is_master`, `cols`, `rows` for terminals) |
+| `session.subscribed` | Subscribed to session (terminals: `is_master`/`cols`/`rows`; agents: `history`/`is_executing`/`current_streaming_blocks`) |
 | `session.unsubscribed` | Unsubscribed from session |
 | `session.resized` | Terminal resize result (success/failure, actual size) |
 | `session.output` | Session output (agent/terminal/transcription), includes `sequence` for terminal |
