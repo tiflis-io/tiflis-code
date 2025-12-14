@@ -248,7 +248,7 @@ export default function Home() {
             />
             <h3 className="text-2xl font-semibold mb-2">Roman Barinov</h3>
             <p className="text-gray-600 dark:text-gray-400 mb-4">
-              Entrepreneur, CTO & Software Developer
+              Entrepreneur, Architect and Software Developer
             </p>
             <div className="flex gap-4">
               <a
