@@ -540,7 +540,9 @@ EOF
         echo "  Health:   https://${domain_name}/healthz"
     fi
 
-    echo "  API Key:  ${api_key:0:8}..."
+    echo ""
+    echo "  Registration API Key (save this for workstation setup):"
+    echo "    ${api_key}"
     echo ""
     echo "  Commands:"
     echo "    Logs:    cd ${TUNNEL_DIR} && $compose_cmd logs -f"
@@ -990,7 +992,9 @@ EOF
     echo ""
     echo "  URL:      http://localhost:${TIFLIS_TUNNEL_PORT}"
     echo "  Health:   http://localhost:${TIFLIS_TUNNEL_PORT}/healthz"
-    echo "  API Key:  ${api_key:0:8}..."
+    echo ""
+    echo "  Registration API Key (save this for workstation setup):"
+    echo "    ${api_key}"
     echo ""
 
     if [ "$init_system" = "systemd" ]; then
