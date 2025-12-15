@@ -129,7 +129,7 @@ detect_distro() {
 }
 
 check_node() {
-    local required="${1:-22}"
+    local required="${1:-24}"
     command -v node &>/dev/null || return 1
     local ver="$(node --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
     [ -n "$ver" ] && [ "$ver" -ge "$required" ]
@@ -223,33 +223,33 @@ install_node() {
     case "$os" in
         darwin)
             if command -v brew &>/dev/null; then
-                brew install node@22
-                brew link node@22 --force --overwrite 2>/dev/null || true
+                brew install node@24
+                brew link node@24 --force --overwrite 2>/dev/null || true
             else
                 # Install via nvm
                 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
                 export NVM_DIR="$HOME/.nvm"
                 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                nvm install 22
-                nvm use 22
+                nvm install 24
+                nvm use 24
             fi
             ;;
         linux|wsl)
             case "$distro" in
                 ubuntu|debian)
-                    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+                    curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
                     sudo apt-get install -y nodejs
                     ;;
                 fedora|rhel|centos)
-                    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+                    curl -fsSL https://rpm.nodesource.com/setup_24.x | sudo bash -
                     sudo dnf install -y nodejs
                     ;;
                 *)
                     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
                     export NVM_DIR="$HOME/.nvm"
                     [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
-                    nvm install 22
-                    nvm use 22
+                    nvm install 24
+                    nvm use 24
                     ;;
             esac
             ;;
@@ -546,18 +546,18 @@ install_workstation() {
 
     # Check Node.js
     print_step "Checking Node.js..."
-    if ! check_node 22; then
-        print_warning "Node.js >= 22 is required"
+    if ! check_node 24; then
+        print_warning "Node.js >= 24 is required"
         if confirm "Install Node.js automatically?"; then
             install_node
             # Reload PATH
             hash -r 2>/dev/null || true
-            if ! check_node 22; then
+            if ! check_node 24; then
                 print_error "Node.js installation failed. Please install manually and re-run."
                 exit 1
             fi
         else
-            print_error "Node.js >= 22 is required. Please install from https://nodejs.org"
+            print_error "Node.js >= 24 is required. Please install from https://nodejs.org"
             exit 1
         fi
     fi
