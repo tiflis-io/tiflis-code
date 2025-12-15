@@ -899,8 +899,8 @@ EOF
 </dict>
 </plist>
 EOF
-            launchctl unload "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist" 2>/dev/null || true
-            launchctl load "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist"
+            launchctl bootout "gui/$(id -u)/io.tiflis.workstation" 2>/dev/null || true
+            launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist"
 
             sleep 3
             if launchctl list | grep -q io.tiflis.workstation; then
@@ -950,8 +950,9 @@ EOF
         echo "  Commands:"
         echo "    Status:  launchctl list | grep tiflis"
         echo "    Logs:    tail -f ${WORKSTATION_DIR}/logs/output.log"
-        echo "    Stop:    launchctl unload ~/Library/LaunchAgents/io.tiflis.workstation.plist"
-        echo "    Start:   launchctl load ~/Library/LaunchAgents/io.tiflis.workstation.plist"
+        echo "    Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.workstation"
+        echo "    Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.workstation"
+        echo "    Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.workstation.plist"
         echo ""
         echo "  Debug (if service not working):"
         echo "    cat ${WORKSTATION_DIR}/logs/output.log"

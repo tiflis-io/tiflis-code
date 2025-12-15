@@ -977,8 +977,8 @@ EOF
 </dict>
 </plist>
 EOF
-            launchctl unload "$HOME/Library/LaunchAgents/io.tiflis.tunnel.plist" 2>/dev/null || true
-            launchctl load "$HOME/Library/LaunchAgents/io.tiflis.tunnel.plist"
+            launchctl bootout "gui/$(id -u)/io.tiflis.tunnel" 2>/dev/null || true
+            launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.tunnel.plist"
 
             sleep 2
             if launchctl list | grep -q io.tiflis.tunnel; then
@@ -1010,8 +1010,9 @@ EOF
         echo "  Commands:"
         echo "    Status:  launchctl list | grep tiflis"
         echo "    Logs:    tail -f ${TUNNEL_DIR}/logs/output.log"
-        echo "    Stop:    launchctl unload ~/Library/LaunchAgents/io.tiflis.tunnel.plist"
-        echo "    Start:   launchctl load ~/Library/LaunchAgents/io.tiflis.tunnel.plist"
+        echo "    Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.tunnel"
+        echo "    Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.tunnel"
+        echo "    Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.tunnel.plist"
     fi
 
     echo ""

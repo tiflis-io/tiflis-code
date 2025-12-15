@@ -532,8 +532,9 @@ AGENT_ALIAS_ZAI=claude --settings /Users/yourname/.zai/settings.json`}</CodeBloc
           <h3 className="text-lg font-semibold mt-6 mb-2">macOS (launchd)</h3>
           <CodeBlock title="View status">{`launchctl list | grep tiflis`}</CodeBlock>
           <CodeBlock title="View logs">{`tail -f ~/.tiflis-code/workstation/logs/output.log`}</CodeBlock>
-          <CodeBlock title="Stop service">{`launchctl unload ~/Library/LaunchAgents/io.tiflis.workstation.plist`}</CodeBlock>
-          <CodeBlock title="Start service">{`launchctl load ~/Library/LaunchAgents/io.tiflis.workstation.plist`}</CodeBlock>
+          <CodeBlock title="Restart service (apply config changes)">{`launchctl kickstart -k gui/$(id -u)/io.tiflis.workstation`}</CodeBlock>
+          <CodeBlock title="Stop service">{`launchctl bootout gui/$(id -u)/io.tiflis.workstation`}</CodeBlock>
+          <CodeBlock title="Start service">{`launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/io.tiflis.workstation.plist`}</CodeBlock>
 
           <h3 className="text-lg font-semibold mt-6 mb-2">Linux (systemd)</h3>
           <CodeBlock title="View status">{`systemctl --user status tiflis-workstation`}</CodeBlock>
@@ -546,11 +547,11 @@ AGENT_ALIAS_ZAI=claude --settings /Users/yourname/.zai/settings.json`}</CodeBloc
         <Section title="Uninstall">
           <h3 className="text-lg font-semibold mt-2 mb-2">macOS</h3>
           <CodeBlock>{`# Stop and remove workstation
-launchctl unload ~/Library/LaunchAgents/io.tiflis.workstation.plist
+launchctl bootout gui/$(id -u)/io.tiflis.workstation
 rm ~/Library/LaunchAgents/io.tiflis.workstation.plist
 
 # Stop and remove tunnel (if installed locally)
-launchctl unload ~/Library/LaunchAgents/io.tiflis.tunnel.plist
+launchctl bootout gui/$(id -u)/io.tiflis.tunnel
 rm ~/Library/LaunchAgents/io.tiflis.tunnel.plist
 
 # Remove installation directory
