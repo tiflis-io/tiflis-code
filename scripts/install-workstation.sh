@@ -899,22 +899,28 @@ EOF
         echo "    Stop:    sudo systemctl stop tiflis-workstation"
         echo "    Start:   sudo systemctl start tiflis-workstation"
         echo "    Restart: sudo systemctl restart tiflis-workstation"
+        echo ""
+        echo "  Debug (if service not working):"
+        echo "    cat ${WORKSTATION_DIR}/logs/output.log"
+        echo "    cat ${WORKSTATION_DIR}/logs/error.log"
+        echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
     elif [ "$init_system" = "launchd" ]; then
         echo "  Commands:"
         echo "    Status:  launchctl list | grep tiflis"
         echo "    Logs:    tail -f ${WORKSTATION_DIR}/logs/output.log"
         echo "    Stop:    launchctl unload ~/Library/LaunchAgents/io.tiflis.workstation.plist"
         echo "    Start:   launchctl load ~/Library/LaunchAgents/io.tiflis.workstation.plist"
+        echo ""
+        echo "  Debug (if service not working):"
+        echo "    cat ${WORKSTATION_DIR}/logs/output.log"
+        echo "    cat ${WORKSTATION_DIR}/logs/error.log"
+        echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
     fi
 
     echo ""
     echo "  Configuration: ${WORKSTATION_DIR}/.env"
     echo "  Data:          ${WORKSTATION_DIR}/data/"
     echo "  Logs:          ${WORKSTATION_DIR}/logs/"
-    echo ""
-    echo "  To configure AI agent, edit ${WORKSTATION_DIR}/.env and add:"
-    echo "    AGENT_PROVIDER=openai"
-    echo "    AGENT_API_KEY=your-openai-key"
 }
 
 # ─────────────────────────────────────────────────────────────
