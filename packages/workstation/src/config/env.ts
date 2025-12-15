@@ -214,12 +214,21 @@ export function parseAgentAliases(): Map<string, AgentAlias> {
  * Example: 'claude --settings "~/.zai/settings.json"' -> ['claude', '--settings', '~/.zai/settings.json']
  */
 function parseCommandString(command: string): string[] {
+  // Strip surrounding quotes if present (handles dotenv quirks)
+  let cmd = command.trim();
+  if (
+    (cmd.startsWith('"') && cmd.endsWith('"')) ||
+    (cmd.startsWith("'") && cmd.endsWith("'"))
+  ) {
+    cmd = cmd.slice(1, -1);
+  }
+
   const parts: string[] = [];
   let current = "";
   let inQuote = false;
   let quoteChar = "";
 
-  for (const char of command) {
+  for (const char of cmd) {
     if (!inQuote && (char === '"' || char === "'")) {
       inQuote = true;
       quoteChar = char;
