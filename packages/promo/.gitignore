@@ -34,3 +34,7 @@ next-env.d.ts
 .vscode
 *.swp
 *.swo
+
+# Install scripts (copied during build)
+public/install-tunnel.sh
+public/install-workstation.sh

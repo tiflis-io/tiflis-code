@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    Tiflis Code Tunnel Server - launchd plist
+    Install: cp io.tiflis.tunnel.plist ~/Library/LaunchAgents/
+    Load: launchctl load ~/Library/LaunchAgents/io.tiflis.tunnel.plist
+    Unload: launchctl unload ~/Library/LaunchAgents/io.tiflis.tunnel.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.tiflis.tunnel</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/bin/env</string>
+        <string>bash</string>
+        <string>-c</string>
+        <string>source __INSTALL_DIR__/.env &amp;&amp; exec node __INSTALL_DIR__/node_modules/@tiflis-io/tiflis-code-tunnel/dist/main.js</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>__INSTALL_DIR__</string>
+
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>__INSTALL_DIR__/logs/output.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>__INSTALL_DIR__/logs/error.log</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

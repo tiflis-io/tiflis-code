@@ -11,7 +11,13 @@ export default function Home() {
   return (
     <main className="flex flex-col">
       {/* Header */}
-      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-end px-6 py-4">
+      <header className="fixed top-0 left-0 right-0 z-50 flex items-center justify-end gap-6 px-6 py-4">
+        <a
+          href="/docs/install"
+          className="text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white text-sm transition-colors"
+        >
+          Docs
+        </a>
         <a
           href="https://github.com/tiflis-io/tiflis-code"
           className="text-gray-600 dark:text-gray-400 hover:text-black dark:hover:text-white transition-colors"

@@ -6,6 +6,7 @@
   "author": "Roman Barinov <rbarinov@gmail.com>",
   "license": "FSL-1.1-NC",
   "scripts": {
+    "prebuild": "cp ../../scripts/install-tunnel.sh ../../scripts/install-workstation.sh public/",
     "dev": "NODE_ENV=development next dev",
     "build": "NODE_ENV=production next build",
     "start": "NODE_ENV=production next start",

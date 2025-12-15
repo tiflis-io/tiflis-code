@@ -14,7 +14,7 @@
     "url": "https://github.com/tiflis-io/tiflis-code/issues"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
+    "registry": "https://registry.npmjs.org",
     "access": "public"
   },
   "type": "module",

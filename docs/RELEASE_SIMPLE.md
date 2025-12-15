@@ -7,7 +7,7 @@ sequenceDiagram
     participant Dev as Developer
     participant Git as Git
     participant CI as GitHub Actions
-    participant NPM as GitHub Packages
+    participant NPM as npmjs.com
 
     Dev->>Dev: 1. Update version<br/>in package.json
     Dev->>Git: 2. git commit + push
@@ -44,7 +44,7 @@ git push origin main
 
 GitHub Actions:
 - ✅ Will build all packages
-- ✅ Will publish all packages to GitHub Packages
+- ✅ Will publish all packages to npmjs.com
 
 **That's it. Nothing else.**
 

@@ -40,20 +40,11 @@ The Workstation Server runs on the user's machine and provides:
 ## Installation
 
 ```bash
-# Using npm (from GitHub Packages)
+# Using npm
 npm install @tiflis-io/tiflis-code-workstation
 
 # Using pnpm
 pnpm add @tiflis-io/tiflis-code-workstation
-```
-
-### GitHub Packages Authentication
-
-Add to your `.npmrc`:
-
-```
-@tiflis-io:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
 ```
 
 ## Quick Start

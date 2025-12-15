@@ -32,20 +32,11 @@ The Tunnel Server acts as a secure reverse proxy between mobile clients (iOS/wat
 ## Installation
 
 ```bash
-# Using npm (from GitHub Packages)
+# Using npm
 npm install @tiflis-io/tiflis-code-tunnel
 
 # Using pnpm
 pnpm add @tiflis-io/tiflis-code-tunnel
-```
-
-### GitHub Packages Authentication
-
-Add to your `.npmrc`:
-
-```
-@tiflis-io:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
 ```
 
 ## Quick Start

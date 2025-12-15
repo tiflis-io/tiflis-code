@@ -8,7 +8,7 @@
 
 ## Overview
 
-The project uses GitHub Actions for CI/CD with automatic publishing to GitHub Packages when versions change.
+The project uses GitHub Actions for CI/CD with automatic publishing to npmjs.com when versions change.
 
 ---
 
@@ -134,7 +134,7 @@ git push origin main
 #    - Triggers on push to main when package.json files change
 #    - Compares current version with previous commit
 #    - Builds all packages
-#    - Publishes only packages with changed versions to GitHub Packages
+#    - Publishes only packages with changed versions to npmjs.com
 #    - Skips packages with unchanged versions
 ```
 
@@ -154,7 +154,7 @@ sequenceDiagram
     participant CMD as pnpm version
     participant Git as Git (main branch)
     participant CI as GitHub Actions
-    participant NPM as GitHub Packages
+    participant NPM as npmjs.com
 
     Dev->>CMD: 1. pnpm version:tunnel:patch<br/>or version:workstation:patch
     Note over CMD: Updates package.json<br/>(no commit)
@@ -316,7 +316,7 @@ jobs:
         with:
           node-version: 22
           cache: "pnpm"
-          registry-url: "https://npm.pkg.github.com"
+          registry-url: "https://registry.npmjs.org"
           scope: "@tiflis-io"
 
       - run: pnpm install --frozen-lockfile
@@ -507,9 +507,9 @@ packages:
 
 ---
 
-## GitHub Packages Publishing
+## npm Publishing
 
-All npm packages are published to **GitHub Packages** (not npmjs.com).
+All npm packages are published to **npmjs.com** (public registry, no authentication required for installation).
 
 ### Package Configuration
 
@@ -518,35 +518,21 @@ All npm packages are published to **GitHub Packages** (not npmjs.com).
 {
   "name": "@tiflis-io/tiflis-code-tunnel",
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
+    "registry": "https://registry.npmjs.org",
     "access": "public"
   }
 }
 ```
 
-**Package Scope:** All packages use the `@tiflis-io` scope to match the GitHub organization name (`tiflis-io`).
+**Package Scope:** All packages use the `@tiflis-io` scope.
 
-### npm Registry Configuration
+### Installing Packages
 
-```
-# .npmrc (repository root)
-@tiflis-io:registry=https://npm.pkg.github.com
-```
-
-### Installing from GitHub Packages
-
-Users need to authenticate with GitHub Packages:
-
-```bash
-# Add to ~/.npmrc (with personal access token)
-//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN
-@tiflis-io:registry=https://npm.pkg.github.com
-```
-
-Then install:
+No authentication required:
 
 ```bash
 npm install @tiflis-io/tiflis-code-tunnel
+npm install @tiflis-io/tiflis-code-workstation
 ```
 
 ---
@@ -556,5 +542,5 @@ npm install @tiflis-io/tiflis-code-tunnel
 - [docs/RELEASE_SIMPLE.md](RELEASE_SIMPLE.md) — Simplified release guide
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Fastlane Documentation](https://docs.fastlane.tools/)
-- [GitHub Packages Documentation](https://docs.github.com/en/packages)
+- [npm Documentation](https://docs.npmjs.com/)
 - [Turborepo Documentation](https://turbo.build/repo/docs)

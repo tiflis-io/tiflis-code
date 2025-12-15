@@ -11,6 +11,64 @@ Tiflis Code consists of two main components:
 | **Tunnel Server** | WebSocket reverse proxy for public access | Node.js, Fastify, ws |
 | **Workstation Server** | AI agent manager and terminal access | Node.js, LangChain, node-pty |
 
+## ⚡ Quick Install (One-Liner)
+
+### Tunnel Server
+
+```bash
+# Docker Compose (recommended for servers)
+curl -fsSL https://code.tiflis.io/install-tunnel.sh | bash
+
+# Native Node.js
+curl -fsSL https://code.tiflis.io/install-tunnel.sh | bash -s -- --native
+
+# Dry run (preview without changes)
+curl -fsSL https://code.tiflis.io/install-tunnel.sh | bash -s -- --dry-run
+```
+
+### Workstation Server
+
+```bash
+# Interactive setup
+curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
+
+# Non-interactive (provide env vars)
+TUNNEL_URL=wss://tunnel.example.com/ws \
+TUNNEL_API_KEY=your-api-key \
+curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
+
+# Windows (run inside WSL2)
+wsl -d Ubuntu
+curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
+```
+
+### What the Scripts Do
+
+1. Detect your platform (macOS, Linux, WSL)
+2. Check prerequisites (Docker, Node.js >= 22, build tools)
+3. Interactive configuration wizard (or use env vars)
+4. Install packages and create service (systemd/launchd)
+5. Start the server and display connection info
+
+### Installation Directory
+
+Both scripts install to `~/.tiflis-code/`:
+
+```
+~/.tiflis-code/
+├── tunnel/
+│   ├── .env
+│   ├── docker-compose.yml  # Docker mode
+│   ├── node_modules/       # Native mode
+│   └── logs/
+└── workstation/
+    ├── .env
+    ├── node_modules/
+    ├── data/
+    │   └── tiflis.db
+    └── logs/
+```
+
 ## 🏗️ Architecture
 
 ```

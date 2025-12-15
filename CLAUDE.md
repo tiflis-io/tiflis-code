@@ -183,7 +183,7 @@ pnpm version:workstation:patch
 # Commit and push
 git add -A && git commit -m "chore: bump version" && git push origin main
 
-# GitHub Actions automatically publishes to GitHub Packages
+# GitHub Actions automatically publishes to npmjs.com
 ```
 
 > 📖 See [docs/RELEASE_SIMPLE.md](docs/RELEASE_SIMPLE.md)

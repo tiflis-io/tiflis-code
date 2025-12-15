@@ -1,0 +1,34 @@
+# Tiflis Code Tunnel Server - systemd unit file
+# Install: sudo cp tiflis-tunnel.service /etc/systemd/system/
+# Enable: sudo systemctl enable tiflis-tunnel
+# Start: sudo systemctl start tiflis-tunnel
+
+[Unit]
+Description=Tiflis Code Tunnel Server
+Documentation=https://github.com/tiflis-io/tiflis-code
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__INSTALL_DIR__
+EnvironmentFile=__INSTALL_DIR__/.env
+ExecStart=/usr/bin/node __INSTALL_DIR__/node_modules/@tiflis-io/tiflis-code-tunnel/dist/main.js
+Restart=always
+RestartSec=10
+
+# Logging
+StandardOutput=append:__INSTALL_DIR__/logs/output.log
+StandardError=append:__INSTALL_DIR__/logs/error.log
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=__INSTALL_DIR__
+
+[Install]
+WantedBy=multi-user.target
