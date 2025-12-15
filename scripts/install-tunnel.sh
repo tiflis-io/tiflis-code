@@ -638,7 +638,7 @@ services:
     volumes:
       - "./nginx.conf:/etc/nginx/nginx.conf:ro"
       - "./certbot/conf:/etc/letsencrypt:ro"
-      - "./certbot/www:/var/www/certbot:ro"
+      - "./certbot/www:/var/www/certbot"
     depends_on:
       - tunnel
     command: '/bin/sh -c ''while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'''
@@ -740,9 +740,9 @@ NGINX_EOF
     sed -i.bak "s/__DOMAIN__/${domain_name}/g" "${TUNNEL_DIR}/nginx.conf"
     rm -f "${TUNNEL_DIR}/nginx.conf.bak"
 
-    # Create certbot directories
+    # Create certbot directories including ACME challenge path
     mkdir -p "${TUNNEL_DIR}/certbot/conf"
-    mkdir -p "${TUNNEL_DIR}/certbot/www"
+    mkdir -p "${TUNNEL_DIR}/certbot/www/.well-known/acme-challenge"
 
     # Create initial certificate provisioning script
     cat > "${TUNNEL_DIR}/init-letsencrypt.sh" << INIT_EOF
@@ -771,6 +771,19 @@ fi
 
 echo "→ Starting nginx..."
 docker compose up -d nginx
+
+# Wait for nginx to be ready
+echo "→ Waiting for nginx to be ready..."
+sleep 3
+
+# Create a test file to verify ACME challenge path works
+echo "test" > "${TUNNEL_DIR}/certbot/www/.well-known/acme-challenge/test"
+if curl -sf "http://localhost/.well-known/acme-challenge/test" > /dev/null 2>&1; then
+    echo "✓ ACME challenge path verified"
+else
+    echo "⚠ Warning: Could not verify ACME challenge path locally"
+fi
+rm -f "${TUNNEL_DIR}/certbot/www/.well-known/acme-challenge/test"
 
 echo "→ Deleting dummy certificate..."
 docker compose run --rm --entrypoint "\
