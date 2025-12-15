@@ -331,8 +331,24 @@ configure_ai_providers() {
             ;;
         3)
             AGENT_PROVIDER="cerebras"
-            AGENT_MODEL_NAME="llama3.1-70b"
             AGENT_BASE_URL="https://api.cerebras.ai/v1"
+            # Cerebras model selection
+            echo "" >&2
+            echo "  Cerebras models:" >&2
+            echo "    1) llama3.1-70b (default)" >&2
+            echo "    2) llama-4-scout-17b-16e-instruct" >&2
+            echo "    3) qwen-3-32b" >&2
+            echo "    4) Other (enter custom model name)" >&2
+            echo "" >&2
+            local cerebras_model
+            echo -en "${COLOR_CYAN}?${COLOR_RESET} Select Cerebras model [1-4, default: 1]: " >&2
+            read -r cerebras_model < "$TTY_INPUT"
+            case "$cerebras_model" in
+                2) AGENT_MODEL_NAME="llama-4-scout-17b-16e-instruct" ;;
+                3) AGENT_MODEL_NAME="qwen-3-32b" ;;
+                4) AGENT_MODEL_NAME="$(prompt_value "Enter model name")" ;;
+                *) AGENT_MODEL_NAME="llama3.1-70b" ;;
+            esac
             ;;
         4)
             AGENT_PROVIDER=""
