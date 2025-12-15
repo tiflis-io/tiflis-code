@@ -858,8 +858,14 @@ EOF
     esac
 
     if [ "$init_system" = "systemd" ]; then
-        if [ "$skip_config" = "true" ]; then
-            # Update mode: just restart the service
+        # Check if service exists
+        local service_exists=false
+        if systemctl list-unit-files 2>/dev/null | grep -q tiflis-workstation; then
+            service_exists=true
+        fi
+
+        if [ "$skip_config" = "true" ] && [ "$service_exists" = "true" ]; then
+            # Update mode with existing service: just restart
             print_step "Restarting systemd service..."
             if [ "$DRY_RUN" = "false" ]; then
                 sudo systemctl restart tiflis-workstation
@@ -909,8 +915,14 @@ EOF
             fi
         fi
     elif [ "$init_system" = "launchd" ]; then
-        if [ "$skip_config" = "true" ]; then
-            # Update mode: just restart the service
+        # Check if service exists
+        local service_exists=false
+        if launchctl list 2>/dev/null | grep -q io.tiflis.workstation; then
+            service_exists=true
+        fi
+
+        if [ "$skip_config" = "true" ] && [ "$service_exists" = "true" ]; then
+            # Update mode with existing service: just restart
             print_step "Restarting launchd service..."
             if [ "$DRY_RUN" = "false" ]; then
                 launchctl kickstart -k "gui/$(id -u)/io.tiflis.workstation"
