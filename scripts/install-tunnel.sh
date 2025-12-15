@@ -339,7 +339,7 @@ prompt_reverse_proxy() {
 
     local choice
     while true; do
-        echo -en "${COLOR_CYAN}?${COLOR_RESET} Select reverse proxy [1-3]: " >&2
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} Select: 1=None, 2=Traefik, 3=nginx: " >&2
         read -r choice < "$TTY_INPUT"
         case "$choice" in
             1) echo "none"; return ;;
