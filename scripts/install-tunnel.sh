@@ -29,14 +29,20 @@ TIFLIS_TUNNEL_MODE="${TIFLIS_TUNNEL_MODE:-docker}"
 TUNNEL_DIR="${TIFLIS_INSTALL_DIR}/tunnel"
 PACKAGE_NAME="@tiflis-io/tiflis-code-tunnel"
 
-# Script location for sourcing libraries
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# ─────────────────────────────────────────────────────────────
+# TTY Detection (for curl | bash usage)
+# ─────────────────────────────────────────────────────────────
+# When running via curl | bash, stdin is the script itself
+# We need to read user input from /dev/tty instead
+if [ -t 0 ]; then
+    TTY_INPUT="/dev/stdin"
+else
+    TTY_INPUT="/dev/tty"
+fi
 
 # ─────────────────────────────────────────────────────────────
 # Inline library (for curl | bash usage)
 # ─────────────────────────────────────────────────────────────
-# When running via curl | bash, we can't source external files
-# so we include essential functions inline
 
 # Colors
 readonly COLOR_RESET="\033[0m"
@@ -56,17 +62,20 @@ print_info() { echo -e "${COLOR_DIM}$1${COLOR_RESET}"; }
 prompt_value() {
     local prompt="$1" default="${2:-}" value
     if [ -n "$default" ]; then
-        read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [${default}]: ")" value
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [${default}]: " >&2
+        read -r value < "$TTY_INPUT"
         echo "${value:-$default}"
     else
-        read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: ")" value
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
+        read -r value < "$TTY_INPUT"
         echo "$value"
     fi
 }
 
 prompt_secret() {
     local prompt="$1" value
-    read -rsp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: ")" value
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
+    read -rs value < "$TTY_INPUT"
     echo "" >&2
     echo "$value"
 }
@@ -74,10 +83,12 @@ prompt_secret() {
 confirm() {
     local prompt="$1" default="${2:-n}" yn
     if [ "$default" = "y" ]; then
-        read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [Y/n]: ")" yn
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [Y/n]: " >&2
+        read -r yn < "$TTY_INPUT"
         case "$yn" in [Nn]*) return 1 ;; *) return 0 ;; esac
     else
-        read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [y/N]: ")" yn
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt} [y/N]: " >&2
+        read -r yn < "$TTY_INPUT"
         case "$yn" in [Yy]*) return 0 ;; *) return 1 ;; esac
     fi
 }
