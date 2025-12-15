@@ -802,6 +802,7 @@ docker compose run --rm --entrypoint "\
     \$staging_arg \
     --non-interactive \
     --keep-until-expiring \
+    --cert-name \$domain \
     --email \$email \
     --agree-tos \
     --no-eff-email \
