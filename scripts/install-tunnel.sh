@@ -581,11 +581,9 @@ create_docker_compose_traefik() {
     cat > "${TUNNEL_DIR}/docker-compose.yml" << 'EOF'
 services:
   traefik:
-    image: traefik:v3.2
+    image: traefik:v3.6
     container_name: traefik
     restart: unless-stopped
-    environment:
-      - DOCKER_API_VERSION=1.45
     command:
       - "--api.insecure=false"
       - "--providers.docker=true"
