@@ -320,7 +320,8 @@ configure_ai_providers() {
     echo ""
 
     local agent_choice
-    read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} Select LLM provider [1-4, default: 1]: ")" agent_choice
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select LLM provider [1-4, default: 1]: " >&2
+    read -r agent_choice < "$TTY_INPUT"
 
     case "$agent_choice" in
         2)
@@ -360,7 +361,8 @@ configure_ai_providers() {
     echo ""
 
     local stt_choice
-    read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} Select STT provider [1-3, default: 3]: ")" stt_choice
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select STT provider [1-3, default: 3]: " >&2
+    read -r stt_choice < "$TTY_INPUT"
 
     case "$stt_choice" in
         1)
@@ -407,7 +409,8 @@ configure_ai_providers() {
     echo ""
 
     local tts_choice
-    read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} Select TTS provider [1-3, default: 3]: ")" tts_choice
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select TTS provider [1-3, default: 3]: " >&2
+    read -r tts_choice < "$TTY_INPUT"
 
     case "$tts_choice" in
         1)
