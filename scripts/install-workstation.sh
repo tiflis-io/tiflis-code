@@ -178,6 +178,8 @@ print_banner() {
     echo ""
     echo -e "       ${white}T I F L I S   C O D E${reset}  ${dim}·${reset}  Workstation Installer"
     echo ""
+    echo -e "  ${dim}© 2025 Roman Barinov · FSL-1.1-NC · github.com/tiflis-io/tiflis-code${reset}"
+    echo ""
 }
 
 # ─────────────────────────────────────────────────────────────
