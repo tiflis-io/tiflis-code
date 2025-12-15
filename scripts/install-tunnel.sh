@@ -383,80 +383,103 @@ install_docker_mode() {
 
     print_success "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) detected"
 
+    # Check for existing installation
+    local skip_config=false
+    if [ -f "${TUNNEL_DIR}/.env" ]; then
+        echo ""
+        print_info "Existing installation detected"
+        echo ""
+        echo "  Found: ${TUNNEL_DIR}/.env"
+        echo ""
+        if confirm "Keep existing configuration and only update?" "y"; then
+            skip_config=true
+            print_success "Will keep existing configuration"
+        else
+            print_info "Will reconfigure (existing .env will be backed up)"
+            if [ "$DRY_RUN" = "false" ]; then
+                cp "${TUNNEL_DIR}/.env" "${TUNNEL_DIR}/.env.backup.$(date +%Y%m%d%H%M%S)"
+            fi
+        fi
+    fi
+
     # Create directory
     print_step "Creating directory ${TUNNEL_DIR}..."
     if [ "$DRY_RUN" = "false" ]; then
         mkdir -p "${TUNNEL_DIR}"
     fi
 
-    # Get or generate API key
-    local api_key="${TUNNEL_REGISTRATION_API_KEY:-}"
-    if [ -z "$api_key" ]; then
-        if confirm "Generate a random API key?"; then
-            api_key="$(generate_key 32)"
-            print_success "Generated API key: ${api_key:0:8}..."
+    # Configuration (skip if keeping existing)
+    local api_key="" reverse_proxy="none" domain_name="" acme_email="" public_ip=""
+
+    if [ "$skip_config" = "false" ]; then
+        # Get or generate API key
+        api_key="${TUNNEL_REGISTRATION_API_KEY:-}"
+        if [ -z "$api_key" ]; then
+            if confirm "Generate a random API key?"; then
+                api_key="$(generate_key 32)"
+                print_success "Generated API key: ${api_key:0:8}..."
+            else
+                api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+            fi
+        fi
+
+        if [ ${#api_key} -lt 32 ]; then
+            print_error "API key must be at least 32 characters"
+            exit 1
+        fi
+
+        # Detect public IP
+        print_step "Detecting public IP address..."
+        if public_ip=$(detect_public_ip); then
+            print_success "Public IP detected: $public_ip"
         else
-            api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+            print_warning "Could not auto-detect public IP"
+            public_ip=""
+        fi
+
+        # Reverse proxy selection
+        reverse_proxy="$(prompt_reverse_proxy)"
+
+        if [ "$reverse_proxy" != "none" ]; then
+            # Confirm or enter public IP
+            echo ""
+            if [ -n "$public_ip" ]; then
+                local confirmed_ip
+                confirmed_ip="$(prompt_value "Server public IP address" "$public_ip")"
+                public_ip="$confirmed_ip"
+            else
+                public_ip="$(prompt_value "Server public IP address")"
+            fi
+
+            if [ -z "$public_ip" ]; then
+                print_error "Public IP is required for reverse proxy setup"
+                exit 1
+            fi
+
+            # Get domain name
+            domain_name="$(prompt_value "Domain name (e.g., tunnel.example.com)")"
+            if [ -z "$domain_name" ]; then
+                print_error "Domain name is required for reverse proxy setup"
+                exit 1
+            fi
+
+            # Wait for DNS verification
+            wait_for_dns "$domain_name" "$public_ip"
+
+            # Get email for Let's Encrypt (both traefik and nginx use it)
+            acme_email="$(prompt_value "Email for Let's Encrypt SSL certificates")"
+            if [ -z "$acme_email" ]; then
+                print_error "Email is required for Let's Encrypt"
+                exit 1
+            fi
         fi
     fi
 
-    if [ ${#api_key} -lt 32 ]; then
-        print_error "API key must be at least 32 characters"
-        exit 1
-    fi
-
-    # Detect public IP
-    print_step "Detecting public IP address..."
-    local public_ip
-    if public_ip=$(detect_public_ip); then
-        print_success "Public IP detected: $public_ip"
-    else
-        print_warning "Could not auto-detect public IP"
-        public_ip=""
-    fi
-
-    # Reverse proxy selection
-    local reverse_proxy domain_name acme_email
-    reverse_proxy="$(prompt_reverse_proxy)"
-
-    if [ "$reverse_proxy" != "none" ]; then
-        # Confirm or enter public IP
-        echo ""
-        if [ -n "$public_ip" ]; then
-            local confirmed_ip
-            confirmed_ip="$(prompt_value "Server public IP address" "$public_ip")"
-            public_ip="$confirmed_ip"
-        else
-            public_ip="$(prompt_value "Server public IP address")"
-        fi
-
-        if [ -z "$public_ip" ]; then
-            print_error "Public IP is required for reverse proxy setup"
-            exit 1
-        fi
-
-        # Get domain name
-        domain_name="$(prompt_value "Domain name (e.g., tunnel.example.com)")"
-        if [ -z "$domain_name" ]; then
-            print_error "Domain name is required for reverse proxy setup"
-            exit 1
-        fi
-
-        # Wait for DNS verification
-        wait_for_dns "$domain_name" "$public_ip"
-
-        # Get email for Let's Encrypt (both traefik and nginx use it)
-        acme_email="$(prompt_value "Email for Let's Encrypt SSL certificates")"
-        if [ -z "$acme_email" ]; then
-            print_error "Email is required for Let's Encrypt"
-            exit 1
-        fi
-    fi
-
-    # Create .env file
-    print_step "Creating .env file..."
-    if [ "$DRY_RUN" = "false" ]; then
-        cat > "${TUNNEL_DIR}/.env" << EOF
+    # Create .env file (skip if keeping existing config)
+    if [ "$skip_config" = "false" ]; then
+        print_step "Creating .env file..."
+        if [ "$DRY_RUN" = "false" ]; then
+            cat > "${TUNNEL_DIR}/.env" << EOF
 # Tiflis Code Tunnel Server Configuration
 # Generated by install script on $(date -Iseconds)
 
@@ -470,82 +493,109 @@ NODE_ENV=production
 LOG_LEVEL=info
 EOF
 
-        if [ "$reverse_proxy" != "none" ]; then
-            cat >> "${TUNNEL_DIR}/.env" << EOF
+            if [ "$reverse_proxy" != "none" ]; then
+                cat >> "${TUNNEL_DIR}/.env" << EOF
 
 # Reverse proxy settings
 TRUST_PROXY=true
 PUBLIC_BASE_URL=wss://${domain_name}
 EOF
-        fi
+            fi
 
-        if [ "$reverse_proxy" = "traefik" ] || [ "$reverse_proxy" = "nginx" ]; then
-            cat >> "${TUNNEL_DIR}/.env" << EOF
+            if [ "$reverse_proxy" = "traefik" ] || [ "$reverse_proxy" = "nginx" ]; then
+                cat >> "${TUNNEL_DIR}/.env" << EOF
 
 # Reverse proxy settings
 DOMAIN=${domain_name}
 ACME_EMAIL=${acme_email}
 EOF
+            fi
+
+            chmod 600 "${TUNNEL_DIR}/.env"
         fi
 
-        chmod 600 "${TUNNEL_DIR}/.env"
+        # Create docker-compose.yml based on reverse proxy choice
+        print_step "Creating docker-compose.yml..."
+        if [ "$DRY_RUN" = "false" ]; then
+            case "$reverse_proxy" in
+                traefik)
+                    create_docker_compose_traefik
+                    ;;
+                nginx)
+                    create_docker_compose_nginx
+                    ;;
+                *)
+                    create_docker_compose_basic
+                    ;;
+            esac
+        fi
+    else
+        print_success "Keeping existing .env configuration"
     fi
 
-    # Create docker-compose.yml based on reverse proxy choice
-    print_step "Creating docker-compose.yml..."
-    if [ "$DRY_RUN" = "false" ]; then
-        case "$reverse_proxy" in
-            traefik)
-                create_docker_compose_traefik
-                ;;
-            nginx)
-                create_docker_compose_nginx
-                ;;
-            *)
-                create_docker_compose_basic
-                ;;
-        esac
-    fi
-
-    # Start containers
-    print_step "Starting containers..."
-    if [ "$DRY_RUN" = "false" ]; then
-        cd "${TUNNEL_DIR}"
-
-        if [ "$reverse_proxy" = "nginx" ]; then
-            # For nginx, run the init-letsencrypt script which handles everything
-            print_step "Provisioning SSL certificate via Let's Encrypt..."
-            bash "${TUNNEL_DIR}/init-letsencrypt.sh"
-        else
+    # Start/restart containers
+    if [ "$skip_config" = "true" ]; then
+        # Update mode: pull new image and restart
+        print_step "Updating containers..."
+        if [ "$DRY_RUN" = "false" ]; then
+            cd "${TUNNEL_DIR}"
+            $compose_cmd pull
             $compose_cmd up -d
 
-            # Wait for health check
             sleep 5
             if curl -sf "http://localhost:${TIFLIS_TUNNEL_PORT}/healthz" > /dev/null 2>&1; then
-                print_success "Tunnel server is running!"
+                print_success "Tunnel server updated and running!"
             else
                 print_warning "Server started but health check failed. Check logs with: $compose_cmd logs"
+            fi
+        fi
+    else
+        # Fresh install: start containers
+        print_step "Starting containers..."
+        if [ "$DRY_RUN" = "false" ]; then
+            cd "${TUNNEL_DIR}"
+
+            if [ "$reverse_proxy" = "nginx" ]; then
+                # For nginx, run the init-letsencrypt script which handles everything
+                print_step "Provisioning SSL certificate via Let's Encrypt..."
+                bash "${TUNNEL_DIR}/init-letsencrypt.sh"
+            else
+                $compose_cmd up -d
+
+                # Wait for health check
+                sleep 5
+                if curl -sf "http://localhost:${TIFLIS_TUNNEL_PORT}/healthz" > /dev/null 2>&1; then
+                    print_success "Tunnel server is running!"
+                else
+                    print_warning "Server started but health check failed. Check logs with: $compose_cmd logs"
+                fi
             fi
         fi
     fi
 
     # Print success info
     echo ""
-    print_success "Tunnel server installed successfully!"
-    echo ""
-
-    if [ "$reverse_proxy" = "none" ]; then
-        echo "  URL:      http://localhost:${TIFLIS_TUNNEL_PORT}"
-        echo "  Health:   http://localhost:${TIFLIS_TUNNEL_PORT}/healthz"
+    if [ "$skip_config" = "true" ]; then
+        print_success "Tunnel server updated successfully!"
     else
-        echo "  URL:      https://${domain_name}"
-        echo "  WebSocket: wss://${domain_name}/ws"
-        echo "  Health:   https://${domain_name}/healthz"
+        print_success "Tunnel server installed successfully!"
     fi
-
     echo ""
-    echo "  Registration API Key (save this for workstation setup):"
-    echo "    ${api_key}"
+
+    if [ "$skip_config" = "false" ]; then
+        if [ "$reverse_proxy" = "none" ]; then
+            echo "  URL:      http://localhost:${TIFLIS_TUNNEL_PORT}"
+            echo "  Health:   http://localhost:${TIFLIS_TUNNEL_PORT}/healthz"
+        else
+            echo "  URL:      https://${domain_name}"
+            echo "  WebSocket: wss://${domain_name}/ws"
+            echo "  Health:   https://${domain_name}/healthz"
+        fi
+
+        echo ""
+        echo "  Registration API Key (save this for workstation setup):"
+        echo "    ${api_key}"
+    fi
     echo ""
     echo "  Commands:"
     echo "    Logs:    cd ${TUNNEL_DIR} && $compose_cmd logs -f"

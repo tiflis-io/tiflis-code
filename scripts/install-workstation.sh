@@ -620,83 +620,106 @@ install_workstation() {
         *) print_success "Build tools detected" ;;
     esac
 
-    # Configuration wizard
-    echo ""
-    print_info "Configuration"
-    echo ""
-
-    # Tunnel URL
-    local tunnel_url="${TUNNEL_URL:-}"
-    if [ -z "$tunnel_url" ]; then
-        tunnel_url="$(prompt_value "Tunnel URL (wss://...)")"
-    fi
-    if [ -z "$tunnel_url" ]; then
-        print_error "Tunnel URL is required"
-        exit 1
-    fi
-
-    # Tunnel API key
-    local tunnel_api_key="${TUNNEL_API_KEY:-}"
-    if [ -z "$tunnel_api_key" ]; then
-        tunnel_api_key="$(prompt_secret "Tunnel API key")"
-    fi
-    if [ -z "$tunnel_api_key" ] || [ ${#tunnel_api_key} -lt 32 ]; then
-        print_error "Tunnel API key must be at least 32 characters"
-        exit 1
-    fi
-
-    # Workstation auth key
-    local workstation_auth_key="${WORKSTATION_AUTH_KEY:-}"
-    if [ -z "$workstation_auth_key" ]; then
-        if confirm "Generate a random workstation auth key?" "y"; then
-            workstation_auth_key="$(generate_key 24)"
-            print_success "Generated auth key: ${workstation_auth_key:0:8}..."
+    # Check for existing installation
+    local skip_config=false
+    if [ -f "${WORKSTATION_DIR}/.env" ]; then
+        echo ""
+        print_info "Existing installation detected"
+        echo ""
+        echo "  Found: ${WORKSTATION_DIR}/.env"
+        echo ""
+        if confirm "Keep existing configuration and only update the package?" "y"; then
+            skip_config=true
+            print_success "Will keep existing configuration"
         else
-            workstation_auth_key="$(prompt_secret "Workstation auth key (min 16 chars)")"
+            print_info "Will reconfigure (existing .env will be backed up)"
+            if [ "$DRY_RUN" = "false" ]; then
+                cp "${WORKSTATION_DIR}/.env" "${WORKSTATION_DIR}/.env.backup.$(date +%Y%m%d%H%M%S)"
+            fi
         fi
     fi
-    if [ ${#workstation_auth_key} -lt 16 ]; then
-        print_error "Workstation auth key must be at least 16 characters"
-        exit 1
-    fi
 
-    # Workspaces root
-    WORKSPACES_ROOT="$(prompt_value "Workspaces directory" "$WORKSPACES_ROOT")"
+    # Configuration wizard (skip if keeping existing config)
+    local tunnel_url="" tunnel_api_key="" workstation_auth_key=""
 
-    # AI Provider Configuration
-    AGENT_PROVIDER=""
-    AGENT_API_KEY=""
-    AGENT_MODEL_NAME=""
-    AGENT_BASE_URL=""
-    STT_PROVIDER=""
-    STT_API_KEY=""
-    STT_MODEL=""
-    TTS_PROVIDER=""
-    TTS_API_KEY=""
-    TTS_MODEL=""
-    TTS_VOICE=""
-    configure_ai_providers
+    if [ "$skip_config" = "false" ]; then
+        echo ""
+        print_info "Configuration"
+        echo ""
 
-    echo ""
-    print_info "Summary:"
-    echo "  Tunnel URL:     $tunnel_url"
-    echo "  Tunnel API Key: ${tunnel_api_key:0:8}..."
-    echo "  Auth Key:       ${workstation_auth_key:0:8}..."
-    echo "  Workspaces:     $WORKSPACES_ROOT"
-    if [ -n "$AGENT_PROVIDER" ]; then
-        echo "  LLM Provider:   $AGENT_PROVIDER ($AGENT_MODEL_NAME)"
-    fi
-    if [ -n "$STT_PROVIDER" ]; then
-        echo "  STT Provider:   $STT_PROVIDER"
-    fi
-    if [ -n "$TTS_PROVIDER" ]; then
-        echo "  TTS Provider:   $TTS_PROVIDER"
-    fi
-    echo ""
+        # Tunnel URL
+        tunnel_url="${TUNNEL_URL:-}"
+        if [ -z "$tunnel_url" ]; then
+            tunnel_url="$(prompt_value "Tunnel URL (wss://...)")"
+        fi
+        if [ -z "$tunnel_url" ]; then
+            print_error "Tunnel URL is required"
+            exit 1
+        fi
 
-    if ! confirm "Proceed with installation?" "y"; then
-        print_info "Installation cancelled"
-        exit 0
+        # Tunnel API key
+        tunnel_api_key="${TUNNEL_API_KEY:-}"
+        if [ -z "$tunnel_api_key" ]; then
+            tunnel_api_key="$(prompt_secret "Tunnel API key")"
+        fi
+        if [ -z "$tunnel_api_key" ] || [ ${#tunnel_api_key} -lt 32 ]; then
+            print_error "Tunnel API key must be at least 32 characters"
+            exit 1
+        fi
+
+        # Workstation auth key
+        workstation_auth_key="${WORKSTATION_AUTH_KEY:-}"
+        if [ -z "$workstation_auth_key" ]; then
+            if confirm "Generate a random workstation auth key?" "y"; then
+                workstation_auth_key="$(generate_key 24)"
+                print_success "Generated auth key: ${workstation_auth_key:0:8}..."
+            else
+                workstation_auth_key="$(prompt_secret "Workstation auth key (min 16 chars)")"
+            fi
+        fi
+        if [ ${#workstation_auth_key} -lt 16 ]; then
+            print_error "Workstation auth key must be at least 16 characters"
+            exit 1
+        fi
+
+        # Workspaces root
+        WORKSPACES_ROOT="$(prompt_value "Workspaces directory" "$WORKSPACES_ROOT")"
+
+        # AI Provider Configuration
+        AGENT_PROVIDER=""
+        AGENT_API_KEY=""
+        AGENT_MODEL_NAME=""
+        AGENT_BASE_URL=""
+        STT_PROVIDER=""
+        STT_API_KEY=""
+        STT_MODEL=""
+        TTS_PROVIDER=""
+        TTS_API_KEY=""
+        TTS_MODEL=""
+        TTS_VOICE=""
+        configure_ai_providers
+
+        echo ""
+        print_info "Summary:"
+        echo "  Tunnel URL:     $tunnel_url"
+        echo "  Tunnel API Key: ${tunnel_api_key:0:8}..."
+        echo "  Auth Key:       ${workstation_auth_key:0:8}..."
+        echo "  Workspaces:     $WORKSPACES_ROOT"
+        if [ -n "$AGENT_PROVIDER" ]; then
+            echo "  LLM Provider:   $AGENT_PROVIDER ($AGENT_MODEL_NAME)"
+        fi
+        if [ -n "$STT_PROVIDER" ]; then
+            echo "  STT Provider:   $STT_PROVIDER"
+        fi
+        if [ -n "$TTS_PROVIDER" ]; then
+            echo "  TTS Provider:   $TTS_PROVIDER"
+        fi
+        echo ""
+
+        if ! confirm "Proceed with installation?" "y"; then
+            print_info "Installation cancelled"
+            exit 0
+        fi
     fi
 
     # Create directories
@@ -707,10 +730,11 @@ install_workstation() {
         mkdir -p "$WORKSPACES_ROOT"
     fi
 
-    # Create .env file
-    print_step "Creating .env file..."
-    if [ "$DRY_RUN" = "false" ]; then
-        cat > "${WORKSTATION_DIR}/.env" << EOF
+    # Create .env file (skip if keeping existing config)
+    if [ "$skip_config" = "false" ]; then
+        print_step "Creating .env file..."
+        if [ "$DRY_RUN" = "false" ]; then
+            cat > "${WORKSTATION_DIR}/.env" << EOF
 # Tiflis Code Workstation Configuration
 # Generated by install script on $(date -Iseconds)
 
@@ -731,23 +755,23 @@ NODE_ENV=production
 LOG_LEVEL=info
 EOF
 
-        # Add AI Agent configuration if provided
-        if [ -n "$AGENT_PROVIDER" ]; then
-            cat >> "${WORKSTATION_DIR}/.env" << EOF
+            # Add AI Agent configuration if provided
+            if [ -n "$AGENT_PROVIDER" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << EOF
 
 # AI Agent (Supervisor)
 AGENT_PROVIDER=${AGENT_PROVIDER}
 AGENT_API_KEY=${AGENT_API_KEY}
 AGENT_MODEL_NAME=${AGENT_MODEL_NAME}
 EOF
-            # Add base URL for non-OpenAI providers
-            if [ -n "$AGENT_BASE_URL" ]; then
-                cat >> "${WORKSTATION_DIR}/.env" << EOF
+                # Add base URL for non-OpenAI providers
+                if [ -n "$AGENT_BASE_URL" ]; then
+                    cat >> "${WORKSTATION_DIR}/.env" << EOF
 AGENT_BASE_URL=${AGENT_BASE_URL}
 EOF
-            fi
-        else
-            cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
+                fi
+            else
+                cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
 # AI Agent (optional - uncomment and configure)
 # AGENT_PROVIDER=openai
@@ -755,29 +779,29 @@ EOF
 # AGENT_MODEL_NAME=gpt-4o-mini
 # AGENT_BASE_URL=https://api.cerebras.ai/v1  # For Cerebras
 EOF
-        fi
+            fi
 
-        # Add STT configuration if provided
-        if [ -n "$STT_PROVIDER" ]; then
-            cat >> "${WORKSTATION_DIR}/.env" << EOF
+            # Add STT configuration if provided
+            if [ -n "$STT_PROVIDER" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << EOF
 
 # Speech-to-Text
 STT_PROVIDER=${STT_PROVIDER}
 STT_API_KEY=${STT_API_KEY}
 STT_MODEL=${STT_MODEL}
 EOF
-        else
-            cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
+            else
+                cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
 # Speech-to-Text (optional)
 # STT_PROVIDER=openai
 # STT_API_KEY=your-openai-key
 EOF
-        fi
+            fi
 
-        # Add TTS configuration if provided
-        if [ -n "$TTS_PROVIDER" ]; then
-            cat >> "${WORKSTATION_DIR}/.env" << EOF
+            # Add TTS configuration if provided
+            if [ -n "$TTS_PROVIDER" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << EOF
 
 # Text-to-Speech
 TTS_PROVIDER=${TTS_PROVIDER}
@@ -785,17 +809,20 @@ TTS_API_KEY=${TTS_API_KEY}
 TTS_MODEL=${TTS_MODEL}
 TTS_VOICE=${TTS_VOICE}
 EOF
-        else
-            cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
+            else
+                cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
 # Text-to-Speech (optional)
 # TTS_PROVIDER=openai
 # TTS_API_KEY=your-openai-key
 # TTS_VOICE=nova
 EOF
-        fi
+            fi
 
-        chmod 600 "${WORKSTATION_DIR}/.env"
+            chmod 600 "${WORKSTATION_DIR}/.env"
+        fi
+    else
+        print_success "Keeping existing .env configuration"
     fi
 
     # Install npm package
@@ -811,10 +838,12 @@ EOF
         print_success "Package installed"
     fi
 
-    # Install AI agents (optional)
-    install_ai_agents
+    # Install AI agents (optional, skip on update)
+    if [ "$skip_config" = "false" ]; then
+        install_ai_agents
+    fi
 
-    # Create service
+    # Create/restart service
     local init_system
     case "$os" in
         darwin) init_system="launchd" ;;
@@ -829,9 +858,24 @@ EOF
     esac
 
     if [ "$init_system" = "systemd" ]; then
-        print_step "Creating systemd service..."
-        if [ "$DRY_RUN" = "false" ]; then
-            sudo tee /etc/systemd/system/tiflis-workstation.service > /dev/null << EOF
+        if [ "$skip_config" = "true" ]; then
+            # Update mode: just restart the service
+            print_step "Restarting systemd service..."
+            if [ "$DRY_RUN" = "false" ]; then
+                sudo systemctl restart tiflis-workstation
+                sleep 3
+                if sudo systemctl is-active --quiet tiflis-workstation; then
+                    print_success "Workstation server restarted!"
+                else
+                    print_warning "Service may not be running"
+                    print_info "Check: sudo systemctl status tiflis-workstation"
+                fi
+            fi
+        else
+            # Fresh install: create the service
+            print_step "Creating systemd service..."
+            if [ "$DRY_RUN" = "false" ]; then
+                sudo tee /etc/systemd/system/tiflis-workstation.service > /dev/null << EOF
 [Unit]
 Description=Tiflis Code Workstation Server
 After=network-online.target
@@ -851,23 +895,38 @@ StandardError=append:${WORKSTATION_DIR}/logs/error.log
 [Install]
 WantedBy=multi-user.target
 EOF
-            sudo systemctl daemon-reload
-            sudo systemctl enable tiflis-workstation
-            sudo systemctl start tiflis-workstation
+                sudo systemctl daemon-reload
+                sudo systemctl enable tiflis-workstation
+                sudo systemctl start tiflis-workstation
 
-            sleep 3
-            if sudo systemctl is-active --quiet tiflis-workstation; then
-                print_success "Workstation server is running!"
-            else
-                print_warning "Service created but may not be running"
-                print_info "Check: sudo systemctl status tiflis-workstation"
+                sleep 3
+                if sudo systemctl is-active --quiet tiflis-workstation; then
+                    print_success "Workstation server is running!"
+                else
+                    print_warning "Service created but may not be running"
+                    print_info "Check: sudo systemctl status tiflis-workstation"
+                fi
             fi
         fi
     elif [ "$init_system" = "launchd" ]; then
-        print_step "Creating launchd service..."
-        if [ "$DRY_RUN" = "false" ]; then
-            mkdir -p "$HOME/Library/LaunchAgents"
-            cat > "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist" << EOF
+        if [ "$skip_config" = "true" ]; then
+            # Update mode: just restart the service
+            print_step "Restarting launchd service..."
+            if [ "$DRY_RUN" = "false" ]; then
+                launchctl kickstart -k "gui/$(id -u)/io.tiflis.workstation"
+                sleep 3
+                if launchctl list | grep -q io.tiflis.workstation; then
+                    print_success "Workstation server restarted!"
+                else
+                    print_warning "Service may not be running"
+                fi
+            fi
+        else
+            # Fresh install: create the service
+            print_step "Creating launchd service..."
+            if [ "$DRY_RUN" = "false" ]; then
+                mkdir -p "$HOME/Library/LaunchAgents"
+                cat > "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -899,14 +958,15 @@ EOF
 </dict>
 </plist>
 EOF
-            launchctl bootout "gui/$(id -u)/io.tiflis.workstation" 2>/dev/null || true
-            launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist"
+                launchctl bootout "gui/$(id -u)/io.tiflis.workstation" 2>/dev/null || true
+                launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist"
 
-            sleep 3
-            if launchctl list | grep -q io.tiflis.workstation; then
-                print_success "Workstation server is running!"
-            else
-                print_warning "Service created but may not be running"
+                sleep 3
+                if launchctl list | grep -q io.tiflis.workstation; then
+                    print_success "Workstation server is running!"
+                else
+                    print_warning "Service created but may not be running"
+                fi
             fi
         fi
     else
@@ -916,7 +976,11 @@ EOF
 
     # Get connection info (if server is running)
     echo ""
-    print_success "Workstation installed successfully!"
+    if [ "$skip_config" = "true" ]; then
+        print_success "Workstation updated successfully!"
+    else
+        print_success "Workstation installed successfully!"
+    fi
     echo ""
 
     if [ "$DRY_RUN" = "false" ]; then
