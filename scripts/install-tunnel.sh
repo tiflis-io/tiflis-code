@@ -231,16 +231,17 @@ check_dns_resolution() {
     local expected_ip="$2"
     local resolved_ip=""
 
-    # Try to resolve using dig, host, or nslookup
+    # Query external DNS servers directly (bypass local resolver)
     if command -v dig &>/dev/null; then
-        resolved_ip=$(dig +short "$domain" A 2>/dev/null | head -1)
+        # Try Cloudflare DNS first, then Google DNS
+        resolved_ip=$(dig +short "$domain" A @1.1.1.1 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        if [ -z "$resolved_ip" ]; then
+            resolved_ip=$(dig +short "$domain" A @8.8.8.8 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+        fi
     elif command -v host &>/dev/null; then
-        resolved_ip=$(host "$domain" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        resolved_ip=$(host "$domain" 1.1.1.1 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     elif command -v nslookup &>/dev/null; then
-        resolved_ip=$(nslookup "$domain" 2>/dev/null | grep -A1 "Name:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
-    else
-        # Fallback: try to ping and extract IP
-        resolved_ip=$(ping -c 1 "$domain" 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+        resolved_ip=$(nslookup "$domain" 1.1.1.1 2>/dev/null | grep -A1 "Name:" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' | head -1)
     fi
 
     if [ -z "$resolved_ip" ]; then
