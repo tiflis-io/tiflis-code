@@ -327,17 +327,21 @@ configure_ai_providers() {
         2)
             AGENT_PROVIDER="anthropic"
             AGENT_MODEL_NAME="claude-3-5-sonnet-20241022"
+            AGENT_BASE_URL=""
             ;;
         3)
             AGENT_PROVIDER="cerebras"
             AGENT_MODEL_NAME="llama3.1-70b"
+            AGENT_BASE_URL="https://api.cerebras.ai/v1"
             ;;
         4)
             AGENT_PROVIDER=""
+            AGENT_BASE_URL=""
             ;;
         *)
             AGENT_PROVIDER="openai"
             AGENT_MODEL_NAME="gpt-4o-mini"
+            AGENT_BASE_URL=""
             ;;
     esac
 
@@ -633,6 +637,7 @@ install_workstation() {
     AGENT_PROVIDER=""
     AGENT_API_KEY=""
     AGENT_MODEL_NAME=""
+    AGENT_BASE_URL=""
     STT_PROVIDER=""
     STT_API_KEY=""
     STT_MODEL=""
@@ -705,6 +710,12 @@ AGENT_PROVIDER=${AGENT_PROVIDER}
 AGENT_API_KEY=${AGENT_API_KEY}
 AGENT_MODEL_NAME=${AGENT_MODEL_NAME}
 EOF
+            # Add base URL for non-OpenAI providers
+            if [ -n "$AGENT_BASE_URL" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << EOF
+AGENT_BASE_URL=${AGENT_BASE_URL}
+EOF
+            fi
         else
             cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
@@ -712,6 +723,7 @@ EOF
 # AGENT_PROVIDER=openai
 # AGENT_API_KEY=your-openai-key
 # AGENT_MODEL_NAME=gpt-4o-mini
+# AGENT_BASE_URL=https://api.cerebras.ai/v1  # For Cerebras
 EOF
         fi
 
