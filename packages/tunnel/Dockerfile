@@ -8,7 +8,7 @@
 # ============================================================================
 # Stage 1: Builder
 # ============================================================================
-FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 
 # Build arguments
 ARG TARGETPLATFORM
@@ -42,7 +42,7 @@ RUN echo "$VERSION" > /app/packages/tunnel/VERSION
 # ============================================================================
 # Stage 2: Production Runner
 # ============================================================================
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 
 # Labels for GitHub Container Registry
 LABEL org.opencontainers.image.source="https://github.com/tiflis-io/tiflis-code"
