@@ -1,11 +1,14 @@
 # App Store Materials — Tiflis Code
 
-> Complete materials for iOS App Store submission
+> Complete materials for iOS App Store and Google Play Store submission
+
+**Last Updated:** 2025-12-15
 
 ---
 
 ## Table of Contents
 
+### iOS App Store
 1. [App Information](#app-information)
 2. [App Store Listing Text](#app-store-listing-text)
 3. [Keywords](#keywords)
@@ -14,6 +17,14 @@
 6. [App Review Information](#app-review-information)
 7. [Privacy Policy](#privacy-policy)
 8. [Localization](#localization)
+9. [iOS Publishing Checklist](#ios-publishing-checklist)
+
+### Google Play Store
+10. [Android App Information](#android-app-information)
+11. [Google Play Listing Text](#google-play-listing-text)
+12. [Android Screenshots](#android-screenshots)
+13. [Android App Signing](#android-app-signing)
+14. [Google Play Publishing Checklist](#google-play-publishing-checklist)
 
 ---
 
@@ -25,7 +36,7 @@
 | ---------------------- | ------------------------ |
 | **App Name**           | Tiflis Code              |
 | **Subtitle**           | AI Coding Agents, Mobile |
-| **Bundle ID**          | com.tiflis.TiflisCode    |
+| **Bundle ID**          | io.tiflis.TiflisCode     |
 | **Primary Category**   | Developer Tools          |
 | **Secondary Category** | Productivity             |
 | **Content Rating**     | 4+                       |
@@ -882,5 +893,684 @@ For each language:
 
 ---
 
-_Document created for Tiflis Code iOS App Store submission_
-_Last updated: 2025_
+## iOS Publishing Checklist
+
+### Pre-Submission Checklist
+
+#### Apple Developer Account Setup
+
+- [ ] Enroll in Apple Developer Program ($99/year)
+- [ ] Create App ID: `io.tiflis.TiflisCode` in Certificates, Identifiers & Profiles
+- [ ] Create App Group: `group.io.tiflis.TiflisCode`
+- [ ] Create watchOS App ID: `io.tiflis.TiflisCode.watchkitapp`
+- [ ] Generate Distribution Certificate (iOS Distribution)
+- [ ] Create App Store Provisioning Profile for iOS app
+- [ ] Create App Store Provisioning Profile for watchOS app
+
+#### App Store Connect Setup
+
+- [ ] Create new app in App Store Connect
+- [ ] Set Bundle ID to `io.tiflis.TiflisCode`
+- [ ] Configure app privacy details (all "Data Not Collected")
+- [ ] Set age rating to 4+
+- [ ] Add support URL: `https://github.com/tiflis-io/tiflis-code`
+- [ ] Add privacy policy URL: `https://tiflis.io/privacy`
+- [ ] Add marketing URL: `https://tiflis.io`
+
+#### Xcode Configuration
+
+1. **Set Development Team in project.yml:**
+
+```yaml
+# apps/TiflisCode/project.yml
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: "YOUR_TEAM_ID"  # Get from developer.apple.com
+```
+
+2. **Regenerate Xcode project:**
+
+```bash
+cd apps/TiflisCode
+xcodegen generate
+```
+
+3. **Open and configure in Xcode:**
+
+```bash
+open TiflisCode.xcodeproj
+```
+
+4. **Verify signing settings:**
+   - Select TiflisCode target → Signing & Capabilities
+   - Ensure "Automatically manage signing" is ON or configure manually
+   - Verify Team is selected
+   - Verify Bundle Identifier matches `io.tiflis.TiflisCode`
+
+#### Build and Archive
+
+1. **Set version and build number in Info.plist:**
+
+   Edit `TiflisCode/Resources/Info.plist`:
+   - `CFBundleShortVersionString`: `1.0.0`
+   - `CFBundleVersion`: `1`
+
+2. **Create Archive:**
+   - Select "Any iOS Device (arm64)" as destination
+   - Product → Archive
+   - Wait for build completion
+
+3. **Validate and Upload:**
+   - In Organizer (Window → Organizer), select archive
+   - Click "Distribute App"
+   - Select "App Store Connect"
+   - Choose "Upload" for TestFlight or "Export" for manual submission
+   - Validate app before uploading
+
+#### TestFlight Testing
+
+- [ ] Upload build to TestFlight
+- [ ] Add internal testers (up to 100)
+- [ ] Test on real devices (iPhone, iPad)
+- [ ] Test watchOS companion app
+- [ ] Verify all features work:
+  - [ ] QR code scanning
+  - [ ] Magic link connection
+  - [ ] Voice recording/playback
+  - [ ] Terminal functionality
+  - [ ] WebSocket reconnection
+
+#### App Store Submission
+
+- [ ] All screenshots uploaded (all required device sizes)
+- [ ] App preview video (optional but recommended)
+- [ ] Description, keywords, what's new filled in
+- [ ] Review notes prepared for Apple reviewer
+- [ ] Submit for review
+
+### Automated Release with Fastlane (Optional)
+
+#### Initial Setup
+
+```bash
+cd apps/TiflisCode
+
+# Install fastlane
+brew install fastlane
+
+# Initialize (select option 4: Manual setup)
+fastlane init
+```
+
+#### Configure Fastfile
+
+Create `apps/TiflisCode/fastlane/Fastfile`:
+
+```ruby
+default_platform(:ios)
+
+platform :ios do
+  desc "Build and upload to TestFlight"
+  lane :release do |options|
+    version = options[:version] || "1.0.0"
+    build = options[:build] || "1"
+
+    # Update version numbers
+    increment_version_number(version_number: version)
+    increment_build_number(build_number: build)
+
+    # Build app
+    build_app(
+      scheme: "TiflisCode",
+      export_method: "app-store",
+      output_directory: "./build"
+    )
+
+    # Upload to TestFlight
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true
+    )
+  end
+
+  desc "Capture App Store screenshots"
+  lane :screenshots do
+    snapshot
+  end
+end
+```
+
+#### Configure Appfile
+
+Create `apps/TiflisCode/fastlane/Appfile`:
+
+```ruby
+app_identifier("io.tiflis.TiflisCode")
+apple_id("your-apple-id@example.com")
+itc_team_id("YOUR_ITC_TEAM_ID")  # App Store Connect Team ID
+team_id("YOUR_DEV_TEAM_ID")       # Developer Portal Team ID
+```
+
+#### Run Release
+
+```bash
+cd apps/TiflisCode
+fastlane release version:1.0.0 build:1
+```
+
+---
+
+## Android App Information
+
+### Basic Details
+
+| Field                  | Value                      |
+| ---------------------- | -------------------------- |
+| **App Name**           | Tiflis Code                |
+| **Package Name**       | io.tiflis.code             |
+| **Primary Category**   | Tools → Development        |
+| **Secondary Category** | Productivity               |
+| **Content Rating**     | Everyone                   |
+| **Price**              | Free                       |
+| **Target SDK**         | 35 (Android 15)            |
+| **Minimum SDK**        | 26 (Android 8.0 Oreo)      |
+
+### Version Information
+
+| Field         | Value                |
+| ------------- | -------------------- |
+| **Version**   | 1.0.0                |
+| **Version Code** | 1                 |
+| **Copyright** | © 2025 Roman Barinov |
+
+### Contact Information
+
+| Field                  | Value                                    |
+| ---------------------- | ---------------------------------------- |
+| **Developer Name**     | Roman Barinov                            |
+| **Developer Email**    | support@tiflis.io                        |
+| **Website**            | https://tiflis.io                        |
+| **Privacy Policy URL** | https://tiflis.io/privacy                |
+
+---
+
+## Google Play Listing Text
+
+### App Name (50 characters max)
+
+```
+Tiflis Code
+```
+
+### Short Description (80 characters max)
+
+```
+Control AI coding agents (Cursor, Claude, OpenCode) with voice from your phone.
+```
+
+### Full Description (4000 characters max)
+
+```
+Tiflis Code brings your AI coding assistants to your Android phone. Control Cursor, Claude Code, and OpenCode remotely using voice commands — code from anywhere.
+
+🎤 VOICE-FIRST EXPERIENCE
+• Dictate commands naturally with speech-to-text
+• Hear responses with text-to-speech (auto-summarized)
+• Push-to-talk or tap-to-toggle recording modes
+• Visual waveform feedback during recording
+
+🤖 MULTI-AGENT SUPPORT
+• Run Claude Code, Cursor, and OpenCode simultaneously
+• Each agent operates in its own isolated session
+• Switch between agents instantly
+• Support for custom agent configurations
+
+💻 FULL TERMINAL ACCESS
+• Complete PTY terminal emulation
+• Professional keyboard with Ctrl, Alt, Esc keys
+• Arrow keys and terminal control codes
+• Session history preserved on reconnect
+
+🧠 SUPERVISOR AGENT
+• AI orchestrator for session management
+• Create sessions with voice commands
+• Explore workspaces and projects
+• Intelligent context management
+
+🔐 SECURE & SELF-HOSTED
+• Your code never leaves your machine
+• Stateless tunnel relay architecture
+• End-to-end encrypted WebSocket connection
+• Secure credential storage
+
+📱 NATIVE ANDROID EXPERIENCE
+• Built with Jetpack Compose and Material 3
+• Tablet and foldable support
+• Real-time streaming updates
+• Dark mode optimized interface
+
+⚡ EASY SETUP
+• Scan QR code from your workstation
+• Or use magic link for one-tap connection
+• No complex VPN or SSH configuration
+• Automatic reconnection on network changes
+
+👨‍💻 WHO IS THIS FOR?
+• Developers using AI coding assistants
+• Remote workers who code on-the-go
+• Anyone who wants to monitor long-running AI tasks
+• Developers with commute time to utilize
+
+📋 REQUIREMENTS
+• Self-hosted workstation server on your development machine
+• Tunnel server (self-hosted or use tiflis.io)
+• Active internet connection
+
+Source-available under FSL-1.1-NC license. Your AI assistants, truly mobile.
+```
+
+### Release Notes (500 characters max)
+
+```
+Initial Release
+
+• Voice-first interface for AI coding assistants
+• Support for Claude Code, Cursor, and OpenCode
+• Full PTY terminal with professional keyboard
+• Supervisor agent for session orchestration
+• Real-time streaming responses
+• Secure WebSocket communication
+• QR code and magic link setup
+• Tablet and foldable support
+• Material 3 design with dark mode
+```
+
+---
+
+## Android Screenshots
+
+### Required Sizes
+
+| Device Type           | Resolution       | Minimum | Maximum |
+| --------------------- | ---------------- | ------- | ------- |
+| Phone                 | 16:9 or 9:16     | 2      | 8       |
+| 7-inch Tablet         | 16:9 or 9:16     | 0      | 8       |
+| 10-inch Tablet        | 16:9 or 9:16     | 0      | 8       |
+
+### Minimum Dimensions
+
+- **Phone**: 320px to 3840px per side
+- **Recommended**: 1080 × 1920 (phone), 1920 × 1200 (tablet)
+
+### Recommended Screenshot Set
+
+| #   | Screen            | Caption                     |
+| --- | ----------------- | --------------------------- |
+| 1   | Navigation drawer | "Manage multiple AI agents" |
+| 2   | Supervisor chat   | "Orchestrate your workflow" |
+| 3   | Claude Code chat  | "Voice-control Claude Code" |
+| 4   | Cursor chat       | "Command Cursor remotely"   |
+| 5   | Terminal          | "Full terminal access"      |
+| 6   | Voice recording   | "Dictate naturally"         |
+| 7   | Settings          | "Easy configuration"        |
+| 8   | QR Scanner        | "Quick setup"               |
+
+### Feature Graphic
+
+- **Size**: 1024 × 500 pixels
+- **Required**: Yes
+- **Format**: PNG or JPEG
+- **Purpose**: Displayed at top of Play Store listing
+
+### App Icon
+
+- **Size**: 512 × 512 pixels
+- **Format**: 32-bit PNG (with alpha)
+- **Location**: `app/src/main/res/mipmap-xxxhdpi/ic_launcher.png`
+
+---
+
+## Android App Signing
+
+### Option 1: Google Play App Signing (Recommended)
+
+Google manages your signing key securely. You only need an upload key.
+
+#### Generate Upload Key
+
+```bash
+cd apps/TiflisCodeAndroid
+
+# Generate upload keystore (keep this secure!)
+keytool -genkeypair -v \
+  -keystore upload-keystore.jks \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -alias upload-key \
+  -storepass YOUR_STORE_PASSWORD \
+  -keypass YOUR_KEY_PASSWORD \
+  -dname "CN=Roman Barinov, OU=Tiflis, O=Tiflis IO, L=City, ST=State, C=US"
+```
+
+#### Create Signing Configuration
+
+Create `apps/TiflisCodeAndroid/signing.properties` (add to .gitignore!):
+
+```properties
+storeFile=../upload-keystore.jks
+storePassword=YOUR_STORE_PASSWORD
+keyAlias=upload-key
+keyPassword=YOUR_KEY_PASSWORD
+```
+
+#### Update build.gradle.kts
+
+Edit `apps/TiflisCodeAndroid/app/build.gradle.kts`:
+
+```kotlin
+import java.util.Properties
+
+plugins {
+    // ... existing plugins
+}
+
+// Load signing properties
+val signingPropertiesFile = rootProject.file("signing.properties")
+val signingProperties = Properties()
+if (signingPropertiesFile.exists()) {
+    signingProperties.load(signingPropertiesFile.inputStream())
+}
+
+android {
+    namespace = "io.tiflis.code"
+    compileSdk = 35
+
+    signingConfigs {
+        create("release") {
+            if (signingPropertiesFile.exists()) {
+                storeFile = file(signingProperties.getProperty("storeFile"))
+                storePassword = signingProperties.getProperty("storePassword")
+                keyAlias = signingProperties.getProperty("keyAlias")
+                keyPassword = signingProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
+    defaultConfig {
+        applicationId = "io.tiflis.code"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0.0"
+        // ...
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
+        }
+        // ...
+    }
+    // ...
+}
+```
+
+#### Add to .gitignore
+
+```bash
+echo "upload-keystore.jks" >> apps/TiflisCodeAndroid/.gitignore
+echo "signing.properties" >> apps/TiflisCodeAndroid/.gitignore
+echo "*.jks" >> apps/TiflisCodeAndroid/.gitignore
+```
+
+### Option 2: Self-Managed Signing Key
+
+You manage your own signing key. More risk but full control.
+
+```bash
+# Generate signing key (NOT upload key)
+keytool -genkeypair -v \
+  -keystore tiflis-code-release.jks \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000 \
+  -alias tiflis-code \
+  -storepass YOUR_PASSWORD \
+  -keypass YOUR_PASSWORD
+```
+
+**Warning**: If you lose this key, you cannot update your app on Play Store!
+
+---
+
+## Google Play Publishing Checklist
+
+### Pre-Submission Checklist
+
+#### Google Play Console Setup
+
+- [ ] Create Google Play Developer account ($25 one-time fee)
+- [ ] Complete developer identity verification
+- [ ] Create new app in Play Console
+- [ ] Set package name to `io.tiflis.code`
+- [ ] Select "App" (not "Game")
+- [ ] Select "Free" pricing
+
+#### App Content Configuration
+
+- [ ] Complete Privacy Policy declaration
+  - URL: `https://tiflis.io/privacy`
+- [ ] Complete Data Safety form:
+  - Data collected: None
+  - Data shared: None
+  - Security practices: Data encrypted in transit
+- [ ] Complete Content Rating questionnaire (select "Tools")
+- [ ] Set Target Audience: 18+ (developer tool)
+- [ ] Confirm app is not primarily child-directed
+
+#### Store Listing
+
+- [ ] App name: "Tiflis Code"
+- [ ] Short description (80 chars max)
+- [ ] Full description (4000 chars max)
+- [ ] App icon (512 × 512 PNG)
+- [ ] Feature graphic (1024 × 500)
+- [ ] Phone screenshots (minimum 2)
+- [ ] 7-inch tablet screenshots (optional but recommended)
+- [ ] 10-inch tablet screenshots (optional but recommended)
+- [ ] App category: Tools → Development
+- [ ] Contact email: support@tiflis.io
+
+#### Build and Sign
+
+1. **Build Release APK/AAB:**
+
+```bash
+cd apps/TiflisCodeAndroid
+
+# Build release AAB (recommended for Play Store)
+./gradlew bundleRelease
+
+# Output: app/build/outputs/bundle/release/app-release.aab
+
+# Or build APK (for testing)
+./gradlew assembleRelease
+
+# Output: app/build/outputs/apk/release/app-release.apk
+```
+
+2. **Verify the build:**
+
+```bash
+# Check AAB contents
+bundletool build-apks --bundle=app/build/outputs/bundle/release/app-release.aab \
+  --output=test.apks --mode=universal
+
+# Install and test
+adb install test.apks
+```
+
+#### Testing Tracks
+
+- [ ] **Internal testing** (up to 100 testers)
+  - Upload AAB
+  - Add tester emails
+  - Share opt-in link
+
+- [ ] **Closed testing** (up to 2000 testers)
+  - Test with larger group
+  - Collect feedback
+
+- [ ] **Open testing** (unlimited)
+  - Public beta
+  - Available on Play Store with "Early Access" badge
+
+- [ ] **Production release**
+  - Full public release
+  - Gradual rollout recommended (start with 5-10%)
+
+#### Pre-Launch Report
+
+- [ ] Review Pre-launch report in Play Console
+- [ ] Fix any identified crashes
+- [ ] Address accessibility issues
+- [ ] Verify security scan results
+
+#### Release Submission
+
+- [ ] Select release track (internal/closed/open/production)
+- [ ] Upload signed AAB
+- [ ] Add release notes
+- [ ] Review and submit for review
+
+### Version Management
+
+Update version in `app/build.gradle.kts`:
+
+```kotlin
+defaultConfig {
+    versionCode = 2          // Increment for each release
+    versionName = "1.0.1"    // Semantic version
+}
+```
+
+**Rules:**
+- `versionCode` must always increase for each release
+- `versionName` follows semantic versioning (MAJOR.MINOR.PATCH)
+
+### CI/CD for Android (Optional)
+
+Add to `.github/workflows/release-android.yml`:
+
+```yaml
+name: Release Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g., 1.0.1)'
+        required: true
+      version_code:
+        description: 'Version code (must be higher than previous)'
+        required: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 -d > apps/TiflisCodeAndroid/upload-keystore.jks
+
+      - name: Create signing.properties
+        run: |
+          cat > apps/TiflisCodeAndroid/signing.properties << EOF
+          storeFile=../upload-keystore.jks
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          EOF
+
+      - name: Update version
+        run: |
+          sed -i 's/versionCode = [0-9]*/versionCode = ${{ github.event.inputs.version_code }}/' apps/TiflisCodeAndroid/app/build.gradle.kts
+          sed -i 's/versionName = "[^"]*"/versionName = "${{ github.event.inputs.version_name }}"/' apps/TiflisCodeAndroid/app/build.gradle.kts
+
+      - name: Build Release AAB
+        working-directory: apps/TiflisCodeAndroid
+        run: ./gradlew bundleRelease
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-aab
+          path: apps/TiflisCodeAndroid/app/build/outputs/bundle/release/app-release.aab
+```
+
+---
+
+## Quick Reference
+
+### iOS Character Limits
+
+| Field            | Limit |
+| ---------------- | ----- |
+| App Name         | 30    |
+| Subtitle         | 30    |
+| Promotional Text | 170   |
+| Description      | 4000  |
+| What's New       | 4000  |
+| Keywords         | 100   |
+
+### Android Character Limits
+
+| Field             | Limit |
+| ----------------- | ----- |
+| App Name          | 50    |
+| Short Description | 80    |
+| Full Description  | 4000  |
+| Release Notes     | 500   |
+
+### Required Assets Summary
+
+| Platform | Asset           | Size            | Format              |
+| -------- | --------------- | --------------- | ------------------- |
+| iOS      | App Icon        | 1024 × 1024     | PNG (no alpha)      |
+| iOS      | Screenshots     | Various         | PNG/JPEG            |
+| iOS      | App Preview     | Device-specific | H.264 MOV/MP4       |
+| Android  | App Icon        | 512 × 512       | PNG (with alpha)    |
+| Android  | Feature Graphic | 1024 × 500      | PNG/JPEG            |
+| Android  | Screenshots     | Various         | PNG/JPEG            |
+
+### Bundle/Package IDs
+
+| Platform | ID                                |
+| -------- | --------------------------------- |
+| iOS      | io.tiflis.TiflisCode              |
+| watchOS  | io.tiflis.TiflisCode.watchkitapp  |
+| Android  | io.tiflis.code                    |
+
+---
+
+_Document created for Tiflis Code App Store and Play Store submission_
+_Last updated: 2025-12-15_

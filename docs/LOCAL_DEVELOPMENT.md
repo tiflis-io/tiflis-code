@@ -169,7 +169,7 @@ xcodebuild build \
 # Launch in simulator
 xcrun simctl boot "iPhone 16 Pro"
 xcrun simctl install "iPhone 16 Pro" build/Debug-iphonesimulator/TiflisCode.app
-xcrun simctl launch "iPhone 16 Pro" com.tiflis.TiflisCode
+xcrun simctl launch "iPhone 16 Pro" io.tiflis.TiflisCode
 ```
 
 ### Connecting iOS Simulator to Local Servers

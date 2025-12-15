@@ -135,7 +135,7 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 - **Implementation:** `KeychainManager` - Uses iOS Keychain API
 - **Features:**
   - Secure storage for `auth_key` using `kSecClassGenericPassword`
-  - Service identifier: `com.tiflis.TiflisCode`
+  - Service identifier: `io.tiflis.TiflisCode`
   - Account key: `workstation_auth_key`
   - Typed errors: `KeychainError` enum
 
