@@ -695,12 +695,13 @@ http {
 
     # HTTPS server
     server {
-        listen 443 ssl http2;
+        listen 443 ssl;
+        http2 on;
         server_name _;
 
         # SSL certificates from certbot
-        ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/__DOMAIN__/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/__DOMAIN__/privkey.pem;
 
         # SSL settings
         ssl_protocols TLSv1.2 TLSv1.3;
@@ -735,8 +736,8 @@ http {
 }
 NGINX_EOF
 
-    # Replace ${DOMAIN} placeholder in nginx.conf
-    sed -i.bak "s/\${DOMAIN}/${domain_name}/g" "${TUNNEL_DIR}/nginx.conf"
+    # Replace __DOMAIN__ placeholder in nginx.conf
+    sed -i.bak "s/__DOMAIN__/${domain_name}/g" "${TUNNEL_DIR}/nginx.conf"
     rm -f "${TUNNEL_DIR}/nginx.conf.bak"
 
     # Create certbot directories
