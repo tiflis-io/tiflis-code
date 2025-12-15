@@ -786,6 +786,8 @@ fi
 docker compose run --rm --entrypoint "\
     certbot certonly --webroot -w /var/www/certbot \
     \$staging_arg \
+    --non-interactive \
+    --keep-until-expiring \
     --email \$email \
     --agree-tos \
     --no-eff-email \
