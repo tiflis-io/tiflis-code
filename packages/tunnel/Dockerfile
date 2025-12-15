@@ -40,27 +40,7 @@ RUN pnpm build
 RUN echo "$VERSION" > /app/packages/tunnel/VERSION
 
 # ============================================================================
-# Stage 2: Production Dependencies
-# ============================================================================
-FROM --platform=$BUILDPLATFORM node:22-alpine AS deps
-
-WORKDIR /app
-
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-
-# Copy root package files for monorepo
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-
-# Copy tunnel package.json
-COPY packages/tunnel/package.json ./packages/tunnel/
-
-# Install production dependencies only
-# This stage is separate to optimize caching
-RUN pnpm install --frozen-lockfile --prod --filter @tiflis-io/tiflis-code-tunnel
-
-# ============================================================================
-# Stage 3: Production Runner
+# Stage 2: Production Runner
 # ============================================================================
 FROM node:22-alpine AS runner
 
@@ -76,16 +56,14 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 tiflis
 
-# Copy production dependencies from deps stage
-# In pnpm workspace, all dependencies are in root node_modules
-COPY --from=deps /app/node_modules ./node_modules
-
 # Copy built application from builder stage
 COPY --from=builder /app/packages/tunnel/dist ./dist
 COPY --from=builder /app/packages/tunnel/VERSION ./VERSION
-
-# Copy package.json for runtime (needed for module resolution)
 COPY --from=builder /app/packages/tunnel/package.json ./package.json
+
+# Install production dependencies only (simpler than pnpm workspace filtering)
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate && \
+    pnpm install --prod --ignore-scripts
 
 # Set ownership to non-root user
 RUN chown -R tiflis:nodejs /app
