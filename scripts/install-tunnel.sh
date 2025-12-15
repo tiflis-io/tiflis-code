@@ -53,11 +53,11 @@ readonly COLOR_CYAN="\033[0;36m"
 readonly COLOR_DIM="\033[2m"
 readonly COLOR_WHITE="\033[97m"
 
-print_step() { echo -e "${COLOR_CYAN}→${COLOR_RESET} $1"; }
-print_success() { echo -e "${COLOR_GREEN}✓${COLOR_RESET} $1"; }
+print_step() { echo -e "${COLOR_CYAN}→${COLOR_RESET} $1" >&2; }
+print_success() { echo -e "${COLOR_GREEN}✓${COLOR_RESET} $1" >&2; }
 print_error() { echo -e "${COLOR_RED}✗${COLOR_RESET} $1" >&2; }
-print_warning() { echo -e "${COLOR_YELLOW}⚠${COLOR_RESET} $1"; }
-print_info() { echo -e "${COLOR_DIM}$1${COLOR_RESET}"; }
+print_warning() { echo -e "${COLOR_YELLOW}⚠${COLOR_RESET} $1" >&2; }
+print_info() { echo -e "${COLOR_DIM}$1${COLOR_RESET}" >&2; }
 
 prompt_value() {
     local prompt="$1" default="${2:-}" value
@@ -329,13 +329,13 @@ wait_for_dns() {
 # Reverse Proxy Selection
 # ─────────────────────────────────────────────────────────────
 prompt_reverse_proxy() {
-    echo ""
+    echo "" >&2
     print_info "Reverse Proxy Setup"
-    echo ""
-    echo "  1) None - Direct access (development/testing)"
-    echo "  2) Traefik - Automatic SSL with Let's Encrypt (recommended)"
-    echo "  3) nginx - Automatic SSL with Let's Encrypt (certbot)"
-    echo ""
+    echo "" >&2
+    echo "  1) None - Direct access (development/testing)" >&2
+    echo "  2) Traefik - Automatic SSL with Let's Encrypt (recommended)" >&2
+    echo "  3) nginx - Automatic SSL with Let's Encrypt (certbot)" >&2
+    echo "" >&2
 
     local choice
     while true; do

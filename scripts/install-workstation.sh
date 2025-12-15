@@ -52,11 +52,11 @@ readonly COLOR_CYAN="\033[0;36m"
 readonly COLOR_DIM="\033[2m"
 readonly COLOR_WHITE="\033[97m"
 
-print_step() { echo -e "${COLOR_CYAN}→${COLOR_RESET} $1"; }
-print_success() { echo -e "${COLOR_GREEN}✓${COLOR_RESET} $1"; }
+print_step() { echo -e "${COLOR_CYAN}→${COLOR_RESET} $1" >&2; }
+print_success() { echo -e "${COLOR_GREEN}✓${COLOR_RESET} $1" >&2; }
 print_error() { echo -e "${COLOR_RED}✗${COLOR_RESET} $1" >&2; }
-print_warning() { echo -e "${COLOR_YELLOW}⚠${COLOR_RESET} $1"; }
-print_info() { echo -e "${COLOR_DIM}$1${COLOR_RESET}"; }
+print_warning() { echo -e "${COLOR_YELLOW}⚠${COLOR_RESET} $1" >&2; }
+print_info() { echo -e "${COLOR_DIM}$1${COLOR_RESET}" >&2; }
 
 prompt_value() {
     local prompt="$1" default="${2:-}" value
