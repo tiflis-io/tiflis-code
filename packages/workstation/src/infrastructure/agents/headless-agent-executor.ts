@@ -96,12 +96,17 @@ export class HeadlessAgentExecutor extends EventEmitter {
     // Build command and arguments
     const { command, args } = this.buildCommand(prompt);
 
+    // Get alias environment variables (if any)
+    const aliasEnvVars = this.getAliasEnvVars();
+
     // Spawn subprocess in its own process group (detached)
     // This allows killing the entire process tree with process.kill(-pid)
     this.subprocess = spawn(command, args, {
       cwd: this.workingDir,
       env: {
         ...process.env,
+        // Apply alias env vars (e.g., CLAUDE_CONFIG_DIR)
+        ...aliasEnvVars,
         // Ensure proper terminal environment
         TERM: "xterm-256color",
         // Disable interactive prompts
@@ -171,6 +176,14 @@ export class HeadlessAgentExecutor extends EventEmitter {
    */
   private getAliasArgs(): string[] {
     return this.agentConfig?.aliasArgs ?? [];
+  }
+
+  /**
+   * Get alias environment variables from agent config.
+   * Returns empty object if no alias configured.
+   */
+  private getAliasEnvVars(): Record<string, string> {
+    return this.agentConfig?.aliasEnvVars ?? {};
   }
 
   /**

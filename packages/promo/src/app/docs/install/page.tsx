@@ -481,15 +481,19 @@ TTS_VOICE=Rachel`}</CodeBlock>
 
           <h4 className="text-base font-semibold mt-4 mb-2">Examples</h4>
           <CodeBlock>{`# Claude with custom settings file
-AGENT_ALIAS_ZAI=claude --settings /Users/yourname/.zai/settings.json
+AGENT_ALIAS_ZAI="claude --settings /Users/yourname/.zai/settings.json"
 
 # Claude with specific model
-AGENT_ALIAS_CLAUDE_OPUS=claude --model opus
+AGENT_ALIAS_CLAUDE_OPUS="claude --model opus"
 
-# Cursor with experimental features
-AGENT_ALIAS_CURSOR_PRO=cursor-agent --experimental-features`}</CodeBlock>
+# Claude with custom config directory (env var prefix)
+AGENT_ALIAS_INVENT="CLAUDE_CONFIG_DIR=/Users/yourname/.claude-invent claude"
+
+# OpenCode with Cerebras model
+AGENT_ALIAS_CEREBRAS="opencode --model cerebras/zai-glm-4.6"`}</CodeBlock>
           <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
-            Note: Use absolute paths for file arguments. Relative paths will not be expanded.
+            Note: Values with spaces must be quoted. You can prefix commands with environment
+            variables (e.g., <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">VAR=value command</code>).
           </p>
 
           <h3 className="text-lg font-semibold mt-8 mb-2">
@@ -524,7 +528,7 @@ TTS_MODEL=tts-1
 TTS_VOICE=nova
 
 # Custom Agent Aliases
-AGENT_ALIAS_ZAI=claude --settings /Users/yourname/.zai/settings.json`}</CodeBlock>
+AGENT_ALIAS_ZAI="claude --settings /Users/yourname/.zai/settings.json"`}</CodeBlock>
         </Section>
 
         {/* Service Management */}

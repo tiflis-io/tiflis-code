@@ -112,27 +112,33 @@ export type Env = z.infer<typeof EnvSchema>;
 /**
  * Parsed agent alias configuration.
  * Example: AGENT_ALIAS_ZAI="claude --settings ~/.zai/settings.json"
- * Results in: { name: 'zai', baseCommand: 'claude', additionalArgs: ['--settings', '~/.zai/settings.json'] }
+ * Results in: { name: 'zai', baseCommand: 'claude', additionalArgs: ['--settings', '~/.zai/settings.json'], envVars: {} }
+ *
+ * Example with env vars: AGENT_ALIAS_INVENT="CLAUDE_CONFIG_DIR=/path claude"
+ * Results in: { name: 'invent', baseCommand: 'claude', additionalArgs: [], envVars: { CLAUDE_CONFIG_DIR: '/path' } }
  */
 export interface AgentAlias {
   /** Alias name (lowercase, derived from env var name after AGENT_ALIAS_) */
   name: string;
-  /** Base command (first word: 'claude', 'cursor-agent', 'opencode') */
+  /** Base command (first word after env vars: 'claude', 'cursor-agent', 'opencode') */
   baseCommand: string;
   /** Additional arguments to prepend before standard flags */
   additionalArgs: string[];
+  /** Environment variables to set when spawning the agent */
+  envVars: Record<string, string>;
   /** Original raw command string for debugging */
   rawCommand: string;
 }
 
 /**
  * Parses agent aliases from environment variables.
- * Looks for variables matching pattern: AGENT_ALIAS_<NAME>=<command> [args...]
+ * Looks for variables matching pattern: AGENT_ALIAS_<NAME>=[ENV=val...] <command> [args...]
  *
  * Example env vars:
  *   AGENT_ALIAS_ZAI=claude --settings ~/.zai/settings.json
  *   AGENT_ALIAS_CLAUDE_OPUS=claude --model opus
  *   AGENT_ALIAS_CURSOR_PRO=cursor-agent --pro-mode
+ *   AGENT_ALIAS_INVENT=CLAUDE_CONFIG_DIR=/path/to/config claude
  *
  * @returns Map of alias name (lowercase) to AgentAlias config
  */
@@ -151,7 +157,7 @@ export function parseAgentAliases(): Map<string, AgentAlias> {
       .toLowerCase()
       .replace(/_/g, "-");
 
-    // Parse command: first word is base command, rest are additional args
+    // Parse command: handle env var prefixes, then base command, then args
     // Handle quoted strings properly
     const parts = parseCommandString(value);
     if (parts.length === 0) {
@@ -159,15 +165,43 @@ export function parseAgentAliases(): Map<string, AgentAlias> {
       continue;
     }
 
-    // parts[0] is guaranteed to exist after length check above
-    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-    const baseCommand = parts[0]!;
-    const additionalArgs = parts.slice(1);
+    // Extract env var assignments from the beginning (format: VAR=value)
+    const envVars: Record<string, string> = {};
+    let commandStartIndex = 0;
+
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      // Check if this part is an env var assignment (contains = but doesn't start with -)
+      const eqIndex = part.indexOf("=");
+      if (eqIndex > 0 && !part.startsWith("-")) {
+        const varName = part.slice(0, eqIndex);
+        const varValue = part.slice(eqIndex + 1);
+        // Validate it looks like an env var name (uppercase letters, numbers, underscores)
+        if (/^[A-Z_][A-Z0-9_]*$/.test(varName)) {
+          envVars[varName] = varValue;
+          commandStartIndex = i + 1;
+          continue;
+        }
+      }
+      // Not an env var assignment, stop looking
+      break;
+    }
+
+    // Get remaining parts after env vars
+    const commandParts = parts.slice(commandStartIndex);
+    if (commandParts.length === 0) {
+      console.warn(`Invalid agent alias ${key}: no command after env vars`);
+      continue;
+    }
+
+    const baseCommand = commandParts[0]!;
+    const additionalArgs = commandParts.slice(1);
 
     aliases.set(aliasName, {
       name: aliasName,
       baseCommand,
       additionalArgs,
+      envVars,
       rawCommand: value,
     });
   }

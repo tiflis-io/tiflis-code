@@ -207,6 +207,8 @@ export interface AgentCommandConfig {
   command: string;
   /** Additional arguments from alias (prepended before base args) */
   aliasArgs: string[];
+  /** Environment variables from alias (set when spawning) */
+  aliasEnvVars: Record<string, string>;
   /** Base agent type this is derived from */
   baseType: BaseAgentType;
   /** Human-readable description */
@@ -240,6 +242,7 @@ export function getAvailableAgents(): Map<string, AgentCommandConfig> {
     name: "cursor",
     command: AGENT_COMMANDS.cursor.command,
     aliasArgs: [],
+    aliasEnvVars: {},
     baseType: "cursor",
     description: AGENT_COMMANDS.cursor.description,
     isAlias: false,
@@ -249,6 +252,7 @@ export function getAvailableAgents(): Map<string, AgentCommandConfig> {
     name: "claude",
     command: AGENT_COMMANDS.claude.command,
     aliasArgs: [],
+    aliasEnvVars: {},
     baseType: "claude",
     description: AGENT_COMMANDS.claude.description,
     isAlias: false,
@@ -258,6 +262,7 @@ export function getAvailableAgents(): Map<string, AgentCommandConfig> {
     name: "opencode",
     command: AGENT_COMMANDS.opencode.command,
     aliasArgs: [],
+    aliasEnvVars: {},
     baseType: "opencode",
     description: AGENT_COMMANDS.opencode.description,
     isAlias: false,
@@ -279,6 +284,7 @@ export function getAvailableAgents(): Map<string, AgentCommandConfig> {
       name,
       command: alias.baseCommand,
       aliasArgs: alias.additionalArgs,
+      aliasEnvVars: alias.envVars,
       baseType,
       description: `${name} (alias for ${baseType} with custom config)`,
       isAlias: true,
