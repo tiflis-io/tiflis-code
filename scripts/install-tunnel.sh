@@ -810,9 +810,15 @@ docker compose run --rm --entrypoint "\
 echo "→ Reloading nginx..."
 docker compose exec -T nginx nginx -s reload
 
+echo "→ Starting certbot renewal service..."
+docker compose up -d certbot
+
 echo "✓ Certificate provisioned successfully!"
 echo ""
 echo "Your tunnel is now available at: https://\$domain"
+echo ""
+echo "Services running:"
+docker compose ps --format "table {{.Name}}\t{{.Status}}"
 INIT_EOF
 
     chmod +x "${TUNNEL_DIR}/init-letsencrypt.sh"
