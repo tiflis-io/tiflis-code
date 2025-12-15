@@ -953,7 +953,7 @@ EOF
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/v22.*/bin</string>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.nvm/versions/node/v22.*/bin:${HOME}/.npm-global/bin:${HOME}/.local/bin:${HOME}/.cargo/bin</string>
     </dict>
 </dict>
 </plist>
