@@ -90,7 +90,7 @@ version: '3.8'
 
 services:
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     environment:
@@ -148,7 +148,7 @@ version: '3.8'
 
 services:
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     environment:
@@ -184,7 +184,7 @@ version: '3.8'
 
 services:
   workstation:
-    image: ghcr.io/tiflis-io/tiflis-code-workstation:latest
+    image: tiflisio/tiflis-code-workstation:latest
     container_name: tiflis-workstation
     restart: unless-stopped
     environment:

@@ -3,7 +3,7 @@
 
 services:
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     ports:

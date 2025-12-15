@@ -188,7 +188,7 @@ docker run -d \
   -e WORKSPACES_ROOT="/workspaces" \
   -e DATA_DIR="/data" \
   -e AGENT_API_KEY="your-openai-key" \
-  ghcr.io/tiflis-io/tiflis-code-workstation:latest
+  tiflisio/tiflis-code-workstation:latest
 ```
 
 ### Docker Compose
@@ -196,7 +196,7 @@ docker run -d \
 ```yaml
 services:
   workstation:
-    image: ghcr.io/tiflis-io/tiflis-code-workstation:latest
+    image: tiflisio/tiflis-code-workstation:latest
     ports:
       - "3002:3002"
     volumes:

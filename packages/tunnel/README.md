@@ -120,7 +120,7 @@ docker run -d \
   --name tiflis-tunnel \
   -p 3001:3001 \
   -e TUNNEL_REGISTRATION_API_KEY="your-api-key-here-32-chars-min!!" \
-  ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+  tiflisio/tiflis-code-tunnel:latest
 ```
 
 ### Docker Compose
@@ -128,7 +128,7 @@ docker run -d \
 ```yaml
 services:
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     ports:
       - "3001:3001"
     environment:

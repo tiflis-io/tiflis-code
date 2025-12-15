@@ -547,7 +547,7 @@ create_docker_compose_basic() {
     cat > "${TUNNEL_DIR}/docker-compose.yml" << 'EOF'
 services:
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     ports:
@@ -590,7 +590,7 @@ services:
       - "./letsencrypt:/letsencrypt"
 
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     env_file:
@@ -638,7 +638,7 @@ services:
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
   tunnel:
-    image: ghcr.io/tiflis-io/tiflis-code-tunnel:latest
+    image: tiflisio/tiflis-code-tunnel:latest
     container_name: tiflis-tunnel
     restart: unless-stopped
     env_file:
