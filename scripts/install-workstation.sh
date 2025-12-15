@@ -465,10 +465,17 @@ configure_ai_providers() {
         2)
             TTS_PROVIDER="elevenlabs"
             TTS_MODEL="eleven_multilingual_v2"
-            TTS_VOICE="Rachel"
             TTS_API_KEY="$(prompt_secret "Enter ElevenLabs API key")"
             if [ -n "$TTS_API_KEY" ]; then
-                print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL})"
+                echo "" >&2
+                print_info "Find your voice ID at: https://elevenlabs.io/app/voice-library"
+                TTS_VOICE="$(prompt_value "Enter ElevenLabs voice ID")"
+                if [ -z "$TTS_VOICE" ]; then
+                    print_warning "No voice ID provided. TTS will be disabled."
+                    TTS_PROVIDER=""
+                else
+                    print_success "TTS configured: ${TTS_PROVIDER} (voice: ${TTS_VOICE})"
+                fi
             else
                 TTS_PROVIDER=""
             fi
