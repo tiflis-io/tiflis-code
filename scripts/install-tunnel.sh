@@ -359,14 +359,22 @@ install_docker_mode() {
 
     if ! check_docker; then
         print_error "Docker is not installed or not running"
-        print_info "Please install Docker: https://docs.docker.com/get-docker/"
+        echo "" >&2
+        print_info "Install Docker with:"
+        echo "  curl -fsSL https://get.docker.com | sh" >&2
+        echo "" >&2
+        print_info "Then add your user to docker group:"
+        echo "  sudo usermod -aG docker \$USER" >&2
+        echo "  newgrp docker" >&2
         exit 1
     fi
 
     local compose_cmd
     if ! compose_cmd=$(check_docker_compose); then
         print_error "Docker Compose is not installed"
-        print_info "Please install Docker Compose: https://docs.docker.com/compose/install/"
+        echo "" >&2
+        print_info "Docker Compose is included with Docker. Reinstall Docker:"
+        echo "  curl -fsSL https://get.docker.com | sh" >&2
         exit 1
     fi
 
