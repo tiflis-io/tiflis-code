@@ -584,6 +584,8 @@ services:
     image: traefik:v3.2
     container_name: traefik
     restart: unless-stopped
+    environment:
+      - DOCKER_API_VERSION=1.45
     command:
       - "--api.insecure=false"
       - "--providers.docker=true"
