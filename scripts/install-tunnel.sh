@@ -258,27 +258,26 @@ check_dns_resolution() {
 wait_for_dns() {
     local domain="$1"
     local expected_ip="$2"
-    local max_attempts=60
+    local max_attempts=30
     local attempt=0
-    local check_interval=10
+    local check_interval=5
 
-    echo ""
+    echo "" >&2
     print_info "DNS Verification"
-    echo ""
-    echo "  Domain:      $domain"
-    echo "  Expected IP: $expected_ip"
-    echo ""
+    echo "" >&2
+    echo "  Domain:      $domain" >&2
+    echo "  Expected IP: $expected_ip" >&2
+    echo "" >&2
     print_info "Please create a DNS A record pointing $domain to $expected_ip"
-    echo ""
+    echo "" >&2
 
     if ! confirm "Wait for DNS propagation and verify?" "y"; then
         print_warning "Skipping DNS verification. Make sure DNS is configured before using HTTPS."
         return 0
     fi
 
-    echo ""
-    print_step "Waiting for DNS propagation (this may take a few minutes)..."
-    echo ""
+    echo "" >&2
+    print_step "Waiting for DNS propagation (checking every ${check_interval}s, max $((max_attempts * check_interval / 60)) min)..."
 
     while [ $attempt -lt $max_attempts ]; do
         local result
@@ -287,16 +286,17 @@ wait_for_dns() {
 
         case $status in
             0)
+                echo "" >&2
                 print_success "DNS verified! $domain resolves to $expected_ip"
                 return 0
                 ;;
             2)
                 # Resolved but to wrong IP
-                echo -ne "\r  ${COLOR_YELLOW}⚠${COLOR_RESET} $domain resolves to $result (expected: $expected_ip) - attempt $((attempt + 1))/$max_attempts"
+                echo -e "  ${COLOR_YELLOW}⚠${COLOR_RESET} Attempt $((attempt + 1))/$max_attempts: $domain → $result (expected: $expected_ip)" >&2
                 ;;
             *)
                 # Not resolved yet
-                echo -ne "\r  ${COLOR_DIM}⏳${COLOR_RESET} Checking DNS... attempt $((attempt + 1))/$max_attempts (not resolved yet)        "
+                echo -e "  ${COLOR_DIM}⏳${COLOR_RESET} Attempt $((attempt + 1))/$max_attempts: not resolved yet" >&2
                 ;;
         esac
 
@@ -304,7 +304,7 @@ wait_for_dns() {
         sleep $check_interval
     done
 
-    echo ""
+    echo "" >&2
     print_warning "DNS verification timed out after $((max_attempts * check_interval / 60)) minutes"
 
     local final_result
