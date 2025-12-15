@@ -1,6 +1,7 @@
 #!/bin/bash
 # Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 # Licensed under the FSL-1.1-NC.
+# https://github.com/tiflis-io/tiflis-code
 #
 # Tiflis Code Tunnel Server Installer
 #
