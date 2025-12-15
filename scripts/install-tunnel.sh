@@ -792,7 +792,7 @@ docker compose run --rm --entrypoint "\
     -d \$domain" certbot
 
 echo "→ Reloading nginx..."
-docker compose exec nginx nginx -s reload
+docker compose exec -T nginx nginx -s reload
 
 echo "✓ Certificate provisioned successfully!"
 echo ""
