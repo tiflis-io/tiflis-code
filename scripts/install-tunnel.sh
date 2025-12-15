@@ -333,18 +333,21 @@ prompt_reverse_proxy() {
     print_info "Reverse Proxy Setup"
     echo ""
     echo "  1) None - Direct access (development/testing)"
-    echo "  2) Traefik - Automatic SSL with Let's Encrypt"
+    echo "  2) Traefik - Automatic SSL with Let's Encrypt (recommended)"
     echo "  3) nginx - Automatic SSL with Let's Encrypt (certbot)"
     echo ""
 
     local choice
-    read -rp "$(echo -e "${COLOR_CYAN}?${COLOR_RESET} Select reverse proxy [1-3, default: 1]: ")" choice
-
-    case "$choice" in
-        2) echo "traefik" ;;
-        3) echo "nginx" ;;
-        *) echo "none" ;;
-    esac
+    while true; do
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} Select reverse proxy [1-3]: " >&2
+        read -r choice < "$TTY_INPUT"
+        case "$choice" in
+            1) echo "none"; return ;;
+            2) echo "traefik"; return ;;
+            3) echo "nginx"; return ;;
+            *) print_error "Please enter 1, 2, or 3" ;;
+        esac
+    done
 }
 
 # ─────────────────────────────────────────────────────────────
