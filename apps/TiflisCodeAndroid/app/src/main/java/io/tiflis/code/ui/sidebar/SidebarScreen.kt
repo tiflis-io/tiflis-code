@@ -240,6 +240,15 @@ private fun SessionItem(
                 modifier = Modifier.size(36.dp)
             )
         },
+        trailingContent = if (isSelected) {
+            {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = sessionType.accentColor()
+                )
+            }
+        } else null,
         modifier = Modifier
             .clickable(onClick = onClick)
             .then(

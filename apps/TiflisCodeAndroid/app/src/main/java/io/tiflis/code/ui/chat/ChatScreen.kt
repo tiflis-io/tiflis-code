@@ -102,6 +102,15 @@ fun ChatScreen(
         agentIsLoadingMap[actualSessionId] ?: false
     }
 
+    // Scroll triggers - increment on any content update to force scroll to bottom
+    val supervisorScrollTrigger by appState.supervisorScrollTrigger.collectAsState()
+    val agentScrollTriggersMap by appState.agentScrollTriggers.collectAsState()
+    val scrollTrigger = if (sessionType == SessionType.SUPERVISOR) {
+        supervisorScrollTrigger
+    } else {
+        agentScrollTriggersMap[actualSessionId] ?: 0
+    }
+
     // Check if any message is streaming
     val messageIsStreaming = messages.any { it.isStreaming }
 
@@ -145,11 +154,13 @@ fun ChatScreen(
         }
     }
 
-    // Auto-scroll to bottom on new messages or streaming updates (instant, not animated)
-    // This ensures we always see the tail of the streaming response including typing indicator
-    val lastMessageBlocksSize = messages.lastOrNull()?.contentBlocks?.size ?: 0
-    LaunchedEffect(messages.size, lastMessageBlocksSize, isStreaming) {
-        if (isAtBottom) {
+    // Auto-scroll to bottom on any content update (mirrors iOS scrollTrigger behavior)
+    // scrollTrigger increments whenever content changes in AppState handlers
+    // Force scroll without checking isAtBottom - same as iOS forceScrollToBottom()
+    LaunchedEffect(scrollTrigger) {
+        if (scrollTrigger > 0) {
+            // Small delay to allow Compose to layout new items before scrolling
+            kotlinx.coroutines.delay(50)
             // Use actual item count from layoutInfo (accounts for split segments)
             val itemCount = listState.layoutInfo.totalItemsCount
             if (itemCount > 0) {

@@ -14,6 +14,8 @@ import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -71,10 +73,29 @@ fun AppNavigation(
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
 
-    // Current route
+    // Hide keyboard when drawer starts opening (either by button tap or gesture)
+    // Use targetValue to detect opening intent immediately, not after animation completes
+    LaunchedEffect(drawerState.targetValue) {
+        if (drawerState.targetValue == DrawerValue.Open) {
+            keyboardController?.hide()
+            focusManager.clearFocus()
+        }
+    }
+
+    // Current route - need to build actual route with sessionId for proper matching
     val navBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
+    val currentRoute = navBackStackEntry?.let { entry ->
+        val route = entry.destination.route
+        val sessionId = entry.arguments?.getString("sessionId")
+        when {
+            route == Screen.AGENT_ROUTE && sessionId != null -> Screen.agentRoute(sessionId)
+            route == Screen.TERMINAL_ROUTE && sessionId != null -> Screen.terminalRoute(sessionId)
+            else -> route
+        }
+    }
 
     // Auto-connect on app start if credentials exist
     LaunchedEffect(Unit) {

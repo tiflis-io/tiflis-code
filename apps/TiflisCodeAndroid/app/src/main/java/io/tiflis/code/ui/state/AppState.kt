@@ -90,6 +90,14 @@ class AppState @Inject constructor(
     private val _agentIsLoading = MutableStateFlow<Map<String, Boolean>>(emptyMap())
     val agentIsLoading: StateFlow<Map<String, Boolean>> = _agentIsLoading.asStateFlow()
 
+    // Scroll triggers - increment on any content update to force scroll to bottom
+    // This mirrors iOS scrollTrigger behavior for reliable auto-scroll during streaming
+    private val _supervisorScrollTrigger = MutableStateFlow(0)
+    val supervisorScrollTrigger: StateFlow<Int> = _supervisorScrollTrigger.asStateFlow()
+
+    private val _agentScrollTriggers = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val agentScrollTriggers: StateFlow<Map<String, Int>> = _agentScrollTriggers.asStateFlow()
+
     /**
      * Get the actual session ID (resolves temp IDs to real server IDs).
      */
@@ -439,6 +447,8 @@ class AppState @Inject constructor(
                 content = text
             )
             _supervisorMessages.value = _supervisorMessages.value + userMessage
+            // Scroll when sending user message
+            _supervisorScrollTrigger.value++
         } else if (audio != null) {
             // Voice input message with pending transcription
             val voiceMessage = Message(
@@ -455,6 +465,8 @@ class AppState @Inject constructor(
                 )
             )
             _supervisorMessages.value = _supervisorMessages.value + voiceMessage
+            // Scroll when sending voice message
+            _supervisorScrollTrigger.value++
             Log.d(TAG, "Added supervisor voice message with id=$actualMessageId, waiting for transcription")
         }
 
@@ -531,6 +543,10 @@ class AppState @Inject constructor(
                 content = text
             )
             addAgentMessage(actualId, userMessage)
+            // Scroll when sending user message
+            _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                put(actualId, (this[actualId] ?: 0) + 1)
+            }
         } else if (audio != null) {
             // Voice input message with pending transcription
             val voiceMessage = Message(
@@ -547,6 +563,10 @@ class AppState @Inject constructor(
                 )
             )
             addAgentMessage(actualId, voiceMessage)
+            // Scroll when sending voice message
+            _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                put(actualId, (this[actualId] ?: 0) + 1)
+            }
             Log.d(TAG, "Added agent voice message with id=$actualMessageId for session=$actualId, waiting for transcription")
         }
 
@@ -927,6 +947,11 @@ class AppState @Inject constructor(
             put(sessionId, messages.toList())
         }
 
+        // Trigger scroll on content update (mirrors iOS scrollTrigger behavior)
+        _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+            put(sessionId, (this[sessionId] ?: 0) + 1)
+        }
+
         // Clear loading state when output starts arriving or completes
         _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
             put(sessionId, false)
@@ -934,6 +959,10 @@ class AppState @Inject constructor(
 
         if (isComplete) {
             streamingMessageIds.remove(sessionId)
+            // Scroll when response is complete
+            _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                put(sessionId, (this[sessionId] ?: 0) + 1)
+            }
         }
     }
 
@@ -1134,11 +1163,16 @@ class AppState @Inject constructor(
         // Create new list to trigger StateFlow emission
         _supervisorMessages.value = messages.toList()
 
+        // Trigger scroll on content update (mirrors iOS scrollTrigger behavior)
+        _supervisorScrollTrigger.value++
+
         // Clear loading state when output starts arriving or completes
         _supervisorIsLoading.value = false
 
         if (isComplete) {
             streamingMessageIds.remove(SUPERVISOR_SESSION_ID)
+            // Scroll when response is complete
+            _supervisorScrollTrigger.value++
         }
     }
 
@@ -1187,6 +1221,9 @@ class AppState @Inject constructor(
         )
         _supervisorMessages.value = _supervisorMessages.value + userMessage
 
+        // Scroll when receiving mirrored user message
+        _supervisorScrollTrigger.value++
+
         // Set loading state when user message comes from another device
         _supervisorIsLoading.value = true
         Log.d(TAG, "Set supervisor loading=true from other device message")
@@ -1225,6 +1262,8 @@ class AppState @Inject constructor(
                     createdAt = existingMessage.createdAt
                 )
                 _supervisorMessages.value = messages.toList()
+                // Trigger scroll after transcription update
+                _supervisorScrollTrigger.value++
                 Log.d(TAG, "Updated supervisor voice message with transcription: $transcription")
             }
         } else if (fromDeviceId != null && fromDeviceId != myDeviceId) {
@@ -1243,6 +1282,8 @@ class AppState @Inject constructor(
             )
             _supervisorMessages.value = _supervisorMessages.value + voiceMessage
             _supervisorIsLoading.value = true
+            // Scroll for mirrored voice message
+            _supervisorScrollTrigger.value++
             Log.d(TAG, "Created supervisor voice message from mirrored device: $transcription")
         }
     }
@@ -1289,6 +1330,8 @@ class AppState @Inject constructor(
                     createdAt = existingMessage.createdAt
                 )
                 _supervisorMessages.value = messages.toList()
+                // Scroll when TTS is received
+                _supervisorScrollTrigger.value++
 
                 Log.d(TAG, "Added voice output to supervisor assistant message, total blocks: ${updatedBlocks.size}")
             } else {
@@ -1376,6 +1419,11 @@ class AppState @Inject constructor(
         messages[sessionId] = sessionMessages
         _agentMessages.value = messages
 
+        // Scroll when receiving mirrored user message
+        _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+            put(sessionId, (this[sessionId] ?: 0) + 1)
+        }
+
         // Set loading state when user message comes from another device
         // This enables the Stop button on all connected devices
         _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
@@ -1428,6 +1476,10 @@ class AppState @Inject constructor(
                     _agentMessages.value = _agentMessages.value.toMutableMap().apply {
                         put(sessionId, sessionMessages.toList())
                     }
+                    // Trigger scroll after transcription update
+                    _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                        put(sessionId, (this[sessionId] ?: 0) + 1)
+                    }
                     Log.d(TAG, "handleSessionTranscription: Updated voice message with transcription: $transcription")
                     return
                 }
@@ -1452,6 +1504,11 @@ class AppState @Inject constructor(
                 // Create new map to trigger StateFlow emission
                 _agentMessages.value = _agentMessages.value.toMutableMap().apply {
                     put(sessionId, sessionMessages.toList())
+                }
+
+                // Scroll for mirrored voice message
+                _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                    put(sessionId, (this[sessionId] ?: 0) + 1)
                 }
 
                 // Set loading state when voice message comes from another device
@@ -1523,6 +1580,11 @@ class AppState @Inject constructor(
 
             put(sessionId, sessionMessages.toList())
             Log.d(TAG, "Added voice output to assistant message, total blocks: ${updatedBlocks.size}")
+        }
+
+        // Scroll when TTS is received
+        _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+            put(sessionId, (this[sessionId] ?: 0) + 1)
         }
 
         // Auto-play TTS if enabled AND this message originated from this device
