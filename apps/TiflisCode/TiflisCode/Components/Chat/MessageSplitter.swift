@@ -18,8 +18,8 @@ struct MessageSplitterConfig {
     let minHeightUnitsToSplit: Int
 
     static let `default` = MessageSplitterConfig(
-        maxHeightUnitsPerSegment: 17,
-        minHeightUnitsToSplit: 20
+        maxHeightUnitsPerSegment: 14,
+        minHeightUnitsToSplit: 17
     )
 }
 

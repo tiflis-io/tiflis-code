@@ -63,13 +63,8 @@ final class ChatViewModel: ObservableObject {
     }
 
     /// Scroll trigger - increments on any content update to force scroll to bottom
-    var scrollTrigger: Int {
-        guard let appState = appState else { return 0 }
-        if session.type == .supervisor {
-            return appState.supervisorScrollTrigger
-        }
-        return appState.agentScrollTriggers[session.id] ?? 0
-    }
+    /// Published to ensure SwiftUI onChange detects changes reliably
+    @Published private(set) var scrollTrigger: Int = 0
 
     /// Display segments computed from messages - splits long assistant responses into multiple bubbles
     var displaySegments: [SplitMessageSegment] {
@@ -115,6 +110,7 @@ final class ChatViewModel: ObservableObject {
         observeConnectionState()
         observeMessages()
         observeAudioRecorder()
+        observeScrollTrigger()
     }
 
     // MARK: - Audio Recorder Observation
@@ -169,6 +165,34 @@ final class ChatViewModel: ObservableObject {
                 self?.handleMessage(message)
             }
             .store(in: &cancellables)
+    }
+
+    /// Observe scroll trigger from AppState and republish as @Published property
+    /// This ensures SwiftUI onChange detects changes reliably
+    private func observeScrollTrigger() {
+        guard let appState = appState else { return }
+
+        if session.type == .supervisor {
+            // Subscribe to supervisor scroll trigger
+            appState.$supervisorScrollTrigger
+                .receive(on: DispatchQueue.main)
+                .sink { [weak self] newValue in
+                    self?.scrollTrigger = newValue
+                }
+                .store(in: &cancellables)
+        } else {
+            // Subscribe to agent scroll triggers map and extract value for this session
+            appState.$agentScrollTriggers
+                .receive(on: DispatchQueue.main)
+                .map { [weak self] triggers -> Int in
+                    guard let sessionId = self?.session.id else { return 0 }
+                    return triggers[sessionId] ?? 0
+                }
+                .sink { [weak self] newValue in
+                    self?.scrollTrigger = newValue
+                }
+                .store(in: &cancellables)
+        }
     }
 
     // MARK: - Message Handling
