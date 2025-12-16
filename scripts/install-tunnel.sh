@@ -513,9 +513,32 @@ EOF
 
             chmod 600 "${TUNNEL_DIR}/.env"
         fi
+    else
+        print_success "Keeping existing .env configuration"
 
-        # Create docker-compose.yml based on reverse proxy choice
-        print_step "Creating docker-compose.yml..."
+        # Read existing config values for docker-compose regeneration
+        if [ -f "${TUNNEL_DIR}/.env" ]; then
+            # shellcheck source=/dev/null
+            source "${TUNNEL_DIR}/.env"
+            domain_name="${DOMAIN:-}"
+            acme_email="${ACME_EMAIL:-}"
+
+            # Detect reverse proxy from existing setup
+            if [ -f "${TUNNEL_DIR}/docker-compose.yml" ]; then
+                if grep -q "traefik:" "${TUNNEL_DIR}/docker-compose.yml" 2>/dev/null; then
+                    reverse_proxy="traefik"
+                elif grep -q "certbot:" "${TUNNEL_DIR}/docker-compose.yml" 2>/dev/null; then
+                    reverse_proxy="nginx"
+                else
+                    reverse_proxy="none"
+                fi
+            fi
+        fi
+    fi
+
+    # Always regenerate docker-compose.yml (may contain updates)
+    if [ -n "$reverse_proxy" ]; then
+        print_step "Regenerating docker-compose.yml..."
         if [ "$DRY_RUN" = "false" ]; then
             case "$reverse_proxy" in
                 traefik)
@@ -529,8 +552,6 @@ EOF
                     ;;
             esac
         fi
-    else
-        print_success "Keeping existing .env configuration"
     fi
 
     # Start/restart containers
