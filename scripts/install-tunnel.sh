@@ -555,19 +555,13 @@ EOF
     fi
 
     # Start/restart containers
-    # Check if docker-compose.yml exists (needed for update mode)
-    local compose_exists=false
-    if [ -f "${TUNNEL_DIR}/docker-compose.yml" ]; then
-        compose_exists=true
-    fi
-
-    if [ "$skip_config" = "true" ] && [ "$compose_exists" = "true" ]; then
-        # Update mode with existing compose: pull new image and restart
+    if [ "$skip_config" = "true" ]; then
+        # Update mode: pull new image and force recreate containers
         print_step "Updating containers..."
         if [ "$DRY_RUN" = "false" ]; then
             cd "${TUNNEL_DIR}"
             $compose_cmd pull
-            $compose_cmd up -d
+            $compose_cmd up -d --force-recreate
 
             sleep 5
             if curl -sf "http://localhost:${TIFLIS_TUNNEL_PORT}/healthz" > /dev/null 2>&1; then
