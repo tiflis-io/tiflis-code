@@ -213,20 +213,30 @@ async function bootstrap(): Promise<void> {
     process.exit(1);
   }
 
-  // Graceful shutdown
+  // Graceful shutdown with overall timeout
+  const SHUTDOWN_TIMEOUT_MS = 10_000; // 10 seconds max for entire shutdown
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, "Shutdown signal received");
 
+    // Force exit after timeout
+    const forceExitTimer = setTimeout(() => {
+      logger.error("Shutdown timed out, forcing exit");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+
     try {
-      // Close WebSocket server first
+      // Close WebSocket server first (has its own 5s timeout)
       await wsServer.close();
 
       // Close HTTP server
       await app.close();
 
+      clearTimeout(forceExitTimer);
       logger.info("Shutdown complete");
       process.exit(0);
     } catch (error) {
+      clearTimeout(forceExitTimer);
       logger.error({ error }, "Error during shutdown");
       process.exit(1);
     }

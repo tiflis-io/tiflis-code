@@ -98,9 +98,10 @@ export class WebSocketServerWrapper {
   }
 
   /**
-   * Closes the WebSocket server gracefully.
+   * Closes the WebSocket server gracefully with timeout.
+   * @param timeoutMs - Maximum time to wait for graceful close (default: 5000ms)
    */
-  async close(): Promise<void> {
+  async close(timeoutMs = 5000): Promise<void> {
     if (this.heartbeatInterval) {
       clearInterval(this.heartbeatInterval);
       this.heartbeatInterval = null;
@@ -109,22 +110,53 @@ export class WebSocketServerWrapper {
     const wss = this.wss;
     if (!wss) return;
 
-    // Close all connections
+    const clientCount = wss.clients.size;
+    this.logger.info({ clientCount }, 'Closing WebSocket server');
+
+    // Send close frame to all clients
     wss.clients.forEach((client) => {
-      client.close(1001, 'Server shutting down');
+      try {
+        client.close(1001, 'Server shutting down');
+      } catch {
+        // Ignore errors on close
+      }
     });
 
-    return new Promise((resolve, reject) => {
+    // Wait for graceful close with timeout
+    const closePromise = new Promise<void>((resolve, reject) => {
       wss.close((err) => {
         if (err) {
           this.logger.error({ error: err }, 'Error closing WebSocket server');
           reject(err);
         } else {
-          this.logger.info('WebSocket server closed');
+          this.logger.info('WebSocket server closed gracefully');
           resolve();
         }
       });
     });
+
+    const timeoutPromise = new Promise<void>((resolve) => {
+      setTimeout(() => {
+        this.logger.warn(
+          { timeoutMs, remainingClients: wss.clients.size },
+          'WebSocket graceful close timed out, forcing termination'
+        );
+
+        // Force terminate all remaining connections
+        wss.clients.forEach((client) => {
+          try {
+            client.terminate();
+          } catch {
+            // Ignore errors on terminate
+          }
+        });
+
+        resolve();
+      }, timeoutMs);
+    });
+
+    // Race between graceful close and timeout
+    await Promise.race([closePromise, timeoutPromise]);
   }
 }
 
