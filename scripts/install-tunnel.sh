@@ -660,6 +660,11 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entryPoints.web.address=:80"
       - "--entryPoints.websecure.address=:443"
+      # WebSocket transport configuration - CRITICAL for persistent connections
+      # Without these, Traefik uses default 30s timeout which breaks WebSocket
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0"
+      - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0"
+      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=86400s"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
@@ -685,6 +690,9 @@ services:
       - "traefik.http.routers.tunnel.entrypoints=websecure"
       - "traefik.http.routers.tunnel.tls.certresolver=letsencrypt"
       - "traefik.http.services.tunnel.loadbalancer.server.port=3001"
+      # Disable response buffering for WebSocket and streaming
+      - "traefik.http.middlewares.tunnel-nobuffer.buffering.maxResponseBodyBytes=0"
+      - "traefik.http.routers.tunnel.middlewares=tunnel-nobuffer"
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:3001/healthz').then(r => process.exit(r.ok ? 0 : 1))"]
       interval: 30s
@@ -779,7 +787,7 @@ http {
         ssl_session_cache shared:SSL:10m;
         ssl_session_timeout 1d;
 
-        # WebSocket endpoint
+        # WebSocket endpoint - CRITICAL settings for persistent connections
         location /ws {
             proxy_pass http://tunnel;
             proxy_http_version 1.1;
@@ -789,13 +797,31 @@ http {
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
+            # Timeouts for persistent WebSocket connections (24 hours)
             proxy_read_timeout 86400s;
             proxy_send_timeout 86400s;
+            # Disable buffering for real-time streaming
+            proxy_buffering off;
+            proxy_cache off;
+        }
+
+        # watchOS HTTP Polling API (WebSocket not available on watchOS)
+        location /api/v1/watch/ {
+            proxy_pass http://tunnel;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            # Longer timeout for long-polling
+            proxy_read_timeout 120s;
+            proxy_send_timeout 120s;
         }
 
         # Health and API endpoints
         location / {
             proxy_pass http://tunnel;
+            proxy_http_version 1.1;
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;

@@ -14,28 +14,34 @@
 
 services:
   traefik:
-    image: traefik:v3.0
+    image: traefik:v3.6
     command:
       # Enable Docker provider
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
-      
+
       # Entry points
       - "--entrypoints.web.address=:80"
       - "--entrypoints.websecure.address=:443"
-      
+
+      # WebSocket transport configuration - CRITICAL for persistent connections
+      # Without these, Traefik uses default 30s timeout which breaks WebSocket
+      - "--entryPoints.websecure.transport.respondingTimeouts.readTimeout=0"
+      - "--entryPoints.websecure.transport.respondingTimeouts.writeTimeout=0"
+      - "--entryPoints.websecure.transport.respondingTimeouts.idleTimeout=86400s"
+
       # Redirect HTTP to HTTPS
       - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
       - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
-      
+
       # Let's Encrypt configuration
       - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.email=${LETSENCRYPT_EMAIL}"
       - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
-      
+
       # API dashboard (optional, disable in production)
       - "--api.dashboard=false"
-      
+
       # Logging
       - "--log.level=INFO"
       - "--accesslog=true"
@@ -66,13 +72,17 @@ services:
     labels:
       # Enable Traefik
       - "traefik.enable=true"
-      
+
       # HTTPS router for WebSocket
       - "traefik.http.routers.tunnel.rule=Host(`${TUNNEL_DOMAIN}`)"
       - "traefik.http.routers.tunnel.entrypoints=websecure"
       - "traefik.http.routers.tunnel.tls=true"
       - "traefik.http.routers.tunnel.tls.certresolver=letsencrypt"
-      
+
+      # Disable response buffering for WebSocket and streaming
+      - "traefik.http.middlewares.tunnel-nobuffer.buffering.maxResponseBodyBytes=0"
+      - "traefik.http.routers.tunnel.middlewares=tunnel-nobuffer"
+
       # Service configuration
       - "traefik.http.services.tunnel.loadbalancer.server.port=3001"
     healthcheck:
