@@ -26,6 +26,7 @@ export interface MessageHandlers {
   ping: MessageHandler;
   heartbeat: MessageHandler;
   sync: MessageHandler;
+  'history.request': MessageHandler;
   'supervisor.list_sessions': MessageHandler;
   'supervisor.create_session': MessageHandler;
   'supervisor.terminate_session': MessageHandler;

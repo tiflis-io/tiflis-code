@@ -502,7 +502,7 @@ async function bootstrap(): Promise<void> {
     },
 
     sync: async (socket, message) => {
-      const syncMessage = message as { id: string; device_id?: string };
+      const syncMessage = message as { id: string; device_id?: string; lightweight?: boolean };
       // Helper to get client from socket (direct) or device_id (tunnel)
       const client =
         clientRegistry.getBySocket(socket) ??
@@ -511,6 +511,9 @@ async function bootstrap(): Promise<void> {
           : undefined);
       const subscriptions = client ? client.getSubscriptions() : [];
 
+      // Lightweight mode: skip message histories (for watchOS to reduce data transfer)
+      const isLightweight = syncMessage.lightweight === true;
+
       // Get in-memory sessions (terminal sessions + active agent sessions)
       const inMemorySessions = sessionManager.getSessionInfos();
 
@@ -518,7 +521,7 @@ async function bootstrap(): Promise<void> {
       const persistedAgentSessions =
         chatHistoryService.getActiveAgentSessions();
       logger.debug(
-        { persistedAgentSessions, inMemoryCount: inMemorySessions.length },
+        { persistedAgentSessions, inMemoryCount: inMemorySessions.length, isLightweight },
         "Sync: fetched sessions"
       );
 
@@ -551,6 +554,88 @@ async function bootstrap(): Promise<void> {
 
       const sessions = [...inMemorySessions, ...restoredAgentSessions];
 
+      // Skip history loading in lightweight mode (watchOS)
+      // Clients can request history on-demand via history.request
+      if (isLightweight) {
+        // Get available agents (base + aliases from environment)
+        const availableAgentsMap = getAvailableAgents();
+        const availableAgents = Array.from(availableAgentsMap.values()).map(
+          (agent) => ({
+            name: agent.name,
+            base_type: agent.baseType,
+            description: agent.description,
+            is_alias: agent.isAlias,
+          })
+        );
+
+        // Get disabled base agent types
+        const hiddenBaseTypes: string[] = getDisabledBaseAgents();
+
+        // Get workspaces with their projects
+        const workspacesList = await workspaceDiscovery.listWorkspaces();
+        const workspaces = await Promise.all(
+          workspacesList.map(async (ws) => {
+            const projects = await workspaceDiscovery.listProjects(ws.name);
+            return {
+              name: ws.name,
+              projects: projects.map((p) => ({
+                name: p.name,
+                is_git_repo: p.isGitRepo,
+                default_branch: p.defaultBranch,
+              })),
+            };
+          })
+        );
+
+        // Build execution state for each agent session
+        const executingStates: Record<string, boolean> = {};
+        for (const session of sessions) {
+          if (
+            session.session_type === "cursor" ||
+            session.session_type === "claude" ||
+            session.session_type === "opencode"
+          ) {
+            executingStates[session.session_id] = agentSessionManager.isExecuting(
+              session.session_id
+            );
+          }
+        }
+
+        // Check if supervisor is currently executing
+        const supervisorIsExecuting = supervisorAgent.isProcessing();
+
+        logger.info(
+          {
+            totalSessions: sessions.length,
+            isLightweight: true,
+            availableAgentsCount: availableAgents.length,
+            workspacesCount: workspaces.length,
+            supervisorIsExecuting,
+          },
+          "Sync: sending lightweight state to client (no histories)"
+        );
+
+        const syncStateMessage = JSON.stringify({
+          type: "sync.state",
+          id: syncMessage.id,
+          payload: {
+            sessions,
+            subscriptions,
+            availableAgents,
+            hiddenBaseTypes,
+            workspaces,
+            supervisorIsExecuting,
+            executingStates,
+            // Omit: supervisorHistory, agentHistories, currentStreamingBlocks
+          },
+        });
+
+        // Send response to specific device (not broadcast to all)
+        sendToDevice(socket, syncMessage.device_id, syncStateMessage);
+        return Promise.resolve();
+      }
+
+      // Full sync mode: include message histories
       // Get global supervisor history (shared across all devices)
       // Enrich messages with audio data for voice_output blocks
       const supervisorHistoryRaw = chatHistoryService.getSupervisorHistory();
@@ -2014,6 +2099,126 @@ async function bootstrap(): Promise<void> {
       }
 
       return Promise.resolve();
+    },
+
+    "history.request": async (socket, message) => {
+      // Lazy-load chat history for a specific session (or supervisor)
+      // Used by watchOS after lightweight sync to load history on-demand
+      const historyRequest = message as {
+        id: string;
+        device_id?: string;
+        payload?: {
+          session_id?: string; // If omitted, returns supervisor history
+        };
+      };
+
+      const sessionId = historyRequest.payload?.session_id;
+      const isSupervisor = !sessionId;
+
+      logger.debug(
+        { sessionId, isSupervisor, requestId: historyRequest.id },
+        "History request received"
+      );
+
+      try {
+        if (isSupervisor) {
+          // Get supervisor history
+          const supervisorHistoryRaw = chatHistoryService.getSupervisorHistory();
+          const supervisorHistory = await Promise.all(
+            supervisorHistoryRaw.map(async (msg) => ({
+              sequence: msg.sequence,
+              role: msg.role,
+              content: msg.content,
+              content_blocks: await chatHistoryService.enrichBlocksWithAudio(
+                msg.contentBlocks,
+                msg.audioOutputPath,
+                msg.audioInputPath,
+                false // Don't include audio in history response
+              ),
+              createdAt: msg.createdAt.toISOString(),
+            }))
+          );
+
+          // Check if supervisor is currently executing
+          const isExecuting = supervisorAgent.isProcessing();
+
+          socket.send(
+            JSON.stringify({
+              type: "history.response",
+              id: historyRequest.id,
+              payload: {
+                session_id: null, // Indicates supervisor
+                history: supervisorHistory,
+                is_executing: isExecuting,
+              },
+            })
+          );
+
+          logger.debug(
+            { messageCount: supervisorHistory.length, isExecuting },
+            "Supervisor history sent"
+          );
+        } else {
+          // Get agent session history
+          const history = chatHistoryService.getAgentHistory(sessionId);
+          const enrichedHistory = await Promise.all(
+            history.map(async (msg) => ({
+              sequence: msg.sequence,
+              role: msg.role,
+              content: msg.content,
+              content_blocks: await chatHistoryService.enrichBlocksWithAudio(
+                msg.contentBlocks,
+                msg.audioOutputPath,
+                msg.audioInputPath,
+                false // Don't include audio in history response
+              ),
+              createdAt: msg.createdAt.toISOString(),
+            }))
+          );
+
+          // Check if session is currently executing
+          const isExecuting = agentSessionManager.isExecuting(sessionId);
+
+          // Get current streaming blocks if executing (for joining mid-stream)
+          let currentStreamingBlocks: unknown[] | undefined;
+          if (isExecuting) {
+            const blocks = agentMessageAccumulator.get(sessionId);
+            if (blocks && blocks.length > 0) {
+              currentStreamingBlocks = blocks;
+            }
+          }
+
+          socket.send(
+            JSON.stringify({
+              type: "history.response",
+              id: historyRequest.id,
+              payload: {
+                session_id: sessionId,
+                history: enrichedHistory,
+                is_executing: isExecuting,
+                current_streaming_blocks: currentStreamingBlocks,
+              },
+            })
+          );
+
+          logger.debug(
+            { sessionId, messageCount: enrichedHistory.length, isExecuting },
+            "Agent session history sent"
+          );
+        }
+      } catch (error) {
+        logger.error({ error, sessionId }, "Failed to get history");
+        socket.send(
+          JSON.stringify({
+            type: "history.response",
+            id: historyRequest.id,
+            payload: {
+              session_id: sessionId ?? null,
+              error: error instanceof Error ? error.message : "Failed to get history",
+            },
+          })
+        );
+      }
     },
 
     "audio.request": async (socket, message) => {

@@ -49,6 +49,22 @@ export const SyncMessageSchema = z.object({
   type: z.literal('sync'),
   id: z.string(),
   device_id: z.string().optional(), // Injected by tunnel for tunnel connections
+  lightweight: z.boolean().optional(), // If true, excludes message histories (for watchOS)
+});
+
+// ============================================================================
+// History Request Schemas (for lazy loading chat history)
+// ============================================================================
+
+export const HistoryRequestPayloadSchema = z.object({
+  session_id: z.string().optional(), // If omitted, returns supervisor history
+});
+
+export const HistoryRequestSchema = z.object({
+  type: z.literal('history.request'),
+  id: z.string(),
+  device_id: z.string().optional(), // Injected by tunnel for tunnel connections
+  payload: HistoryRequestPayloadSchema.optional(),
 });
 
 // ============================================================================
@@ -234,6 +250,7 @@ export const IncomingClientMessageSchema = z.discriminatedUnion('type', [
   PingSchema,
   HeartbeatSchema,
   SyncMessageSchema,
+  HistoryRequestSchema,
   ListSessionsSchema,
   CreateSessionSchema,
   TerminateSessionSchema,
@@ -307,6 +324,7 @@ export type SessionInputPayload = z.infer<typeof SessionInputPayloadSchema>;
 export type SessionResizePayload = z.infer<typeof SessionResizePayloadSchema>;
 export type SessionReplayPayload = z.infer<typeof SessionReplayPayloadSchema>;
 export type AudioRequestPayload = z.infer<typeof AudioRequestPayloadSchema>;
+export type HistoryRequestPayload = z.infer<typeof HistoryRequestPayloadSchema>;
 
 // ============================================================================
 // Validation Helpers

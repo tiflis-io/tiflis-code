@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.10-blue" alt="Version 1.10">
+  <img src="https://img.shields.io/badge/version-1.11-blue" alt="Version 1.11">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket%20%7C%20HTTP-green" alt="WebSocket | HTTP">
 </p>
@@ -26,7 +26,12 @@
 
 ## Changelog
 
-### Version 1.10 (Current)
+### Version 1.11 (Current)
+- **Added:** `lightweight` flag in `sync` message for watchOS optimization (excludes message histories)
+- **Added:** `history.request` / `history.response` messages for on-demand chat history loading
+- **Enhanced:** watchOS clients now use lightweight sync + lazy history loading for better performance
+
+### Version 1.10
 - **Added:** `audio.request` / `audio.response` messages for on-demand audio retrieval
 - **Added:** `current_streaming_blocks` in `session.subscribed` for devices joining mid-generation
 - **Added:** `executingStates` map in `sync.state` for per-session execution status
@@ -1293,7 +1298,8 @@ Sent after TTS synthesis of agent response:
 // Request
 {
   type: "sync",
-  id: string
+  id: string,
+  lightweight?: boolean  // If true, excludes message histories (for watchOS)
 }
 
 // Response
@@ -1340,7 +1346,67 @@ To reduce `sync.state` message size, audio data is **not included** during synch
 
 This optimization prevents "Message too long" errors when reconnecting with large chat histories containing voice messages.
 
-### 7.2 Message Replay (recover missed messages)
+#### Lightweight Sync (watchOS)
+
+When `lightweight: true` is set in the sync request, the response **excludes**:
+- `supervisorHistory` (supervisor chat messages)
+- `agentHistories` (agent session messages)
+- `currentStreamingBlocks` (in-progress response blocks)
+
+This is used by watchOS clients to:
+1. Get session list quickly without transferring chat histories
+2. Load chat history on-demand when user opens a specific chat
+
+### 7.2 History Request (On-Demand Chat Loading)
+
+Used by watchOS and other resource-constrained clients to load chat history on-demand.
+
+```typescript
+// Request supervisor history
+{
+  type: "history.request",
+  id: string,
+  payload: {}  // Empty or omit payload for supervisor
+}
+
+// Request agent session history
+{
+  type: "history.request",
+  id: string,
+  payload: {
+    session_id: string  // Target session
+  }
+}
+
+// Response
+{
+  type: "history.response",
+  id: string,
+  payload: {
+    session_id: string | null,  // null = supervisor
+    history: Array<{
+      sequence: number,
+      role: "user" | "assistant",
+      content: string,
+      content_blocks?: ContentBlock[],
+      createdAt: string
+    }>,
+    is_executing?: boolean,           // Is currently processing?
+    current_streaming_blocks?: ContentBlock[],  // In-progress blocks (if is_executing)
+    error?: string                    // Error message if failed
+  }
+}
+```
+
+**Client Implementation:**
+
+1. On app launch, send `sync` with `lightweight: true`
+2. Display session list from `sync.state` (no message data)
+3. When user opens a chat, send `history.request` for that session
+4. On `history.response`, populate the chat UI with messages
+5. Continue receiving real-time updates via normal message flow
+
+### 7.3 Message Replay (recover missed messages)
 
 ```typescript
 // Request
@@ -1447,7 +1513,8 @@ function handleTerminalOutput(payload) {
 |------|-------------|
 | `auth` | Authenticate client |
 | `ping` | Heartbeat |
-| `sync` | Request state sync (after reconnect) |
+| `sync` | Request state sync (supports `lightweight` flag for watchOS) |
+| `history.request` | Request chat history for a session (on-demand loading) |
 | `supervisor.list_sessions` | List active sessions |
 | `supervisor.create_session` | Create new session |
 | `supervisor.terminate_session` | Terminate session |
@@ -1475,7 +1542,8 @@ function handleTerminalOutput(payload) {
 | `error` | Error response |
 | `heartbeat.ack` | Heartbeat acknowledgment with workstation uptime |
 | `audio.response` | Audio data response (or error if unavailable) |
-| `sync.state` | State sync data (audio excluded, use `has_audio` flags) |
+| `sync.state` | State sync data (audio excluded, use `has_audio` flags; histories excluded if `lightweight`) |
+| `history.response` | Chat history for a session (supervisor or agent) |
 | `session.created` | Session was created |
 | `session.terminated` | Session was terminated |
 | `session.subscribed` | Subscribed to session (terminals: `is_master`/`cols`/`rows`; agents: `history`/`is_executing`/`current_streaming_blocks`) |

@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 77;
+	objectVersion = 63;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -97,7 +97,7 @@
 		EC17615E8319BC4A21B44D71 /* ContentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E60A01A6CD8188BE8F9028 /* ContentParser.swift */; };
 		EF26B7A50383107003FBE8D6 /* AudioRecorderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9198101A018669751B8947F9 /* AudioRecorderService.swift */; };
 		F05D50732CB17199DA7B2972 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = F742B2C565A5712825647601 /* Message.swift */; };
-		F4B039582BF22BCA6998568F /* TiflisCodeWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		F4B039582BF22BCA6998568F /* Tiflis Code Watch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F780D9AF3F8218D3D1EEFD4F /* WatchSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6DF8B8F6B2AACB452B39D30 /* WatchSetupView.swift */; };
 		F98803747A1C889C9EF80109 /* WebSocketMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */; };
 		FF9E20D2913903915F7B3D09 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C734ED3376BD4F3D6E4488D /* QRScannerView.swift */; };
@@ -134,7 +134,7 @@
 			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
 			dstSubfolderSpec = 16;
 			files = (
-				F4B039582BF22BCA6998568F /* TiflisCodeWatch.app in Embed Watch Content */,
+				F4B039582BF22BCA6998568F /* Tiflis Code Watch.app in Embed Watch Content */,
 			);
 			name = "Embed Watch Content";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -170,7 +170,7 @@
 		68528358025709970E234FF0 /* TiflisCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeUITests.swift; sourceTree = "<group>"; };
 		6A5E7DEF52A06D185EC483DC /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIDManager.swift; sourceTree = "<group>"; };
-		723A2D053CB58A252A985D76 /* TiflisCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TiflisCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		723A2D053CB58A252A985D76 /* Tiflis Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		79E143932AFF8ABAA6E142C2 /* ThinkingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingView.swift; sourceTree = "<group>"; };
 		7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
 		7CA73AD70C740907E24776F1 /* CodeBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockView.swift; sourceTree = "<group>"; };
@@ -180,7 +180,7 @@
 		8D26075E60296AACB4B12EC3 /* TiflisCode.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TiflisCode.entitlements; sourceTree = "<group>"; };
 		8DE949D05B4F58E37665751F /* TiflisCodeWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TiflisCodeWatch.entitlements; sourceTree = "<group>"; };
 		9198101A018669751B8947F9 /* AudioRecorderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderService.swift; sourceTree = "<group>"; };
-		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TiflisCodeWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		9CA25CE2D696FA9BD6310BE1 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
@@ -389,10 +389,10 @@
 		646CCDD1563EEEC96ACC3776 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				723A2D053CB58A252A985D76 /* TiflisCode.app */,
+				723A2D053CB58A252A985D76 /* Tiflis Code.app */,
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
-				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
+				96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -654,7 +654,7 @@
 				5A15037F4628204D7C405F29 /* SwiftTerm */,
 			);
 			productName = TiflisCode;
-			productReference = 723A2D053CB58A252A985D76 /* TiflisCode.app */;
+			productReference = 723A2D053CB58A252A985D76 /* Tiflis Code.app */;
 			productType = "com.apple.product-type.application";
 		};
 		CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */ = {
@@ -672,7 +672,7 @@
 			packageProductDependencies = (
 			);
 			productName = TiflisCodeWatch;
-			productReference = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */;
+			productReference = 96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -691,12 +691,6 @@
 					44349C86ACAAA7C5BEDB2B6A = {
 						DevelopmentTeam = "";
 					};
-					53E2D679081C5CF973E01199 = {
-						DevelopmentTeam = "";
-					};
-					CA542FD336ED9AFE20E6AA41 = {
-						DevelopmentTeam = "";
-					};
 				};
 			};
 			buildConfigurationList = 1A7E425D9B9123ADB9A7C702 /* Build configuration list for PBXProject "TiflisCode" */;
@@ -712,7 +706,6 @@
 			packageReferences = (
 				A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
-			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -1061,6 +1054,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TiflisCode/Resources/TiflisCode.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1097,6 +1091,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TiflisCode/Resources/TiflisCode.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
+				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1115,6 +1110,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TiflisCodeWatch/Resources/TiflisCodeWatch.entitlements;
+				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCodeWatch/Resources/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCode.watchkitapp;
 				PRODUCT_NAME = "Tiflis Code Watch";
@@ -1130,6 +1126,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TiflisCodeWatch/Resources/TiflisCodeWatch.entitlements;
+				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCodeWatch/Resources/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCode.watchkitapp;
 				PRODUCT_NAME = "Tiflis Code Watch";
