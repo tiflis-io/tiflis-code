@@ -264,18 +264,42 @@ final class WatchConnectionService {
         }
     }
 
-    /// Requests state sync from workstation
+    /// Requests state sync from workstation (lightweight mode - no chat histories)
     func requestSync() async {
         let message: [String: Any] = [
             "type": "sync",
-            "id": UUID().uuidString
+            "id": UUID().uuidString,
+            "lightweight": true  // watchOS: skip message histories to reduce data transfer
         ]
 
         do {
             try await sendHTTPMessage(message)
-            print("⌚️ WatchConnectionService: Sent sync request via HTTP")
+            print("⌚️ WatchConnectionService: Sent lightweight sync request via HTTP")
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to send sync request: %@", error.localizedDescription)
+        }
+    }
+
+    /// Requests chat history for a specific session (or supervisor if sessionId is nil)
+    /// Called when user opens a chat detail view
+    func requestHistory(sessionId: String?) async {
+        var payload: [String: Any] = [:]
+        if let sessionId = sessionId {
+            payload["session_id"] = sessionId
+        }
+
+        let message: [String: Any] = [
+            "type": "history.request",
+            "id": UUID().uuidString,
+            "payload": payload
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            let target = sessionId ?? "supervisor"
+            print("⌚️ WatchConnectionService: Sent history request for \(target) via HTTP")
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to send history request: %@", error.localizedDescription)
         }
     }
 
@@ -323,6 +347,9 @@ final class WatchConnectionService {
         case "session.user_message":
             handleUserMessage(message)
 
+        case "history.response":
+            handleHistoryResponse(message)
+
         case "connection.workstation_offline":
             appState?.workstationOnline = false
 
@@ -332,6 +359,71 @@ final class WatchConnectionService {
         default:
             print("⌚️ WatchConnectionService: Unhandled message type: \(messageType)")
         }
+    }
+
+    private func handleHistoryResponse(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any] else {
+            NSLog("⌚️ WatchConnectionService: history.response has no payload")
+            return
+        }
+
+        // Check for error
+        if let error = payload["error"] as? String {
+            NSLog("⌚️ WatchConnectionService: history.response error: %@", error)
+            return
+        }
+
+        let sessionId = payload["session_id"] as? String  // nil means supervisor
+        let isSupervisor = sessionId == nil
+
+        guard let history = payload["history"] as? [[String: Any]] else {
+            NSLog("⌚️ WatchConnectionService: history.response has no history array")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: history.response for %@ with %d messages",
+              sessionId ?? "supervisor", history.count)
+
+        // Parse and add messages
+        if isSupervisor {
+            // Clear existing supervisor messages before loading history
+            appState?.clearSupervisorMessages()
+            for msgData in history.suffix(20) {
+                if let msg = parseHistoryMessage(msgData, sessionId: "supervisor") {
+                    appState?.addSupervisorMessage(msg)
+                }
+            }
+            // Update loading state
+            if let isExecuting = payload["is_executing"] as? Bool {
+                appState?.supervisorIsLoading = isExecuting
+            }
+        } else if let sessionId = sessionId {
+            // Clear existing messages for this session before loading history
+            appState?.clearAgentMessages(for: sessionId)
+            for msgData in history.suffix(20) {
+                if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
+                    appState?.addAgentMessage(msg, for: sessionId)
+                }
+            }
+            // Update loading state
+            if let isExecuting = payload["is_executing"] as? Bool {
+                appState?.agentIsLoading[sessionId] = isExecuting
+            }
+            // Handle current streaming blocks if joining mid-stream
+            if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+                let blocks = parseContentBlocks(streamingBlocks)
+                let streamingMessage = Message(
+                    id: UUID().uuidString,
+                    sessionId: sessionId,
+                    role: .assistant,
+                    contentBlocks: blocks,
+                    isStreaming: true
+                )
+                appState?.addAgentMessage(streamingMessage, for: sessionId)
+            }
+        }
+
+        NSLog("⌚️ WatchConnectionService: history.response processed")
     }
 
     private func handleSyncState(_ message: [String: Any]) {
@@ -365,7 +457,8 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: sync.state has NO sessions array!")
         }
 
-        // Handle supervisor history
+        // Handle supervisor history (only present in non-lightweight mode)
+        // In lightweight mode, history is loaded on-demand via history.request
         if let history = payload["supervisorHistory"] as? [[String: Any]] {
             NSLog("⌚️ WatchConnectionService: sync.state has %d supervisor messages", history.count)
             var parsedCount = 0
@@ -378,11 +471,12 @@ final class WatchConnectionService {
             appState?.debugLastSyncState += ", SupervisorMsgs: \(parsedCount)"
             NSLog("⌚️ WatchConnectionService: parsed %d supervisor messages", parsedCount)
         } else {
-            appState?.debugLastSyncState += ", No supervisorHistory"
-            NSLog("⌚️ WatchConnectionService: sync.state has no supervisorHistory")
+            // Lightweight mode - histories will be loaded on-demand
+            appState?.debugLastSyncState += ", Lightweight (no histories)"
+            NSLog("⌚️ WatchConnectionService: sync.state is lightweight (no histories)")
         }
 
-        // Handle agent histories
+        // Handle agent histories (only present in non-lightweight mode)
         if let agentHistories = payload["agentHistories"] as? [String: [[String: Any]]] {
             NSLog("⌚️ WatchConnectionService: sync.state has %d agent histories", agentHistories.count)
             for (sessionId, history) in agentHistories {

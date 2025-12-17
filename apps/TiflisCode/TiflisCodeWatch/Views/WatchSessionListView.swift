@@ -243,17 +243,13 @@ struct WatchSessionRow: View {
                 .frame(width: 20, height: 20)
 
             VStack(alignment: .leading, spacing: 1) {
-                // Session name
-                Text(title)
-                    .font(.system(size: 13))
-                    .lineLimit(1)
+                // Session name with marquee scrolling
+                MarqueeText(text: title, font: .system(size: 13), height: 16)
 
-                // Project/workspace info
+                // Project/workspace info (workspace/project) with marquee scrolling
                 if let subtitle = subtitle {
-                    Text(subtitle)
-                        .font(.system(size: 10))
+                    MarqueeText(text: subtitle, font: .system(size: 10), height: 12)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
                 }
             }
 
@@ -270,21 +266,125 @@ struct WatchSessionRow: View {
 }
 
 /// Marquee scrolling text for long session names
+/// Text starts left-aligned and scrolls left to reveal overflow
 struct MarqueeText: View {
     let text: String
     let font: Font
+    var height: CGFloat?
 
     @State private var textWidth: CGFloat = 0
     @State private var containerWidth: CGFloat = 0
     @State private var offset: CGFloat = 0
-    @State private var animationId = UUID()
+    @State private var animationTask: Task<Void, Never>?
 
     private var needsScrolling: Bool {
         textWidth > containerWidth && containerWidth > 0
     }
 
+    init(text: String, font: Font, height: CGFloat? = nil) {
+        self.text = text
+        self.font = font
+        self.height = height
+    }
+
     var body: some View {
         GeometryReader { geometry in
+            HStack(spacing: 0) {
+                Text(text)
+                    .font(font)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .background(
+                        GeometryReader { textGeometry in
+                            Color.clear
+                                .onAppear {
+                                    textWidth = textGeometry.size.width
+                                    containerWidth = geometry.size.width
+                                    startAnimationIfNeeded()
+                                }
+                                .onChange(of: geometry.size.width) { _, newWidth in
+                                    containerWidth = newWidth
+                                    restartAnimation()
+                                }
+                        }
+                    )
+                    .offset(x: offset)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(height: height ?? fontHeight)
+        .clipped()
+        .onChange(of: text) { _, _ in
+            restartAnimation()
+        }
+        .onDisappear {
+            animationTask?.cancel()
+        }
+    }
+
+    private var fontHeight: CGFloat {
+        16 // Default for watchOS small text
+    }
+
+    private func startAnimationIfNeeded() {
+        guard needsScrolling else { return }
+
+        let scrollDistance = textWidth - containerWidth + 10 // Small padding at end
+
+        // Start with delay, then animate left
+        animationTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(2.0)) // Pause before scrolling
+            guard !Task.isCancelled else { return }
+
+            // Scroll left to show overflow
+            withAnimation(.linear(duration: Double(scrollDistance) / 25.0)) {
+                offset = -scrollDistance
+            }
+
+            // Pause at end
+            try? await Task.sleep(for: .seconds(Double(scrollDistance) / 25.0 + 1.5))
+            guard !Task.isCancelled else { return }
+
+            // Reset instantly
+            withAnimation(.none) {
+                offset = 0
+            }
+
+            // Pause before restarting
+            try? await Task.sleep(for: .seconds(1.0))
+            guard !Task.isCancelled else { return }
+
+            startAnimationIfNeeded()
+        }
+    }
+
+    private func restartAnimation() {
+        animationTask?.cancel()
+        offset = 0
+        textWidth = 0
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            startAnimationIfNeeded()
+        }
+    }
+}
+
+/// Compact marquee text for navigation bars with fixed max width
+struct CompactMarqueeText: View {
+    let text: String
+    let font: Font
+    let maxWidth: CGFloat
+
+    @State private var textWidth: CGFloat = 0
+    @State private var offset: CGFloat = 0
+    @State private var animationTask: Task<Void, Never>?
+
+    private var needsScrolling: Bool {
+        textWidth > maxWidth
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
             Text(text)
                 .font(font)
                 .lineLimit(1)
@@ -294,67 +394,58 @@ struct MarqueeText: View {
                         Color.clear
                             .onAppear {
                                 textWidth = textGeometry.size.width
-                                containerWidth = geometry.size.width
                                 startAnimationIfNeeded()
                             }
                     }
                 )
-                .offset(x: needsScrolling ? offset : 0)
+                .offset(x: offset)
+            Spacer(minLength: 0)
         }
-        .frame(height: fontHeight)
+        .frame(width: maxWidth, alignment: .leading)
         .clipped()
         .onChange(of: text) { _, _ in
-            resetAnimation()
+            restartAnimation()
         }
-    }
-
-    private var fontHeight: CGFloat {
-        switch font {
-        case .caption:
-            return 16
-        case .caption2:
-            return 14
-        default:
-            return 16
+        .onDisappear {
+            animationTask?.cancel()
         }
     }
 
     private func startAnimationIfNeeded() {
         guard needsScrolling else { return }
 
-        let scrollDistance = textWidth - containerWidth + 20
-        let duration = Double(scrollDistance) / 20.0
+        let scrollDistance = textWidth - maxWidth + 8
 
-        // Start with delay, then animate
-        Task {
+        animationTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
 
-            withAnimation(.linear(duration: duration)) {
+            withAnimation(.linear(duration: Double(scrollDistance) / 20.0)) {
                 offset = -scrollDistance
             }
 
-            // Wait and reset
-            try? await Task.sleep(for: .seconds(duration + 2))
+            try? await Task.sleep(for: .seconds(Double(scrollDistance) / 20.0 + 1.5))
             guard !Task.isCancelled else { return }
 
             withAnimation(.none) {
                 offset = 0
             }
 
-            // Restart animation
-            try? await Task.sleep(for: .seconds(0.5))
+            try? await Task.sleep(for: .seconds(0.8))
             guard !Task.isCancelled else { return }
 
             startAnimationIfNeeded()
         }
     }
 
-    private func resetAnimation() {
+    private func restartAnimation() {
+        animationTask?.cancel()
         offset = 0
-        animationId = UUID()
         textWidth = 0
-        containerWidth = 0
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(100))
+            startAnimationIfNeeded()
+        }
     }
 }
 

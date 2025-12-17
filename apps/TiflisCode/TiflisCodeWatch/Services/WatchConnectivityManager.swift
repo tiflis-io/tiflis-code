@@ -679,7 +679,17 @@ extension WatchConnectivityManager: WCSessionDelegate {
             NSLog("⌚️ Watch WCSession activated successfully")
             self.isPhoneReachable = isReachable
 
-            // Check received application context for credentials FIRST
+            // PRIORITY 1: Check if we already have credentials stored locally (from previous session)
+            // This allows the watch to work independently after initial setup
+            if hasCredsLocally && !self.hasCredentials {
+                // Credentials exist in UserDefaults but weren't loaded into memory - reload them
+                NSLog("⌚️ Watch: local credentials exist but not in memory, reloading...")
+                let creds = WatchCredentials(tunnelURL: storedURL, tunnelId: storedId, authKey: storedKey)
+                self.credentials = creds
+                NSLog("⌚️ Watch: credentials restored from local storage")
+            }
+
+            // PRIORITY 2: Check received application context for any updates from iPhone
             if !context.isEmpty {
                 NSLog("⌚️ Watch found application context with %d keys", context.count)
                 self.handleApplicationContext(context)
@@ -687,13 +697,13 @@ extension WatchConnectivityManager: WCSessionDelegate {
                 NSLog("⌚️ Watch: no application context received")
             }
 
-            // After handling context, check if we now have credentials
-            // Only request if we still don't have them
+            // PRIORITY 3: Only request credentials from iPhone if we still don't have any
+            // This is for first-time setup only
             if !self.hasCredentials {
-                NSLog("⌚️ Watch: still no credentials after context check, requesting from iPhone")
+                NSLog("⌚️ Watch: no credentials available (first-time setup), requesting from iPhone")
                 self.requestCredentials()
             } else {
-                NSLog("⌚️ Watch: has valid credentials now, skipping request")
+                NSLog("⌚️ Watch: has valid credentials (local or from context), skipping iPhone request")
             }
         }
     }

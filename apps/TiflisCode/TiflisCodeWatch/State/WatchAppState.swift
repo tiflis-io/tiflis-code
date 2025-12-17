@@ -86,21 +86,25 @@ final class WatchAppState: ObservableObject {
     init(connectivityManager: WatchConnectivityManager = .shared) {
         self.connectivityManager = connectivityManager
 
-        // IMPORTANT: Set up bindings FIRST before reading any values
-        // This ensures we don't miss credential updates that arrive during activation
+        // IMPORTANT: Set initial hasCredentials value SYNCHRONOUSLY before any view renders
+        // This prevents the setup view from flashing when credentials are already stored locally
+        let initialHasCredentials = connectivityManager.hasCredentials
+        self.hasCredentials = initialHasCredentials
+        NSLog("⌚️ WatchAppState init: initial hasCredentials=%d (synchronous check)", initialHasCredentials ? 1 : 0)
+
+        // Set up bindings for future updates from iPhone
         setupBindings()
 
-        NSLog("⌚️ WatchAppState init: bindings set up, checking initial credentials")
+        NSLog("⌚️ WatchAppState init: bindings set up")
 
-        // Check initial value after bindings are set up
-        // Use a deferred check to handle any in-flight updates from activation
+        // Handle initial connection setup in a deferred task
         Task { @MainActor [weak self] in
             guard let self = self else { return }
 
             // Small delay to allow WatchConnectivity activation to complete
             try? await Task.sleep(for: .milliseconds(100))
 
-            // Re-check credentials after bindings are active
+            // Re-check credentials in case they were updated during activation
             let currentHasCredentials = self.connectivityManager.hasCredentials
             NSLog("⌚️ WatchAppState init task: currentHasCredentials=%d, self.hasCredentials=%d",
                   currentHasCredentials ? 1 : 0, self.hasCredentials ? 1 : 0)
@@ -339,6 +343,22 @@ final class WatchAppState: ObservableObject {
     func clearAllMessages() {
         supervisorMessages.removeAll()
         agentMessages.removeAll()
+    }
+
+    /// Clear supervisor messages (before loading fresh history)
+    func clearSupervisorMessages() {
+        supervisorMessages.removeAll()
+    }
+
+    /// Clear messages for a specific agent session (before loading fresh history)
+    func clearAgentMessages(for sessionId: String) {
+        agentMessages[sessionId] = []
+    }
+
+    /// Request chat history for a session (on-demand loading)
+    /// Called when user opens a chat detail view
+    func requestHistory(sessionId: String?) async {
+        await connectionService?.requestHistory(sessionId: sessionId)
     }
 
     // MARK: - Session Management

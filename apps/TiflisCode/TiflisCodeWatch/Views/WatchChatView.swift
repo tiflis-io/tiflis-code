@@ -17,37 +17,35 @@ struct WatchChatView: View {
     @StateObject private var audioService = WatchAudioService.shared
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Messages list
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(messages.suffix(15)) { message in
-                            WatchMessageRow(
-                                message: message,
-                                audioService: audioService
-                            )
-                            .id(message.id)
-                        }
-
-                        // Loading indicator
-                        if isLoading && !hasStreamingMessage {
-                            WatchLoadingRow()
-                                .id("loading")
-                        }
+        // Messages list
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(messages.suffix(15)) { message in
+                        WatchMessageRow(
+                            message: message,
+                            audioService: audioService
+                        )
+                        .id(message.id)
                     }
-                    .padding(.horizontal, 4)
-                    .padding(.bottom, 80)
+
+                    // Loading indicator
+                    if isLoading && !hasStreamingMessage {
+                        WatchLoadingRow()
+                            .id("loading")
+                    }
                 }
-                .onAppear {
-                    scrollToBottom(proxy: proxy, animated: false)
-                }
-                .onChange(of: messages.count) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
-                .onChange(of: isLoading) { _, _ in
-                    scrollToBottom(proxy: proxy)
-                }
+                .padding(.horizontal, 4)
+                .padding(.bottom, 80)
+            }
+            .onAppear {
+                scrollToBottom(proxy: proxy, animated: false)
+            }
+            .onChange(of: messages.count) { _, _ in
+                scrollToBottom(proxy: proxy)
+            }
+            .onChange(of: isLoading) { _, _ in
+                scrollToBottom(proxy: proxy)
             }
         }
         .overlay(alignment: .bottom) {
@@ -59,44 +57,40 @@ struct WatchChatView: View {
             }
             .padding(.bottom, 8)
         }
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                navigationHeader
+        .navigationBarTitleDisplayMode(.inline)
+        .navigationTitle(navTitle)
+        .tint(.white)
+        .task {
+            // Request chat history when view appears (lazy loading)
+            await loadHistory()
+        }
+    }
+
+    /// Load chat history for this session (on-demand)
+    private func loadHistory() async {
+        switch destination {
+        case .supervisor:
+            // Only load if no messages yet
+            if appState.supervisorMessages.isEmpty {
+                await appState.requestHistory(sessionId: nil)
+            }
+        case .agent(let session):
+            // Only load if no messages yet for this session
+            if appState.messages(for: session.id).isEmpty {
+                await appState.requestHistory(sessionId: session.id)
             }
         }
-        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Computed Properties
 
-    /// Navigation header with icon, title, and scope
-    @ViewBuilder
-    private var navigationHeader: some View {
+    /// Navigation title string
+    private var navTitle: String {
         switch destination {
         case .supervisor:
-            HStack(spacing: 6) {
-                Image("TiflisLogo")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 16, height: 16)
-                Text("Supervisor")
-                    .font(.system(size: 13, weight: .semibold))
-            }
+            return "Supervisor"
         case .agent(let session):
-            HStack(spacing: 6) {
-                sessionIcon(for: session)
-                    .frame(width: 16, height: 16)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(session.displayName)
-                        .font(.system(size: 12, weight: .semibold))
-                        .lineLimit(1)
-                    if let scope = sessionScope(for: session) {
-                        MarqueeText(text: scope, font: .system(size: 9))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: 120)
-                    }
-                }
-            }
+            return session.displayName
         }
     }
 
@@ -123,16 +117,6 @@ struct WatchChatView: View {
         default:
             return .secondary
         }
-    }
-
-    private func sessionScope(for session: Session) -> String? {
-        if let workspace = session.workspace, let project = session.project {
-            if let worktree = session.worktree {
-                return "\(workspace)/\(project)--\(worktree)"
-            }
-            return "\(workspace)/\(project)"
-        }
-        return nil
     }
 
     private var messages: [Message] {
