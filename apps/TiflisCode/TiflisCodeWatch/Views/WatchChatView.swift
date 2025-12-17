@@ -35,17 +35,16 @@ struct WatchChatView: View {
                             .id("\(message.id)-\(index)")
                         }
 
-                        // Streaming indicator - only show when message has NO content blocks at all
-                        // (not just filtered blocks like status)
-                        // This avoids showing dots when server sends status-only updates
+                        // Streaming indicator for message with empty blocks
                         if message.isStreaming && message.contentBlocks.isEmpty {
                             streamingIndicator(for: message)
                                 .id("\(message.id)-streaming")
                         }
                     }
 
-                    // Loading indicator
-                    if isLoading && !hasStreamingMessage {
+                    // Loading indicator - ALWAYS show when agent is working
+                    // This ensures animated dots are visible during agent processing
+                    if isLoading {
                         WatchLoadingRow()
                             .id("loading")
                     }
@@ -57,20 +56,62 @@ struct WatchChatView: View {
                 scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: messages.count) { _, _ in
-                scrollToBottom(proxy: proxy)
+                // Instant scroll on new messages (like iOS)
+                scrollToBottom(proxy: proxy, animated: false)
             }
             .onChange(of: isLoading) { _, _ in
-                scrollToBottom(proxy: proxy)
+                // Instant scroll when loading state changes
+                scrollToBottom(proxy: proxy, animated: false)
             }
-        }
-        .overlay(alignment: .bottom) {
-            // Voice input button (centered, like iOS push-to-talk)
-            WatchVoiceButton(audioService: audioService) { audioData, format in
-                Task {
-                    await sendVoiceCommand(audioData: audioData, format: format)
+            .overlay(alignment: .bottom) {
+                // Bottom action buttons
+                HStack(spacing: 12) {
+                    // Main button: Stop (when loading) or Voice Record (when idle)
+                    if isLoading {
+                        // Stop button - red, to cancel agent generation
+                        Button {
+                            Task {
+                                await stopGeneration()
+                            }
+                        } label: {
+                            ZStack {
+                                Circle()
+                                    .fill(Color.red)
+                                    .frame(width: 60, height: 60)
+                                Image(systemName: "stop.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundStyle(.white)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        // Voice input button (blue, like iOS)
+                        WatchVoiceButton(audioService: audioService) { audioData, format in
+                            Task {
+                                await sendVoiceCommand(audioData: audioData, format: format)
+                            }
+                        }
+                    }
+
+                    // Scroll to bottom FAB - smaller, translucent (like iOS/Telegram)
+                    // Always visible on watchOS since scroll position tracking isn't available
+                    if !messages.isEmpty {
+                        Button {
+                            scrollToBottom(proxy: proxy, animated: false)
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .frame(width: 36, height: 36)
+                                .background(Color.gray.opacity(0.5))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
+                .padding(.bottom, 8)
+                .animation(.easeInOut(duration: 0.15), value: isLoading)
             }
-            .padding(.bottom, 8)
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(navTitle)
@@ -375,22 +416,37 @@ struct WatchChatView: View {
     // MARK: - Methods
 
     private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
-        if let lastMessage = messages.last {
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo(lastMessage.id, anchor: .bottom)
-                }
+        // Determine the correct scroll target ID
+        // IDs in the view are: "\(message.id)-\(blockIndex)" for blocks, "\(message.id)-streaming" for streaming, "loading" for loading
+        let scrollTarget: String?
+
+        // Loading indicator is now always shown when isLoading (not conditional on hasStreamingMessage)
+        if isLoading {
+            scrollTarget = "loading"
+        } else if let lastMessage = messages.last {
+            let blocks = messageBlocks(for: lastMessage)
+            if lastMessage.isStreaming && lastMessage.contentBlocks.isEmpty {
+                // Streaming indicator is shown
+                scrollTarget = "\(lastMessage.id)-streaming"
+            } else if blocks.isEmpty {
+                // No displayable blocks
+                scrollTarget = nil
             } else {
-                proxy.scrollTo(lastMessage.id, anchor: .bottom)
+                // Scroll to the last block of the last message
+                scrollTarget = "\(lastMessage.id)-\(blocks.count - 1)"
             }
-        } else if isLoading {
-            if animated {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    proxy.scrollTo("loading", anchor: .bottom)
-                }
-            } else {
-                proxy.scrollTo("loading", anchor: .bottom)
+        } else {
+            scrollTarget = nil
+        }
+
+        guard let target = scrollTarget else { return }
+
+        if animated {
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo(target, anchor: .bottom)
             }
+        } else {
+            proxy.scrollTo(target, anchor: .bottom)
         }
     }
 
@@ -400,6 +456,16 @@ struct WatchChatView: View {
             await appState.sendSupervisorVoiceCommand(audioData: audioData, format: format)
         case .agent(let session):
             await appState.sendAgentVoiceCommand(audioData: audioData, format: format, sessionId: session.id)
+        }
+    }
+
+    /// Stop the current generation (cancel agent/supervisor)
+    private func stopGeneration() async {
+        switch destination {
+        case .supervisor:
+            await appState.connectionService?.cancelSupervisor()
+        case .agent(let session):
+            await appState.connectionService?.cancelSession(sessionId: session.id)
         }
     }
 }

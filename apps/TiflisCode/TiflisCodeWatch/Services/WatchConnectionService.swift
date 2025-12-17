@@ -28,6 +28,10 @@ final class WatchConnectionService {
     private var isConnecting = false
     private var cancellables = Set<AnyCancellable>()
 
+    /// Sessions that are waiting for session.subscribed response with history
+    /// Used to prevent race condition where session.output arrives before history
+    private var pendingSubscriptions: Set<String> = []
+
     // MARK: - Initialization
 
     init(
@@ -312,6 +316,11 @@ final class WatchConnectionService {
     /// Subscribe to an agent session to receive real-time updates
     /// This is required for agent chats - without subscription, session.output messages won't be received
     func subscribeToSession(sessionId: String) async {
+        // Mark as pending to prevent race condition with session.output messages
+        // that arrive via polling before session.subscribed response
+        pendingSubscriptions.insert(sessionId)
+        NSLog("⌚️ WatchConnectionService: Marking session %@ as pending subscription", sessionId)
+
         let message: [String: Any] = [
             "type": "session.subscribe",
             "id": UUID().uuidString,
@@ -322,6 +331,8 @@ final class WatchConnectionService {
             try await sendHTTPMessage(message)
             NSLog("⌚️ WatchConnectionService: Subscribed to session %@", sessionId)
         } catch {
+            // Remove from pending if subscribe failed
+            pendingSubscriptions.remove(sessionId)
             NSLog("⌚️ WatchConnectionService: Failed to subscribe to session: %@", error.localizedDescription)
         }
     }
@@ -339,6 +350,39 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: Unsubscribed from session %@", sessionId)
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to unsubscribe from session: %@", error.localizedDescription)
+        }
+    }
+
+    /// Cancel supervisor generation
+    func cancelSupervisor() async {
+        let message: [String: Any] = [
+            "type": "supervisor.cancel",
+            "id": UUID().uuidString
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            appState?.supervisorIsLoading = false
+            NSLog("⌚️ WatchConnectionService: Cancelled supervisor generation")
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to cancel supervisor: %@", error.localizedDescription)
+        }
+    }
+
+    /// Cancel agent session generation
+    func cancelSession(sessionId: String) async {
+        let message: [String: Any] = [
+            "type": "session.cancel",
+            "id": UUID().uuidString,
+            "session_id": sessionId
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            appState?.agentIsLoading[sessionId] = false
+            NSLog("⌚️ WatchConnectionService: Cancelled session %@", sessionId)
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to cancel session: %@", error.localizedDescription)
         }
     }
 
@@ -454,14 +498,16 @@ final class WatchConnectionService {
             return
         }
 
-        NSLog("⌚️ WatchConnectionService: history.response for %@ with %d messages",
-              sessionId ?? "supervisor", history.count)
+        // Limit to last 10 messages (5 request-response pairs) for watchOS performance
+        let limitedHistory = history.suffix(10)
+        NSLog("⌚️ WatchConnectionService: history.response for %@ loading %d of %d messages",
+              sessionId ?? "supervisor", limitedHistory.count, history.count)
 
         // Parse and add messages
         if isSupervisor {
             // Clear existing supervisor messages before loading history
             appState?.clearSupervisorMessages()
-            for msgData in history.suffix(20) {
+            for msgData in limitedHistory {
                 if let msg = parseHistoryMessage(msgData, sessionId: "supervisor") {
                     appState?.addSupervisorMessage(msg)
                 }
@@ -473,7 +519,7 @@ final class WatchConnectionService {
         } else if let sessionId = sessionId {
             // Clear existing messages for this session before loading history
             appState?.clearAgentMessages(for: sessionId)
-            for msgData in history.suffix(20) {
+            for msgData in limitedHistory {
                 if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
                     appState?.addAgentMessage(msg, for: sessionId)
                 }
@@ -508,6 +554,20 @@ final class WatchConnectionService {
 
         NSLog("⌚️ WatchConnectionService: sync.state payload keys: %@", payload.keys.joined(separator: ", "))
 
+        // Update supervisor loading state from sync
+        if let supervisorIsExecuting = payload["supervisorIsExecuting"] as? Bool {
+            appState?.supervisorIsLoading = supervisorIsExecuting
+            NSLog("⌚️ WatchConnectionService: sync.state supervisorIsExecuting=%d", supervisorIsExecuting ? 1 : 0)
+        }
+
+        // Update agent loading states from sync
+        if let executingStates = payload["executingStates"] as? [String: Bool] {
+            for (sessionId, isExecuting) in executingStates {
+                appState?.agentIsLoading[sessionId] = isExecuting
+            }
+            NSLog("⌚️ WatchConnectionService: sync.state updated %d agent executing states", executingStates.count)
+        }
+
         // Handle sessions
         if let sessionsData = payload["sessions"] as? [[String: Any]] {
             appState?.debugSyncSessionCount = sessionsData.count
@@ -533,9 +593,12 @@ final class WatchConnectionService {
         // Handle supervisor history (only present in non-lightweight mode)
         // In lightweight mode, history is loaded on-demand via history.request
         if let history = payload["supervisorHistory"] as? [[String: Any]] {
-            NSLog("⌚️ WatchConnectionService: sync.state has %d supervisor messages", history.count)
+            // Limit to last 10 messages (5 request-response pairs) for watchOS performance
+            let limitedHistory = history.suffix(10)
+            NSLog("⌚️ WatchConnectionService: sync.state loading %d of %d supervisor messages",
+                  limitedHistory.count, history.count)
             var parsedCount = 0
-            for msgData in history.suffix(20) {
+            for msgData in limitedHistory {
                 if let msg = parseHistoryMessage(msgData, sessionId: "supervisor") {
                     appState?.addSupervisorMessage(msg)
                     parsedCount += 1
@@ -553,8 +616,11 @@ final class WatchConnectionService {
         if let agentHistories = payload["agentHistories"] as? [String: [[String: Any]]] {
             NSLog("⌚️ WatchConnectionService: sync.state has %d agent histories", agentHistories.count)
             for (sessionId, history) in agentHistories {
-                NSLog("⌚️ WatchConnectionService: agent %@ has %d messages", sessionId, history.count)
-                for msgData in history.suffix(20) {
+                // Limit to last 10 messages (5 request-response pairs) for watchOS performance
+                let limitedHistory = history.suffix(10)
+                NSLog("⌚️ WatchConnectionService: agent %@ loading %d of %d messages",
+                      sessionId, limitedHistory.count, history.count)
+                for msgData in limitedHistory {
                     if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
                         appState?.addAgentMessage(msg, for: sessionId)
                     }
@@ -570,11 +636,14 @@ final class WatchConnectionService {
     private func handleSupervisorOutput(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any] else { return }
 
-        let isComplete = payload["is_complete"] as? Bool ?? true
+        // Default to false (streaming) if not specified - server streams incrementally
+        let isComplete = payload["is_complete"] as? Bool ?? false
 
-        // Set loading indicator if streaming (command might be from another device)
+        // Always set loading indicator when streaming (command might be from another device)
+        // This ensures progress shows even for first message with empty/filtered blocks
         if !isComplete {
             appState?.supervisorIsLoading = true
+            NSLog("⌚️ WatchConnectionService: supervisor.output setting supervisorIsLoading=true")
         }
 
         // Get or create assistant message
@@ -625,12 +694,22 @@ final class WatchConnectionService {
             return
         }
 
-        let isComplete = payload["is_complete"] as? Bool ?? true
+        // Skip messages for sessions that are waiting for session.subscribed response
+        // This prevents race condition where session.output arrives before history is loaded
+        if pendingSubscriptions.contains(sessionId) {
+            NSLog("⌚️ WatchConnectionService: session.output skipped for pending session %@ (waiting for history)", sessionId)
+            return
+        }
+
+        // Default to false (streaming) if not specified - server streams incrementally
+        let isComplete = payload["is_complete"] as? Bool ?? false
         let messageId = message["id"] as? String ?? UUID().uuidString
 
-        // Set loading indicator if streaming (command might be from another device)
+        // Always set loading indicator when streaming (command might be from another device)
+        // This ensures progress shows even for first message with empty/filtered blocks
         if !isComplete {
             appState?.agentIsLoading[sessionId] = true
+            NSLog("⌚️ WatchConnectionService: session.output setting agentIsLoading=true for %@", sessionId)
         }
 
         NSLog("⌚️ WatchConnectionService: session.output for %@, messageId=%@, isComplete=%d",
@@ -736,11 +815,20 @@ final class WatchConnectionService {
         // Decode audio
         guard let audioData = Data(base64Encoded: audioBase64) else { return }
 
-        let messageId = message["id"] as? String ?? UUID().uuidString
         let duration = payload["duration"] as? Double ?? 0
 
-        // Save audio data for replay and add voice output block to message
-        let audioId = UUID().uuidString
+        // Use server's message_id for audio lookup (enables replay from server if cache miss)
+        // Falls back to random UUID if not provided
+        let audioId = payload["message_id"] as? String ?? UUID().uuidString
+
+        // Check if this voice output was initiated by this device
+        // Auto-play only if from_device_id matches our device ID (like iOS/Android)
+        let fromDeviceId = payload["from_device_id"] as? String
+        let myDeviceId = deviceIDManager.deviceID
+        let isFromThisDevice = fromDeviceId != nil && fromDeviceId == myDeviceId
+
+        NSLog("⌚️ WatchConnectionService: handleVoiceOutput audioId=%@, duration=%f, from=%@, me=%@, isFromThis=%d",
+              audioId, duration, fromDeviceId ?? "nil", myDeviceId, isFromThisDevice ? 1 : 0)
 
         // Store in cache (actor-isolated)
         Task {
@@ -751,7 +839,7 @@ final class WatchConnectionService {
         let voiceOutputBlock = MessageContentBlock.voiceOutput(
             id: audioId,
             audioURL: nil,
-            text: audioId,  // Store audioId for cache lookup
+            text: audioId,  // Store audioId for cache lookup (same as server's message_id)
             duration: duration
         )
 
@@ -762,11 +850,16 @@ final class WatchConnectionService {
             appState?.appendBlockToLastAssistantMessage(voiceOutputBlock, sessionId: sessionId)
         }
 
-        // Post notification for auto-playback (if TTS enabled)
+        // Post notification for auto-playback
+        // Include shouldAutoPlay flag - only true if initiated from this device
         NotificationCenter.default.post(
             name: NSNotification.Name("WatchTTSAudioReceived"),
             object: nil,
-            userInfo: ["audioData": audioData, "sessionId": sessionId]
+            userInfo: [
+                "audioData": audioData,
+                "sessionId": sessionId,
+                "shouldAutoPlay": isFromThisDevice
+            ]
         )
     }
 
@@ -898,36 +991,44 @@ final class WatchConnectionService {
 
     /// Handle session.subscribed response with session history
     private func handleSessionSubscribed(_ message: [String: Any]) {
-        guard let sessionId = message["session_id"] as? String,
-              let payload = message["payload"] as? [String: Any] else {
-            NSLog("⌚️ WatchConnectionService: session.subscribed missing session_id or payload")
+        guard let sessionId = message["session_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: session.subscribed missing session_id")
             return
         }
 
-        NSLog("⌚️ WatchConnectionService: session.subscribed for %@", sessionId)
+        // Remove from pending subscriptions - we now have the official history
+        // After this, session.output messages will be processed normally
+        let wasPending = pendingSubscriptions.remove(sessionId) != nil
+        NSLog("⌚️ WatchConnectionService: session.subscribed for %@ (wasPending=%d)", sessionId, wasPending ? 1 : 0)
 
+        // Server sends fields at root level (not in payload)
         // Check if session is currently executing (agent is working)
-        if let isExecuting = payload["is_executing"] as? Bool {
+        if let isExecuting = message["is_executing"] as? Bool {
             appState?.agentIsLoading[sessionId] = isExecuting
             NSLog("⌚️ WatchConnectionService: session.subscribed is_executing=%d", isExecuting ? 1 : 0)
         }
 
-        // Load history if present
-        if let history = payload["history"] as? [[String: Any]] {
+        // Load history if present (at root level, not in payload)
+        if let history = message["history"] as? [[String: Any]] {
             // Clear existing messages before loading history
             appState?.clearAgentMessages(for: sessionId)
 
-            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d history messages", history.count)
+            // Limit to last 10 messages (5 request-response pairs) for watchOS performance
+            let limitedHistory = history.suffix(10)
+            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d of %d history messages",
+                  limitedHistory.count, history.count)
 
-            for msgData in history.suffix(20) {
+            for msgData in limitedHistory {
                 if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
                     appState?.addAgentMessage(msg, for: sessionId)
                 }
             }
+        } else {
+            NSLog("⌚️ WatchConnectionService: session.subscribed has no history array")
         }
 
-        // Handle current streaming blocks if joining mid-stream
-        if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+        // Handle current streaming blocks if joining mid-stream (at root level)
+        if let streamingBlocks = message["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
             let blocks = parseContentBlocks(streamingBlocks)
             let streamingMessage = Message(
                 id: UUID().uuidString,
@@ -1063,8 +1164,17 @@ final class WatchConnectionService {
 
             case "voice_output":
                 // Voice output - audio is stored in cache by audioId
-                let audioId = block["audio_id"] as? String ?? id
-                let duration = block["duration"] as? Double ?? 0
+                // Server sends: { id, block_type, content, metadata: { message_id, duration } }
+                let metadata = block["metadata"] as? [String: Any]
+                // Try metadata.message_id first (server format), then audio_id (legacy), then block id
+                let audioId = metadata?["message_id"] as? String
+                    ?? block["audio_id"] as? String
+                    ?? id
+                // Duration is in metadata (server format) or at top level (legacy)
+                let duration = metadata?["duration"] as? Double
+                    ?? block["duration"] as? Double
+                    ?? 0
+                NSLog("⌚️ parseContentBlocks: voice_output audioId=%@, duration=%f", audioId, duration)
                 return .voiceOutput(id: id, audioURL: nil, text: audioId, duration: duration)
 
             default:

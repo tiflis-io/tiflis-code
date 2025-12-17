@@ -266,6 +266,14 @@ final class WatchAudioService: NSObject, ObservableObject {
                     return
                 }
 
+                // Check if auto-play should happen (only if voice command was initiated from this device)
+                // This matches iOS/Android behavior where only the initiating device auto-plays TTS
+                let shouldAutoPlay = notification.userInfo?["shouldAutoPlay"] as? Bool ?? false
+                guard shouldAutoPlay else {
+                    print("⌚️ WatchAudioService: Voice command not from this device, skipping auto-play")
+                    return
+                }
+
                 Task { @MainActor in
                     self?.playAudio(audioData)
                 }

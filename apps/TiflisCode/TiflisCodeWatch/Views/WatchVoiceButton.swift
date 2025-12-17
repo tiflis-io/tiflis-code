@@ -21,9 +21,9 @@ struct WatchVoiceButton: View {
             handleTap()
         } label: {
             ZStack {
-                // Background circle
+                // Background circle - blue when idle, red when recording (matches iOS)
                 Circle()
-                    .fill(audioService.isRecording ? Color.red : Color.accentColor)
+                    .fill(audioService.isRecording ? Color.red : Color.blue)
                     .frame(width: 60, height: 60)
 
                 // Recording animation

@@ -477,14 +477,23 @@ struct VoiceOutputButton: View {
 struct VoicePlaybackButton: View {
     @ObservedObject var audioService: WatchAudioService
     let voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval)
+    var requestAudio: ((String) async -> Void)?
+
+    @State private var isLoading = false
+    @State private var audioResponseCancellable: Any?
 
     var body: some View {
         Button {
             playVoice()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: audioService.isPlaying ? "stop.fill" : "play.fill")
-                    .font(.caption2)
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                } else {
+                    Image(systemName: audioService.isPlaying ? "stop.fill" : "play.fill")
+                        .font(.caption2)
+                }
                 if voiceOutput.duration > 0 {
                     Text(formatDuration(voiceOutput.duration))
                         .font(.caption2)
@@ -493,10 +502,39 @@ struct VoicePlaybackButton: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
-            .background(Color.purple.opacity(0.8))
+            .background(isLoading ? Color.gray.opacity(0.6) : Color.purple.opacity(0.8))
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
+        .disabled(isLoading)
+        .onAppear {
+            setupAudioResponseListener()
+        }
+        .onDisappear {
+            if let cancellable = audioResponseCancellable as? NSObjectProtocol {
+                NotificationCenter.default.removeObserver(cancellable)
+            }
+        }
+    }
+
+    private func setupAudioResponseListener() {
+        let audioId = voiceOutput.text
+        audioResponseCancellable = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("WatchAudioResponseReceived"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let userInfo = notification.userInfo,
+                  let messageId = userInfo["messageId"] as? String,
+                  messageId == audioId else { return }
+
+            isLoading = false
+
+            // If audio data was received, play it
+            if let audioData = userInfo["audioData"] as? Data {
+                audioService.playAudio(audioData)
+            }
+        }
     }
 
     private func playVoice() {
@@ -514,6 +552,15 @@ struct VoicePlaybackButton: View {
                     await MainActor.run {
                         audioService.playAudio(data)
                     }
+                } else if let requestAudio = requestAudio {
+                    // Cache miss - request audio from server
+                    await MainActor.run {
+                        isLoading = true
+                    }
+                    NSLog("⌚️ VoicePlaybackButton: Cache miss for audioId=%@, requesting from server", audioId)
+                    await requestAudio(audioId)
+                } else {
+                    NSLog("⌚️ VoicePlaybackButton: Cache miss for audioId=%@ but no requestAudio callback", audioId)
                 }
             }
         }

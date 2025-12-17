@@ -2126,6 +2126,7 @@ async function bootstrap(): Promise<void> {
           const supervisorHistoryRaw = chatHistoryService.getSupervisorHistory();
           const supervisorHistory = await Promise.all(
             supervisorHistoryRaw.map(async (msg) => ({
+              message_id: msg.id, // Include message ID for audio.request
               sequence: msg.sequence,
               role: msg.role,
               content: msg.content,
