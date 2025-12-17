@@ -669,7 +669,11 @@ final class WatchConnectionService {
 
         // Save audio data for replay and add voice output block to message
         let audioId = UUID().uuidString
-        WatchAudioCache.shared.store(audioData, forId: audioId)
+
+        // Store in cache (actor-isolated)
+        Task {
+            await WatchAudioCache.shared.store(audioData, forId: audioId)
+        }
 
         // Create voice output block
         let voiceOutputBlock = MessageContentBlock.voiceOutput(

@@ -8,9 +8,10 @@
 
 import Foundation
 
-/// Simple in-memory cache for TTS audio data on watchOS
+/// Thread-safe in-memory cache for TTS audio data on watchOS
 /// Allows replaying voice output from messages
-final class WatchAudioCache {
+/// Uses actor isolation for concurrency safety
+actor WatchAudioCache {
     static let shared = WatchAudioCache()
 
     /// Maximum number of audio clips to cache (memory constraint on watchOS)

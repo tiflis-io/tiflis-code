@@ -406,8 +406,14 @@ struct VoiceOutputButton: View {
     private func playAudio() {
         if audioService.isPlaying {
             audioService.stopPlayback()
-        } else if let data = WatchAudioCache.shared.retrieve(forId: audioId) {
-            audioService.playAudio(data)
+        } else {
+            Task {
+                if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
+                    await MainActor.run {
+                        audioService.playAudio(data)
+                    }
+                }
+            }
         }
     }
 
@@ -456,8 +462,12 @@ struct VoicePlaybackButton: View {
         } else {
             // Use audioId stored in text field to lookup from cache
             let audioId = voiceOutput.text
-            if let data = WatchAudioCache.shared.retrieve(forId: audioId) {
-                audioService.playAudio(data)
+            Task {
+                if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
+                    await MainActor.run {
+                        audioService.playAudio(data)
+                    }
+                }
             }
         }
     }
