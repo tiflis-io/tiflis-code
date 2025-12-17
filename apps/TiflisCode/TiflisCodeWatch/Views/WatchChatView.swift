@@ -35,9 +35,10 @@ struct WatchChatView: View {
                             .id("\(message.id)-\(index)")
                         }
 
-                        // Streaming indicator - only show when there are no visible blocks yet
-                        // This avoids showing dots after voice output or other content
-                        if message.isStreaming && messageBlocks(for: message).isEmpty {
+                        // Streaming indicator - only show when message has NO content blocks at all
+                        // (not just filtered blocks like status)
+                        // This avoids showing dots when server sends status-only updates
+                        if message.isStreaming && message.contentBlocks.isEmpty {
                             streamingIndicator(for: message)
                                 .id("\(message.id)-streaming")
                         }
