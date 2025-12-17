@@ -905,21 +905,53 @@ final class WatchConnectionService {
             return
         }
 
-        NSLog("⌚️ WatchConnectionService: Received supervisor transcription - messageId=%@, text=%@",
+        // Skip if from same device (we already have the local message)
+        let fromDeviceId = payload["from_device_id"] as? String
+        if fromDeviceId == deviceIDManager.deviceID {
+            NSLog("⌚️ WatchConnectionService: supervisor.transcription from same device, updating local message")
+            // Update local message with transcription
+            appState?.updateMessage(id: messageId, sessionId: "supervisor") { msg in
+                if let voiceIndex = msg.contentBlocks.firstIndex(where: {
+                    if case .voiceInput = $0 { return true }
+                    return false
+                }) {
+                    msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                    NSLog("⌚️ WatchConnectionService: Updated supervisor message with transcription")
+                }
+            }
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: Received supervisor transcription from other device - messageId=%@, text=%@",
               messageId, String(text.prefix(50)))
 
-        // Update the user message with transcription
-        appState?.updateMessage(id: messageId, sessionId: "supervisor") { msg in
-            // Replace voice input block with text
-            if let voiceIndex = msg.contentBlocks.firstIndex(where: {
-                if case .voiceInput = $0 { return true }
-                return false
-            }) {
-                msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
-                NSLog("⌚️ WatchConnectionService: Updated supervisor message with transcription")
-            } else {
-                NSLog("⌚️ WatchConnectionService: No voice input block found in supervisor message")
+        // Check if message already exists (update it) or create new one (from other device)
+        let messageExists = appState?.supervisorMessages.contains { $0.id == messageId } ?? false
+
+        if messageExists {
+            // Update existing message with transcription
+            appState?.updateMessage(id: messageId, sessionId: "supervisor") { msg in
+                if let voiceIndex = msg.contentBlocks.firstIndex(where: {
+                    if case .voiceInput = $0 { return true }
+                    return false
+                }) {
+                    msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                    NSLog("⌚️ WatchConnectionService: Updated supervisor message with transcription")
+                }
             }
+        } else {
+            // Message from another device - create a new user message with the transcribed text
+            let userMessage = Message(
+                id: messageId,
+                sessionId: "supervisor",
+                role: .user,
+                content: text
+            )
+            appState?.addSupervisorMessage(userMessage)
+            NSLog("⌚️ WatchConnectionService: Created supervisor user message from transcription")
+
+            // Set loading state since we expect a response
+            setLocalLoadingState(sessionId: "supervisor", isLoading: true)
         }
     }
 
@@ -932,19 +964,52 @@ final class WatchConnectionService {
             return
         }
 
-        NSLog("⌚️ WatchConnectionService: Received session transcription - sessionId=%@, messageId=%@, text=%@",
+        // Skip if from same device (we already have the local message)
+        let fromDeviceId = payload["from_device_id"] as? String
+        if fromDeviceId == deviceIDManager.deviceID {
+            NSLog("⌚️ WatchConnectionService: session.transcription from same device, updating local message")
+            appState?.updateMessage(id: messageId, sessionId: sessionId) { msg in
+                if let voiceIndex = msg.contentBlocks.firstIndex(where: {
+                    if case .voiceInput = $0 { return true }
+                    return false
+                }) {
+                    msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                    NSLog("⌚️ WatchConnectionService: Updated agent message with transcription")
+                }
+            }
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: Received session transcription from other device - sessionId=%@, messageId=%@, text=%@",
               sessionId, messageId, String(text.prefix(50)))
 
-        appState?.updateMessage(id: messageId, sessionId: sessionId) { msg in
-            if let voiceIndex = msg.contentBlocks.firstIndex(where: {
-                if case .voiceInput = $0 { return true }
-                return false
-            }) {
-                msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
-                NSLog("⌚️ WatchConnectionService: Updated agent message with transcription")
-            } else {
-                NSLog("⌚️ WatchConnectionService: No voice input block found in agent message %@", messageId)
+        // Check if message already exists (update it) or create new one (from other device)
+        let messageExists = appState?.agentMessages[sessionId]?.contains { $0.id == messageId } ?? false
+
+        if messageExists {
+            // Update existing message with transcription
+            appState?.updateMessage(id: messageId, sessionId: sessionId) { msg in
+                if let voiceIndex = msg.contentBlocks.firstIndex(where: {
+                    if case .voiceInput = $0 { return true }
+                    return false
+                }) {
+                    msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                    NSLog("⌚️ WatchConnectionService: Updated agent message with transcription")
+                }
             }
+        } else {
+            // Message from another device - create a new user message with the transcribed text
+            let userMessage = Message(
+                id: messageId,
+                sessionId: sessionId,
+                role: .user,
+                content: text
+            )
+            appState?.addAgentMessage(userMessage, for: sessionId)
+            NSLog("⌚️ WatchConnectionService: Created agent user message from transcription for session %@", sessionId)
+
+            // Set loading state since we expect a response
+            setLocalLoadingState(sessionId: sessionId, isLoading: true)
         }
     }
 
