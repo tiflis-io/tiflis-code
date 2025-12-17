@@ -732,7 +732,7 @@ final class WatchConnectionService {
     }
 
     private func parseContentBlocks(_ blocks: [[String: Any]]) -> [MessageContentBlock] {
-        // For watchOS, we only care about text blocks (simplified display)
+        // Parse content blocks for watchOS display
         // Server uses "block_type" and "content" fields
         return blocks.compactMap { block -> MessageContentBlock? in
             // Support both "block_type" (server format) and "type" (legacy)
@@ -741,25 +741,46 @@ final class WatchConnectionService {
             }
             // Support both "content" (server format) and "text" (legacy)
             let content = (block["content"] as? String) ?? (block["text"] as? String)
+            let id = block["id"] as? String ?? UUID().uuidString
 
             switch blockType {
             case "text":
                 guard let text = content else { return nil }
-                let id = block["id"] as? String ?? UUID().uuidString
                 return .text(id: id, text: text)
+
+            case "tool_call", "tool_use":
+                // Parse tool call - show name and status (not expandable on watchOS)
+                let name = block["name"] as? String ?? "tool"
+                let statusStr = block["status"] as? String ?? "running"
+                let status: ToolStatus
+                switch statusStr {
+                case "completed", "success": status = .completed
+                case "failed", "error": status = .failed
+                default: status = .running
+                }
+                let toolUseId = block["tool_use_id"] as? String
+                return .toolCall(id: id, toolUseId: toolUseId, name: name, input: nil, output: nil, status: status)
 
             case "status":
                 guard let text = content else { return nil }
-                let id = block["id"] as? String ?? UUID().uuidString
                 return .status(id: id, text: text)
 
             case "error":
                 guard let text = content else { return nil }
-                let id = block["id"] as? String ?? UUID().uuidString
                 return .error(id: id, text: text)
 
+            case "voice_input":
+                // Voice input - show transcription as text if available
+                let transcription = block["transcription"] as? String
+                if let text = transcription, !text.isEmpty {
+                    // Show transcription as regular text for user messages
+                    return .text(id: id, text: text)
+                }
+                // If no transcription, show voice input indicator
+                return .voiceInput(id: id, audioURL: nil, transcription: transcription, duration: 0)
+
             default:
-                // Skip code, tool_call, thinking, etc. on watchOS
+                // Skip code, thinking blocks, etc. on watchOS
                 return nil
             }
         }
