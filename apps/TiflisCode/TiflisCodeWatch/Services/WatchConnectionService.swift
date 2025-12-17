@@ -813,8 +813,9 @@ final class WatchConnectionService {
                 return .toolCall(id: id, toolUseId: toolUseId, name: name, input: nil, output: nil, status: status)
 
             case "status":
-                guard let text = content else { return nil }
-                return .status(id: id, text: text)
+                // Skip status blocks on watchOS - they clutter the small screen
+                // (e.g., "Processing", "Complete" with progress bars)
+                return nil
 
             case "error":
                 guard let text = content else { return nil }

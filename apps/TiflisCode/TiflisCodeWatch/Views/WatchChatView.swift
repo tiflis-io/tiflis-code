@@ -84,15 +84,20 @@ struct WatchChatView: View {
 
     /// Get content blocks for a message, splitting large text blocks into smaller chunks
     /// watchOS has a tiny screen - max ~4-5 lines per bubble
+    /// Returns empty array if no displayable blocks (caller should skip rendering)
     private func messageBlocks(for message: Message) -> [MessageContentBlock] {
+        // Don't show "..." placeholder - just return empty if no blocks
+        // The streaming indicator handles the "thinking" state
         if message.contentBlocks.isEmpty {
-            return [.text(id: "empty-\(message.id)", text: "...")]
+            return []
         }
 
         var result: [MessageContentBlock] = []
         for block in message.contentBlocks {
             switch block {
             case .text(let id, let text):
+                // Skip empty text blocks
+                guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
                 // Split large text blocks into smaller chunks
                 let chunks = splitTextForWatch(text, baseId: id)
                 result.append(contentsOf: chunks)
@@ -100,6 +105,9 @@ struct WatchChatView: View {
                 // Split large code blocks too
                 let chunks = splitCodeForWatch(code, language: language, baseId: id)
                 result.append(contentsOf: chunks)
+            case .status, .cancel:
+                // Skip status and cancel blocks on watchOS - they clutter the small screen
+                continue
             default:
                 // Other block types pass through unchanged
                 result.append(block)
