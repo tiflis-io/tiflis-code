@@ -181,7 +181,7 @@ export const AGENT_EXECUTION_CONFIG = {
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname, join } from "path";
-import { getAgentAliases } from "./env.js";
+import { getAgentAliases, getEnv } from "./env.js";
 
 /**
  * Base agent types (built-in).
@@ -194,6 +194,31 @@ export type BaseAgentType = (typeof BASE_AGENT_TYPES)[number];
  */
 export function isBaseAgentType(type: string): type is BaseAgentType {
   return BASE_AGENT_TYPES.includes(type as BaseAgentType);
+}
+
+/**
+ * Checks if a base agent type is disabled via HIDE_BASE_* env vars.
+ * Disabled agents cannot be used directly or created via supervisor.
+ */
+export function isBaseAgentDisabled(baseType: BaseAgentType): boolean {
+  const env = getEnv();
+  switch (baseType) {
+    case "cursor":
+      return env.HIDE_BASE_CURSOR;
+    case "claude":
+      return env.HIDE_BASE_CLAUDE;
+    case "opencode":
+      return env.HIDE_BASE_OPENCODE;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Gets array of disabled base agent types.
+ */
+export function getDisabledBaseAgents(): BaseAgentType[] {
+  return BASE_AGENT_TYPES.filter(isBaseAgentDisabled);
 }
 
 /**
@@ -233,42 +258,50 @@ function getBaseTypeFromCommand(command: string): BaseAgentType | null {
 /**
  * Gets all available agent types (base + aliases).
  * Returns a map of agent name to command configuration.
+ * Filters out disabled base agents (via HIDE_BASE_* env vars).
+ * Aliases for disabled base agents are still available.
  */
 export function getAvailableAgents(): Map<string, AgentCommandConfig> {
   const agents = new Map<string, AgentCommandConfig>();
 
-  // Add base agents
-  agents.set("cursor", {
-    name: "cursor",
-    command: AGENT_COMMANDS.cursor.command,
-    aliasArgs: [],
-    aliasEnvVars: {},
-    baseType: "cursor",
-    description: AGENT_COMMANDS.cursor.description,
-    isAlias: false,
-  });
+  // Add base agents (only if not disabled)
+  if (!isBaseAgentDisabled("cursor")) {
+    agents.set("cursor", {
+      name: "cursor",
+      command: AGENT_COMMANDS.cursor.command,
+      aliasArgs: [],
+      aliasEnvVars: {},
+      baseType: "cursor",
+      description: AGENT_COMMANDS.cursor.description,
+      isAlias: false,
+    });
+  }
 
-  agents.set("claude", {
-    name: "claude",
-    command: AGENT_COMMANDS.claude.command,
-    aliasArgs: [],
-    aliasEnvVars: {},
-    baseType: "claude",
-    description: AGENT_COMMANDS.claude.description,
-    isAlias: false,
-  });
+  if (!isBaseAgentDisabled("claude")) {
+    agents.set("claude", {
+      name: "claude",
+      command: AGENT_COMMANDS.claude.command,
+      aliasArgs: [],
+      aliasEnvVars: {},
+      baseType: "claude",
+      description: AGENT_COMMANDS.claude.description,
+      isAlias: false,
+    });
+  }
 
-  agents.set("opencode", {
-    name: "opencode",
-    command: AGENT_COMMANDS.opencode.command,
-    aliasArgs: [],
-    aliasEnvVars: {},
-    baseType: "opencode",
-    description: AGENT_COMMANDS.opencode.description,
-    isAlias: false,
-  });
+  if (!isBaseAgentDisabled("opencode")) {
+    agents.set("opencode", {
+      name: "opencode",
+      command: AGENT_COMMANDS.opencode.command,
+      aliasArgs: [],
+      aliasEnvVars: {},
+      baseType: "opencode",
+      description: AGENT_COMMANDS.opencode.description,
+      isAlias: false,
+    });
+  }
 
-  // Add aliases from environment
+  // Add aliases from environment (aliases are always available)
   const aliases = getAgentAliases();
   for (const [name, alias] of aliases) {
     const baseType = getBaseTypeFromCommand(alias.baseCommand);

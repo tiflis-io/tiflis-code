@@ -54,6 +54,7 @@ import { DomainError } from "./domain/errors/domain-errors.js";
 import {
   getAvailableAgents,
   getAgentConfig,
+  getDisabledBaseAgents,
   type BaseAgentType,
 } from "./config/constants.js";
 import { SupervisorAgent } from "./infrastructure/agents/supervisor/supervisor-agent.js";
@@ -632,17 +633,10 @@ async function bootstrap(): Promise<void> {
         })
       );
 
-      // Determine which base agent types should be hidden (from env settings)
-      const hiddenBaseTypes: string[] = [];
-      if (env.HIDE_BASE_CURSOR) {
-        hiddenBaseTypes.push("cursor");
-      }
-      if (env.HIDE_BASE_CLAUDE) {
-        hiddenBaseTypes.push("claude");
-      }
-      if (env.HIDE_BASE_OPENCODE) {
-        hiddenBaseTypes.push("opencode");
-      }
+      // Get disabled base agent types (from HIDE_BASE_* env settings)
+      // Note: getAvailableAgents() already filters these out, but we send this
+      // list for backward compatibility with older mobile clients
+      const hiddenBaseTypes: string[] = getDisabledBaseAgents();
 
       // Get workspaces with their projects
       const workspacesList = await workspaceDiscovery.listWorkspaces();
