@@ -598,6 +598,7 @@ struct VoicePlaybackButton: View {
 /// Row showing loading/thinking state
 struct WatchLoadingRow: View {
     @State private var animationPhase = 0.0
+    @State private var animationTask: Task<Void, Never>?
 
     var body: some View {
         HStack {
@@ -616,6 +617,11 @@ struct WatchLoadingRow: View {
             .onAppear {
                 startAnimation()
             }
+            .onDisappear {
+                // Cancel animation task to prevent multiple animations stacking up
+                animationTask?.cancel()
+                animationTask = nil
+            }
 
             Spacer()
         }
@@ -627,14 +633,16 @@ struct WatchLoadingRow: View {
     }
 
     private func startAnimation() {
-        Task {
+        // Cancel any existing animation task before starting a new one
+        animationTask?.cancel()
+
+        animationTask = Task { @MainActor in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .milliseconds(50))
-                await MainActor.run {
-                    animationPhase += 0.05
-                    if animationPhase >= 1.0 {
-                        animationPhase = 0
-                    }
+                guard !Task.isCancelled else { break }
+                animationPhase += 0.05
+                if animationPhase >= 1.0 {
+                    animationPhase = 0
                 }
             }
         }
