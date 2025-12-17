@@ -27,7 +27,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,15 +64,6 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     val focusManager = LocalFocusManager.current
-    val currentView = LocalView.current
-
-    // Keep screen on while in chat (like iOS)
-    DisposableEffect(Unit) {
-        currentView.keepScreenOn = true
-        onDispose {
-            currentView.keepScreenOn = false
-        }
-    }
 
     // Collect state
     val connectionState by appState.connectionState.collectAsState()

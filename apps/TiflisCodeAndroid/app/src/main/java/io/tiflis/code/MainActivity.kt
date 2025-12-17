@@ -9,6 +9,7 @@ import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -41,6 +42,9 @@ class MainActivity : ComponentActivity() {
 
         // Enable edge-to-edge display
         enableEdgeToEdge()
+
+        // Keep screen on while app is in foreground (like iOS)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // Handle deep link if present
         handleDeepLink(intent)
