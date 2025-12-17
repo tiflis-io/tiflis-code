@@ -371,10 +371,23 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: Server error - code=%@, message=%@, id=%@",
                   errorCode, errorMessage, relatedId ?? "none")
 
-            // If this was an auth error, update connection state
-            if errorCode == "UNAUTHENTICATED" {
-                appState?.connectionState = .error("Not authenticated")
-            }
+            // Don't change connection state for command errors - the connection may still be valid
+            // The UNAUTHENTICATED error for a command doesn't mean the whole connection is broken
+            // (sync and other operations may still work while device_id registration catches up)
+
+        case "auth.success":
+            // Device authenticated successfully with workstation
+            NSLog("⌚️ WatchConnectionService: auth.success received - device authenticated")
+            appState?.connectionState = .authenticated
+
+        case "supervisor.user_message":
+            // User message from another device - could add to supervisor messages if needed
+            NSLog("⌚️ WatchConnectionService: supervisor.user_message received (from another device)")
+
+        case "supervisor.context_cleared":
+            // Supervisor context was cleared - could refresh supervisor messages
+            NSLog("⌚️ WatchConnectionService: supervisor.context_cleared received")
+            appState?.clearSupervisorMessages()
 
         default:
             print("⌚️ WatchConnectionService: Unhandled message type: \(messageType)")
