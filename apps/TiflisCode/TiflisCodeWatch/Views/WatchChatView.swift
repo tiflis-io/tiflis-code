@@ -92,10 +92,10 @@ struct WatchChatView: View {
                     // Loading started - scroll to show loading indicator
                     scrollToBottomImmediate(proxy: proxy)
                 } else if oldValue && !newValue {
-                    // Loading stopped - scroll to show final content after a short delay
-                    // Delay ensures the view has finished updating with final content
+                    // Loading stopped - scroll to show final content after delay for rendering
+                    // Use longer delay to ensure SwiftUI has fully rendered all content
                     Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(100))
+                        try? await Task.sleep(for: .milliseconds(300))
                         scrollToBottomImmediate(proxy: proxy)
                     }
                 }
@@ -108,9 +108,10 @@ struct WatchChatView: View {
             }
             .onChange(of: lastMessageIsStreaming) { wasStreaming, isStreaming in
                 // When streaming stops (message complete), scroll to show final content
+                // Use longer delay to ensure SwiftUI has fully rendered all content
                 if wasStreaming && !isStreaming {
                     Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(100))
+                        try? await Task.sleep(for: .milliseconds(300))
                         scrollToBottomImmediate(proxy: proxy)
                     }
                 }

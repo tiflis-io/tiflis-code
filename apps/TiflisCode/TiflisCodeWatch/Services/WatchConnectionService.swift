@@ -605,13 +605,9 @@ final class WatchConnectionService {
 
         // Parse and add messages
         if isSupervisor {
-            // Save pending user messages (those with voiceInput blocks waiting for transcription)
-            let pendingSupervisorMessages = appState?.supervisorMessages.filter { message in
-                message.role == .user && message.contentBlocks.contains { block in
-                    if case .voiceInput = block { return true }
-                    return false
-                }
-            } ?? []
+            // Save ALL recent user messages to preserve those from other devices
+            // (transcription messages won't be in history yet since they were just sent)
+            let recentUserMessages = appState?.supervisorMessages.filter { $0.role == .user } ?? []
 
             // Clear existing supervisor messages before loading history
             appState?.clearSupervisorMessages()
@@ -621,12 +617,12 @@ final class WatchConnectionService {
                 }
             }
 
-            // Re-add pending user messages that weren't in history
-            for pendingMsg in pendingSupervisorMessages {
-                let alreadyExists = appState?.supervisorMessages.contains { $0.id == pendingMsg.id } ?? false
+            // Re-add recent user messages that weren't in history (e.g., just sent from another device)
+            for recentMsg in recentUserMessages {
+                let alreadyExists = appState?.supervisorMessages.contains { $0.id == recentMsg.id } ?? false
                 if !alreadyExists {
-                    appState?.addSupervisorMessage(pendingMsg)
-                    NSLog("⌚️ WatchConnectionService: Preserved pending supervisor user message %@", pendingMsg.id)
+                    appState?.addSupervisorMessage(recentMsg)
+                    NSLog("⌚️ WatchConnectionService: Preserved recent supervisor user message %@", recentMsg.id)
                 }
             }
 
@@ -635,13 +631,9 @@ final class WatchConnectionService {
                 updateLoadingStateFromServer(sessionId: "supervisor", isExecuting: isExecuting)
             }
         } else if let sessionId = sessionId {
-            // Save pending user messages (those with voiceInput blocks waiting for transcription)
-            let pendingAgentMessages = appState?.agentMessages[sessionId]?.filter { message in
-                message.role == .user && message.contentBlocks.contains { block in
-                    if case .voiceInput = block { return true }
-                    return false
-                }
-            } ?? []
+            // Save ALL recent user messages to preserve those from other devices
+            // (transcription messages won't be in history yet since they were just sent)
+            let recentUserMessages = appState?.agentMessages[sessionId]?.filter { $0.role == .user } ?? []
 
             // Clear existing messages for this session before loading history
             appState?.clearAgentMessages(for: sessionId)
@@ -651,12 +643,12 @@ final class WatchConnectionService {
                 }
             }
 
-            // Re-add pending user messages that weren't in history
-            for pendingMsg in pendingAgentMessages {
-                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == pendingMsg.id } ?? false
+            // Re-add recent user messages that weren't in history (e.g., just sent from another device)
+            for recentMsg in recentUserMessages {
+                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == recentMsg.id } ?? false
                 if !alreadyExists {
-                    appState?.addAgentMessage(pendingMsg, for: sessionId)
-                    NSLog("⌚️ WatchConnectionService: Preserved pending agent user message %@", pendingMsg.id)
+                    appState?.addAgentMessage(recentMsg, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: Preserved recent agent user message %@", recentMsg.id)
                 }
             }
 
