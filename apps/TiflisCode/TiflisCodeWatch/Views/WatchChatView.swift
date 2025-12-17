@@ -32,6 +32,9 @@ struct WatchChatView: View {
     /// Whether to show the stop confirmation dialog
     @State private var showStopConfirmation = false
 
+    /// Track if view has appeared (to prevent re-scroll on state changes)
+    @State private var hasAppeared = false
+
     var body: some View {
         // Messages list - each content block is a separate bubble (like iOS)
         ScrollViewReader { proxy in
@@ -69,7 +72,11 @@ struct WatchChatView: View {
                 .padding(.bottom, 80)
             }
             .onAppear {
-                scrollToBottomThrottled(proxy: proxy)
+                // Only scroll on true initial appearance, not on view rebuilds
+                if !hasAppeared {
+                    hasAppeared = true
+                    scrollToBottomThrottled(proxy: proxy)
+                }
             }
             .onChange(of: messages.count) { oldCount, newCount in
                 // Only scroll when messages are ADDED (not on initial load or removal)
