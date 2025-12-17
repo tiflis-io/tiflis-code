@@ -107,6 +107,8 @@ export class HttpClientOperationsUseCase {
 
     // Check if client already exists
     let client = this.httpClientRegistry.get(deviceId);
+    const isNewClient = !client;
+
     if (client) {
       // Update existing client's poll time
       client.recordPoll();
@@ -119,6 +121,24 @@ export class HttpClientOperationsUseCase {
       });
       this.httpClientRegistry.register(client);
       this.logger.info({ deviceId, tunnelId: tunnelIdStr }, 'HTTP client registered');
+    }
+
+    // Forward auth to workstation so it registers the device_id
+    // This is needed for the workstation to accept commands from this device
+    if (isNewClient && workstation.isOnline) {
+      const authMessage = {
+        type: 'auth',
+        payload: {
+          auth_key: authKeyStr,
+          device_id: deviceId,
+        },
+      };
+      const sent = workstation.send(JSON.stringify(authMessage));
+      if (sent) {
+        this.logger.info({ deviceId }, 'Forwarded auth to workstation for HTTP client');
+      } else {
+        this.logger.warn({ deviceId }, 'Failed to forward auth to workstation');
+      }
     }
 
     return {
