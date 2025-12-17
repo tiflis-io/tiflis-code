@@ -26,6 +26,8 @@ interface ConnectBody {
 }
 
 interface CommandBody {
+  tunnel_id: string;
+  auth_key: string;
   device_id: string;
   message: Record<string, unknown>;
 }
@@ -104,22 +106,25 @@ export function registerWatchApiRoute(
   /**
    * POST /api/v1/watch/command
    * Sends a command from Watch to the workstation.
+   * Includes auth credentials for validation and workstation device registration.
    */
   app.post('/api/v1/watch/command', async (
     request: FastifyRequest<{ Body: CommandBody }>,
     reply: FastifyReply
   ) => {
     try {
-      const { device_id, message } = request.body;
+      const { tunnel_id, auth_key, device_id, message } = request.body;
 
-      if (!device_id) {
+      if (!tunnel_id || !auth_key || !device_id) {
         return await reply.status(400).send({
           error: 'missing_parameters',
-          message: 'device_id and message are required',
+          message: 'tunnel_id, auth_key, device_id, and message are required',
         });
       }
 
-      const sent = httpClientOperations.sendCommand({
+      const sent = httpClientOperations.sendCommandWithAuth({
+        tunnelId: tunnel_id,
+        authKey: auth_key,
         deviceId: device_id,
         message,
       });

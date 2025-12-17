@@ -40,6 +40,13 @@ export interface SendCommandInput {
   message: Record<string, unknown>;
 }
 
+export interface SendCommandWithAuthInput {
+  tunnelId: string;
+  authKey: string;
+  deviceId: string;
+  message: Record<string, unknown>;
+}
+
 export interface PollMessagesInput {
   deviceId: string;
   sinceSequence: number;
@@ -179,6 +186,74 @@ export class HttpClientOperationsUseCase {
     }
 
     // Inject device_id into message
+    const enrichedMessage = {
+      ...message,
+      device_id: deviceId,
+    };
+
+    const sent = workstation.send(JSON.stringify(enrichedMessage));
+    if (!sent) {
+      this.logger.warn({ deviceId }, 'Failed to send command to workstation');
+    }
+
+    return sent;
+  }
+
+  /**
+   * Sends a command from HTTP client to workstation with auth validation.
+   * This method validates auth on every request and forwards auth to workstation
+   * to ensure the device_id is registered.
+   */
+  sendCommandWithAuth(input: SendCommandWithAuthInput): boolean {
+    const { tunnelId: tunnelIdStr, authKey: authKeyStr, deviceId, message } = input;
+
+    this.logger.info({ deviceId, tunnelId: tunnelIdStr, messageType: message.type }, 'HTTP client sending command with auth');
+
+    // Create value objects
+    const tunnelId = TunnelId.create(tunnelIdStr);
+    const authKey = AuthKey.create(authKeyStr);
+
+    // Find workstation
+    const workstation = this.workstationRegistry.get(tunnelId);
+    if (!workstation) {
+      this.logger.warn({ tunnelId: tunnelIdStr, deviceId }, 'Workstation not found for command');
+      throw new TunnelNotFoundError(tunnelIdStr);
+    }
+
+    // Validate auth key
+    if (!workstation.validateAuthKey(authKey)) {
+      this.logger.warn({ tunnelId: tunnelIdStr, deviceId }, 'Invalid auth key for command');
+      throw new InvalidAuthKeyError();
+    }
+
+    if (!workstation.isOnline) {
+      this.logger.warn({ deviceId, tunnelId: tunnelIdStr }, 'Workstation offline');
+      throw new WorkstationOfflineError(tunnelIdStr);
+    }
+
+    // Ensure HTTP client is registered (or re-register if needed)
+    let client = this.httpClientRegistry.get(deviceId);
+    if (!client) {
+      client = new HttpClient({
+        deviceId,
+        tunnelId,
+      });
+      this.httpClientRegistry.register(client);
+      this.logger.info({ deviceId, tunnelId: tunnelIdStr }, 'HTTP client registered on command');
+    }
+    client.recordPoll();
+
+    // Forward auth to workstation to ensure device_id is registered
+    const authMessage = {
+      type: 'auth',
+      payload: {
+        auth_key: authKeyStr,
+        device_id: deviceId,
+      },
+    };
+    workstation.send(JSON.stringify(authMessage));
+
+    // Inject device_id into message and send
     const enrichedMessage = {
       ...message,
       device_id: deviceId,

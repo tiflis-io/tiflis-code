@@ -151,7 +151,9 @@ final class HTTPPollingService: ObservableObject {
 
     /// Sends a command to the workstation
     func sendCommand(_ message: [String: Any]) async throws {
-        guard let tunnelURL = tunnelURL else {
+        guard let tunnelURL = tunnelURL,
+              let tunnelId = tunnelId,
+              let authKey = authKey else {
             throw HTTPPollingError.notConfigured
         }
 
@@ -164,7 +166,11 @@ final class HTTPPollingService: ObservableObject {
             throw HTTPPollingError.invalidURL
         }
 
+        // Include auth credentials in every request for security and
+        // to ensure workstation registers the device_id
         let body: [String: Any] = [
+            "tunnel_id": tunnelId,
+            "auth_key": authKey,
             "device_id": deviceId,
             "message": message
         ]
