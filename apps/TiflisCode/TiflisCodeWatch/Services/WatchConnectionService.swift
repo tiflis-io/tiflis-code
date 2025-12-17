@@ -36,14 +36,11 @@ final class WatchConnectionService {
     /// Used to avoid re-subscribing and clearing messages when view re-appears
     private var subscribedSessions: Set<String> = []
 
-    /// Timestamps when loading state was set locally (after sending command)
-    /// Used to prevent history/sync responses from resetting loading state too quickly
-    /// Key: sessionId ("supervisor" for supervisor), Value: timestamp when loading was set
-    private var localLoadingSetTimes: [String: Date] = [:]
-
-    /// Minimum time (seconds) to keep loading state after locally setting it
-    /// This prevents race conditions where server response arrives before command is processed
-    private let loadingProtectionInterval: TimeInterval = 2.0
+    /// Sessions with locally-set loading state awaiting server confirmation
+    /// When we send a command, we set loading=true locally. We keep this protection active
+    /// until the server confirms execution (is_executing=true) or completion (is_complete=true, voice_output, etc.)
+    /// Key: sessionId ("supervisor" for supervisor)
+    private var awaitingServerConfirmation: Set<String> = []
 
     // MARK: - Initialization
 
@@ -187,17 +184,22 @@ final class WatchConnectionService {
         // Clear subscription tracking on disconnect
         pendingSubscriptions.removeAll()
         subscribedSessions.removeAll()
-        localLoadingSetTimes.removeAll()
+        awaitingServerConfirmation.removeAll()
     }
 
     // MARK: - Loading State Management
 
-    /// Set loading state locally and record timestamp to prevent premature reset
+    /// Set loading state locally when sending a command
+    /// Marks session as awaiting server confirmation to prevent premature reset
     private func setLocalLoadingState(sessionId: String, isLoading: Bool) {
         if isLoading {
-            localLoadingSetTimes[sessionId] = Date()
+            // Mark as awaiting confirmation - will ignore is_executing=false until server confirms
+            awaitingServerConfirmation.insert(sessionId)
+            NSLog("⌚️ WatchConnectionService: Set local loading=true for %@, awaiting server confirmation", sessionId)
         } else {
-            localLoadingSetTimes.removeValue(forKey: sessionId)
+            // Explicitly setting to false (e.g., cancel, completion) - clear protection
+            awaitingServerConfirmation.remove(sessionId)
+            NSLog("⌚️ WatchConnectionService: Cleared loading protection for %@", sessionId)
         }
 
         if sessionId == "supervisor" {
@@ -207,36 +209,30 @@ final class WatchConnectionService {
         }
     }
 
-    /// Check if we should allow resetting loading state from server response
-    /// Returns false if loading was set locally too recently (prevents race conditions)
-    private func canResetLoadingState(sessionId: String) -> Bool {
-        guard let setTime = localLoadingSetTimes[sessionId] else {
-            return true // No local loading set, allow reset
-        }
-        let elapsed = Date().timeIntervalSince(setTime)
-        return elapsed >= loadingProtectionInterval
-    }
-
     /// Update loading state from server response, respecting local loading protection
+    /// Protection is only cleared when server confirms execution (is_executing=true) or completion
     private func updateLoadingStateFromServer(sessionId: String, isExecuting: Bool) {
         if isExecuting {
-            // Server says executing - always set to true
+            // Server confirms executing - set loading and clear protection (server acknowledged)
+            awaitingServerConfirmation.remove(sessionId)
             if sessionId == "supervisor" {
                 appState?.supervisorIsLoading = true
             } else {
                 appState?.agentIsLoading[sessionId] = true
             }
+            NSLog("⌚️ WatchConnectionService: Server confirmed is_executing=true for %@", sessionId)
         } else {
-            // Server says not executing - only reset if protection period has passed
-            if canResetLoadingState(sessionId: sessionId) {
+            // Server says not executing - only reset if we're not awaiting confirmation
+            if awaitingServerConfirmation.contains(sessionId) {
+                // Still waiting for server to acknowledge our command - ignore this false
+                NSLog("⌚️ WatchConnectionService: Ignoring is_executing=false for %@ (awaiting server confirmation)", sessionId)
+            } else {
+                // No pending command - trust the server
                 if sessionId == "supervisor" {
                     appState?.supervisorIsLoading = false
                 } else {
                     appState?.agentIsLoading[sessionId] = false
                 }
-                localLoadingSetTimes.removeValue(forKey: sessionId)
-            } else {
-                NSLog("⌚️ WatchConnectionService: Ignoring is_executing=false for %@ (protection period active)", sessionId)
             }
         }
     }
