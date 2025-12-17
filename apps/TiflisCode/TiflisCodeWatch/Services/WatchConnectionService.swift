@@ -39,7 +39,7 @@ final class WatchConnectionService {
     /// Timestamps when loading state was set locally (after sending command)
     /// Used to prevent history/sync responses from resetting loading state too quickly
     /// Key: sessionId ("supervisor" for supervisor), Value: timestamp when loading was set
-    private var localLoadingSetTimes: [String: Date] = []
+    private var localLoadingSetTimes: [String: Date] = [:]
 
     /// Minimum time (seconds) to keep loading state after locally setting it
     /// This prevents race conditions where server response arrives before command is processed
