@@ -53,6 +53,14 @@ export interface PollMessagesInput {
   acknowledgeSequence?: number;
 }
 
+export interface PollMessagesWithAuthInput {
+  tunnelId: string;
+  authKey: string;
+  deviceId: string;
+  sinceSequence: number;
+  acknowledgeSequence?: number;
+}
+
 export interface PollMessagesResult {
   messages: QueuedMessage[];
   currentSequence: number;
@@ -63,12 +71,24 @@ export interface GetStateInput {
   deviceId: string;
 }
 
+export interface GetStateWithAuthInput {
+  tunnelId: string;
+  authKey: string;
+  deviceId: string;
+}
+
 export interface GetStateResult {
   connected: boolean;
   workstationOnline: boolean;
   workstationName?: string;
   queueSize: number;
   currentSequence: number;
+}
+
+export interface DisconnectWithAuthInput {
+  tunnelId: string;
+  authKey: string;
+  deviceId: string;
 }
 
 /**
@@ -352,6 +372,129 @@ export class HttpClientOperationsUseCase {
     client.markInactive();
     this.httpClientRegistry.unregister(deviceId);
     this.logger.info({ deviceId }, 'HTTP client disconnected');
+    return true;
+  }
+
+  /**
+   * Polls for messages with auth validation (stateless).
+   * Validates auth on every request.
+   */
+  pollMessagesWithAuth(input: PollMessagesWithAuthInput): PollMessagesResult {
+    const { tunnelId: tunnelIdStr, authKey: authKeyStr, deviceId, sinceSequence, acknowledgeSequence } = input;
+
+    // Validate auth
+    const tunnelId = TunnelId.create(tunnelIdStr);
+    const authKey = AuthKey.create(authKeyStr);
+
+    const workstation = this.workstationRegistry.get(tunnelId);
+    if (!workstation) {
+      throw new TunnelNotFoundError(tunnelIdStr);
+    }
+
+    if (!workstation.validateAuthKey(authKey)) {
+      throw new InvalidAuthKeyError();
+    }
+
+    // Ensure client is registered
+    let client = this.httpClientRegistry.get(deviceId);
+    if (!client) {
+      client = new HttpClient({
+        deviceId,
+        tunnelId,
+      });
+      this.httpClientRegistry.register(client);
+    }
+
+    // Update poll time
+    client.recordPoll();
+
+    // Acknowledge messages if requested
+    if (acknowledgeSequence !== undefined && acknowledgeSequence > 0) {
+      client.acknowledgeMessages(acknowledgeSequence);
+    }
+
+    // Get messages since sequence
+    const messages = client.getMessagesSince(sinceSequence);
+
+    this.logger.debug(
+      { deviceId, sinceSequence, messageCount: messages.length, currentSequence: client.currentSequence },
+      'HTTP client poll with auth'
+    );
+
+    return {
+      messages,
+      currentSequence: client.currentSequence,
+      workstationOnline: workstation.isOnline,
+    };
+  }
+
+  /**
+   * Gets current state with auth validation (stateless).
+   */
+  getStateWithAuth(input: GetStateWithAuthInput): GetStateResult {
+    const { tunnelId: tunnelIdStr, authKey: authKeyStr, deviceId } = input;
+
+    // Validate auth
+    const tunnelId = TunnelId.create(tunnelIdStr);
+    const authKey = AuthKey.create(authKeyStr);
+
+    const workstation = this.workstationRegistry.get(tunnelId);
+    if (!workstation) {
+      throw new TunnelNotFoundError(tunnelIdStr);
+    }
+
+    if (!workstation.validateAuthKey(authKey)) {
+      throw new InvalidAuthKeyError();
+    }
+
+    // Ensure client is registered
+    let client = this.httpClientRegistry.get(deviceId);
+    if (!client) {
+      client = new HttpClient({
+        deviceId,
+        tunnelId,
+      });
+      this.httpClientRegistry.register(client);
+    }
+
+    client.recordPoll();
+
+    return {
+      connected: true,
+      workstationOnline: workstation.isOnline,
+      workstationName: workstation.name,
+      queueSize: client.queueSize,
+      currentSequence: client.currentSequence,
+    };
+  }
+
+  /**
+   * Disconnects an HTTP client with auth validation (stateless).
+   */
+  disconnectWithAuth(input: DisconnectWithAuthInput): boolean {
+    const { tunnelId: tunnelIdStr, authKey: authKeyStr, deviceId } = input;
+
+    // Validate auth
+    const tunnelId = TunnelId.create(tunnelIdStr);
+    const authKey = AuthKey.create(authKeyStr);
+
+    const workstation = this.workstationRegistry.get(tunnelId);
+    if (!workstation) {
+      throw new TunnelNotFoundError(tunnelIdStr);
+    }
+
+    if (!workstation.validateAuthKey(authKey)) {
+      throw new InvalidAuthKeyError();
+    }
+
+    const client = this.httpClientRegistry.get(deviceId);
+    if (!client) {
+      return false;
+    }
+
+    client.markInactive();
+    this.httpClientRegistry.unregister(deviceId);
+    this.logger.info({ deviceId }, 'HTTP client disconnected with auth');
     return true;
   }
 

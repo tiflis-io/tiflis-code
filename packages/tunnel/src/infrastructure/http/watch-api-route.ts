@@ -33,16 +33,22 @@ interface CommandBody {
 }
 
 interface PollQuery {
+  tunnel_id: string;
+  auth_key: string;
   device_id: string;
   since?: string;
   ack?: string;
 }
 
 interface StateQuery {
+  tunnel_id: string;
+  auth_key: string;
   device_id: string;
 }
 
 interface DisconnectBody {
+  tunnel_id: string;
+  auth_key: string;
   device_id: string;
 }
 
@@ -147,8 +153,9 @@ export function registerWatchApiRoute(
   /**
    * GET /api/v1/watch/messages
    * Polls for new messages from the workstation.
+   * Stateless: auth validated on every request.
    * Query params:
-   *   - device_id: Client device ID (required)
+   *   - tunnel_id, auth_key, device_id: Auth credentials (required)
    *   - since: Sequence number to get messages after (default: 0)
    *   - ack: Acknowledge messages up to this sequence (optional)
    */
@@ -157,19 +164,21 @@ export function registerWatchApiRoute(
     reply: FastifyReply
   ) => {
     try {
-      const { device_id, since, ack } = request.query;
+      const { tunnel_id, auth_key, device_id, since, ack } = request.query;
 
-      if (!device_id) {
+      if (!tunnel_id || !auth_key || !device_id) {
         return await reply.status(400).send({
           error: 'missing_parameters',
-          message: 'device_id is required',
+          message: 'tunnel_id, auth_key, and device_id are required',
         });
       }
 
       const sinceSequence = since ? parseInt(since, 10) : 0;
       const ackSequence = ack ? parseInt(ack, 10) : undefined;
 
-      const result = httpClientOperations.pollMessages({
+      const result = httpClientOperations.pollMessagesWithAuth({
+        tunnelId: tunnel_id,
+        authKey: auth_key,
         deviceId: device_id,
         sinceSequence,
         acknowledgeSequence: ackSequence,
@@ -195,22 +204,25 @@ export function registerWatchApiRoute(
   /**
    * GET /api/v1/watch/state
    * Gets the current connection state for a Watch client.
+   * Stateless: auth validated on every request.
    */
   app.get('/api/v1/watch/state', async (
     request: FastifyRequest<{ Querystring: StateQuery }>,
     reply: FastifyReply
   ) => {
     try {
-      const { device_id } = request.query;
+      const { tunnel_id, auth_key, device_id } = request.query;
 
-      if (!device_id) {
+      if (!tunnel_id || !auth_key || !device_id) {
         return await reply.status(400).send({
           error: 'missing_parameters',
-          message: 'device_id is required',
+          message: 'tunnel_id, auth_key, and device_id are required',
         });
       }
 
-      const result = httpClientOperations.getState({
+      const result = httpClientOperations.getStateWithAuth({
+        tunnelId: tunnel_id,
+        authKey: auth_key,
         deviceId: device_id,
       });
 
@@ -228,23 +240,28 @@ export function registerWatchApiRoute(
 
   /**
    * POST /api/v1/watch/disconnect
-   * Disconnects a Watch client.
+   * Disconnects a Watch client (clears message queue).
+   * Stateless: auth validated on every request.
    */
   app.post('/api/v1/watch/disconnect', async (
     request: FastifyRequest<{ Body: DisconnectBody }>,
     reply: FastifyReply
   ) => {
     try {
-      const { device_id } = request.body;
+      const { tunnel_id, auth_key, device_id } = request.body;
 
-      if (!device_id) {
+      if (!tunnel_id || !auth_key || !device_id) {
         return await reply.status(400).send({
           error: 'missing_parameters',
-          message: 'device_id is required',
+          message: 'tunnel_id, auth_key, and device_id are required',
         });
       }
 
-      const disconnected = httpClientOperations.disconnect(device_id);
+      const disconnected = httpClientOperations.disconnectWithAuth({
+        tunnelId: tunnel_id,
+        authKey: auth_key,
+        deviceId: device_id,
+      });
 
       log.info({ deviceId: device_id }, 'Watch disconnected via HTTP');
 

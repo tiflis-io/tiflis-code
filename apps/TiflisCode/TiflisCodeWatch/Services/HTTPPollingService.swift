@@ -249,7 +249,9 @@ final class HTTPPollingService: ObservableObject {
 
     /// Polls for new messages
     private func pollMessages() async throws {
-        guard let tunnelURL = tunnelURL else {
+        guard let tunnelURL = tunnelURL,
+              let tunnelId = tunnelId,
+              let authKey = authKey else {
             throw HTTPPollingError.notConfigured
         }
 
@@ -258,7 +260,10 @@ final class HTTPPollingService: ObservableObject {
             throw HTTPPollingError.invalidURL
         }
 
+        // Include auth in every request (stateless tunnel)
         urlComponents.queryItems = [
+            URLQueryItem(name: "tunnel_id", value: tunnelId),
+            URLQueryItem(name: "auth_key", value: authKey),
             URLQueryItem(name: "device_id", value: deviceId),
             URLQueryItem(name: "since", value: String(currentSequence))
         ]
@@ -330,14 +335,18 @@ final class HTTPPollingService: ObservableObject {
         }
     }
 
-    /// Sends disconnect request
+    /// Sends disconnect request (includes auth for stateless tunnel)
     private func sendDisconnectRequest() async {
-        guard let tunnelURL = tunnelURL else { return }
+        guard let tunnelURL = tunnelURL,
+              let tunnelId = tunnelId,
+              let authKey = authKey else { return }
 
         let baseURL = buildHTTPURL(from: tunnelURL)
         guard let url = URL(string: "\(baseURL)/api/v1/watch/disconnect") else { return }
 
         let body: [String: Any] = [
+            "tunnel_id": tunnelId,
+            "auth_key": authKey,
             "device_id": deviceId
         ]
 
