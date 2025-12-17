@@ -125,7 +125,8 @@ export class HttpClientOperationsUseCase {
 
     // Forward auth to workstation so it registers the device_id
     // This is needed for the workstation to accept commands from this device
-    if (isNewClient && workstation.isOnline) {
+    // We send auth on every connect (not just new clients) in case workstation restarted
+    if (workstation.isOnline) {
       const authMessage = {
         type: 'auth',
         payload: {
@@ -135,7 +136,7 @@ export class HttpClientOperationsUseCase {
       };
       const sent = workstation.send(JSON.stringify(authMessage));
       if (sent) {
-        this.logger.info({ deviceId }, 'Forwarded auth to workstation for HTTP client');
+        this.logger.debug({ deviceId, isNewClient }, 'Forwarded auth to workstation for HTTP client');
       } else {
         this.logger.warn({ deviceId }, 'Failed to forward auth to workstation');
       }
