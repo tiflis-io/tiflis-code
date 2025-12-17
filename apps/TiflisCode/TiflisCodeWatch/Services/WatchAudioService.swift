@@ -292,7 +292,17 @@ final class WatchAudioService: NSObject, ObservableObject {
                 let audioId = notification.userInfo?["audioId"] as? String
 
                 Task { @MainActor in
-                    self?.playAudio(audioData, audioId: audioId)
+                    guard let self = self else { return }
+
+                    // Skip if this exact audio is already playing
+                    // This prevents stopping playback when polling updates trigger
+                    // the same notification to be re-posted
+                    if let audioId = audioId, self.isPlayingAudio(withId: audioId) {
+                        print("⌚️ WatchAudioService: Audio \(audioId) already playing, skipping")
+                        return
+                    }
+
+                    self.playAudio(audioData, audioId: audioId)
                 }
             }
             .store(in: &cancellables)
