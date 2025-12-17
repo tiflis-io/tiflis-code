@@ -14,6 +14,7 @@ struct WatchMessageBlockBubble: View {
     let block: MessageContentBlock
     let role: Message.MessageRole
     @ObservedObject var audioService: WatchAudioService
+    var requestAudio: ((String) async -> Void)?
 
     var body: some View {
         HStack {
@@ -142,7 +143,7 @@ struct WatchMessageBlockBubble: View {
 
         case .voiceOutput(_, _, let audioId, let duration):
             // Voice output with replay button
-            VoiceOutputButton(audioService: audioService, audioId: audioId, duration: duration)
+            VoiceOutputButton(audioService: audioService, audioId: audioId, duration: duration, requestAudio: requestAudio)
 
         default:
             EmptyView()
@@ -377,18 +378,28 @@ struct WatchMessageRow: View {
 }
 
 /// Compact voice output button for content blocks
+/// Plays audio from cache or requests from server if not cached
 struct VoiceOutputButton: View {
     @ObservedObject var audioService: WatchAudioService
     let audioId: String
     let duration: TimeInterval
+    var requestAudio: ((String) async -> Void)?
+
+    @State private var isLoading = false
+    @State private var audioResponseCancellable: Any?
 
     var body: some View {
         Button {
             playAudio()
         } label: {
             HStack(spacing: 4) {
-                Image(systemName: audioService.isPlaying ? "stop.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 10))
+                if isLoading {
+                    ProgressView()
+                        .scaleEffect(0.5)
+                } else {
+                    Image(systemName: audioService.isPlaying ? "stop.fill" : "speaker.wave.2.fill")
+                        .font(.system(size: 10))
+                }
                 if duration > 0 {
                     Text(formatDuration(duration))
                         .font(.system(size: 10))
@@ -397,10 +408,39 @@ struct VoiceOutputButton: View {
             .foregroundStyle(.white)
             .padding(.vertical, 3)
             .padding(.horizontal, 8)
-            .background(Color.purple.opacity(0.7))
+            .background(isLoading ? Color.gray.opacity(0.5) : Color.purple.opacity(0.7))
             .clipShape(RoundedRectangle(cornerRadius: 8))
         }
         .buttonStyle(.plain)
+        .disabled(isLoading)
+        .onAppear {
+            setupAudioResponseListener()
+        }
+        .onDisappear {
+            // Cleanup notification observer
+            if let cancellable = audioResponseCancellable as? NSObjectProtocol {
+                NotificationCenter.default.removeObserver(cancellable)
+            }
+        }
+    }
+
+    private func setupAudioResponseListener() {
+        audioResponseCancellable = NotificationCenter.default.addObserver(
+            forName: NSNotification.Name("WatchAudioResponseReceived"),
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let userInfo = notification.userInfo,
+                  let messageId = userInfo["messageId"] as? String,
+                  messageId == audioId else { return }
+
+            isLoading = false
+
+            // If audio data was received, play it
+            if let audioData = userInfo["audioData"] as? Data {
+                audioService.playAudio(audioData)
+            }
+        }
     }
 
     private func playAudio() {
@@ -408,10 +448,17 @@ struct VoiceOutputButton: View {
             audioService.stopPlayback()
         } else {
             Task {
+                // Try cache first
                 if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
                     await MainActor.run {
                         audioService.playAudio(data)
                     }
+                } else if let requestAudio = requestAudio {
+                    // Request from server
+                    await MainActor.run {
+                        isLoading = true
+                    }
+                    await requestAudio(audioId)
                 }
             }
         }

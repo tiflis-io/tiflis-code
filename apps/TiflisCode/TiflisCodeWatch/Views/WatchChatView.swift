@@ -27,21 +27,19 @@ struct WatchChatView: View {
                             WatchMessageBlockBubble(
                                 block: block,
                                 role: message.role,
-                                audioService: audioService
+                                audioService: audioService,
+                                requestAudio: { messageId in
+                                    await appState.connectionService?.requestAudio(messageId: messageId)
+                                }
                             )
                             .id("\(message.id)-\(index)")
                         }
 
-                        // Streaming indicator for the message
-                        if message.isStreaming {
+                        // Streaming indicator - only show when there are no visible blocks yet
+                        // This avoids showing dots after voice output or other content
+                        if message.isStreaming && messageBlocks(for: message).isEmpty {
                             streamingIndicator(for: message)
                                 .id("\(message.id)-streaming")
-                        }
-
-                        // Voice playback button (if message has voice output)
-                        if let voiceOutput = message.voiceOutput {
-                            voicePlaybackRow(voiceOutput: voiceOutput, role: message.role)
-                                .id("\(message.id)-voice")
                         }
                     }
 

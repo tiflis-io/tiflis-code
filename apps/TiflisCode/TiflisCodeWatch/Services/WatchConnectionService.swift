@@ -356,6 +356,9 @@ final class WatchConnectionService {
         case "history.response":
             handleHistoryResponse(message)
 
+        case "audio.response":
+            handleAudioResponse(message)
+
         case "connection.workstation_offline":
             appState?.workstationOnline = false
 
@@ -568,10 +571,16 @@ final class WatchConnectionService {
 
     private func handleSessionOutput(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String,
-              let payload = message["payload"] as? [String: Any] else { return }
+              let payload = message["payload"] as? [String: Any] else {
+            NSLog("⌚️ WatchConnectionService: session.output missing sessionId or payload")
+            return
+        }
 
         let isComplete = payload["is_complete"] as? Bool ?? true
         let messageId = message["id"] as? String ?? UUID().uuidString
+
+        NSLog("⌚️ WatchConnectionService: session.output for %@, messageId=%@, isComplete=%d",
+              sessionId, messageId, isComplete ? 1 : 0)
 
         if var messages = appState?.agentMessages[sessionId],
            let existingIndex = messages.firstIndex(where: { $0.id == messageId && $0.role == .assistant }) {
@@ -581,6 +590,7 @@ final class WatchConnectionService {
                 messages[existingIndex].contentBlocks = blocks
                 messages[existingIndex].isStreaming = !isComplete
                 appState?.agentMessages[sessionId] = messages
+                NSLog("⌚️ WatchConnectionService: Updated existing message, blocks=%d", blocks.count)
             }
         } else {
             // Create new assistant message
@@ -599,6 +609,7 @@ final class WatchConnectionService {
                 isStreaming: !isComplete
             )
             appState?.addAgentMessage(newMessage, for: sessionId)
+            NSLog("⌚️ WatchConnectionService: Created new message, blocks=%d", blocks.count)
         }
 
         if isComplete {
@@ -696,6 +707,64 @@ final class WatchConnectionService {
             object: nil,
             userInfo: ["audioData": audioData, "sessionId": sessionId]
         )
+    }
+
+    private func handleAudioResponse(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let messageId = payload["message_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: audio.response missing required fields")
+            return
+        }
+
+        if let error = payload["error"] as? String {
+            NSLog("⌚️ WatchConnectionService: audio.response error for %@: %@", messageId, error)
+            // Notify of error
+            NotificationCenter.default.post(
+                name: NSNotification.Name("WatchAudioResponseReceived"),
+                object: nil,
+                userInfo: ["messageId": messageId, "error": error]
+            )
+            return
+        }
+
+        guard let audioBase64 = payload["audio"] as? String,
+              let audioData = Data(base64Encoded: audioBase64) else {
+            NSLog("⌚️ WatchConnectionService: audio.response has no valid audio data")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: audio.response received for %@, size=%d", messageId, audioData.count)
+
+        // Cache the audio
+        Task {
+            await WatchAudioCache.shared.store(audioData, forId: messageId)
+        }
+
+        // Notify that audio is ready
+        NotificationCenter.default.post(
+            name: NSNotification.Name("WatchAudioResponseReceived"),
+            object: nil,
+            userInfo: ["messageId": messageId, "audioData": audioData]
+        )
+    }
+
+    /// Request audio from workstation for replay
+    func requestAudio(messageId: String) async {
+        let message: [String: Any] = [
+            "type": "audio.request",
+            "id": UUID().uuidString,
+            "payload": [
+                "message_id": messageId,
+                "type": "output"
+            ]
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            NSLog("⌚️ WatchConnectionService: Requested audio for messageId=%@", messageId)
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to request audio: %@", error.localizedDescription)
+        }
     }
 
     private func handleSessionCreated(_ message: [String: Any]) {
