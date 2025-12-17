@@ -150,7 +150,7 @@ struct WatchChatView: View {
                                     .clipShape(Circle())
                             }
                             .buttonStyle(.plain)
-                            .padding(.trailing, 4)
+                            .padding(.trailing, 20)
                         }
                     }
                 }
