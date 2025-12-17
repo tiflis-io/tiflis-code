@@ -88,16 +88,31 @@ struct WatchChatView: View {
                 }
             }
             .onChange(of: isLoading) { oldValue, newValue in
-                // Only scroll when loading STARTS (false -> true)
-                // Don't scroll when loading stops - user might be reading
                 if !oldValue && newValue {
+                    // Loading started - scroll to show loading indicator
                     scrollToBottomImmediate(proxy: proxy)
+                } else if oldValue && !newValue {
+                    // Loading stopped - scroll to show final content after a short delay
+                    // Delay ensures the view has finished updating with final content
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        scrollToBottomImmediate(proxy: proxy)
+                    }
                 }
             }
             .onChange(of: lastMessageBlockCount) { oldCount, newCount in
                 // Only scroll when blocks are ADDED (streaming new content)
                 if newCount > oldCount {
                     scrollToBottomThrottled(proxy: proxy)
+                }
+            }
+            .onChange(of: lastMessageIsStreaming) { wasStreaming, isStreaming in
+                // When streaming stops (message complete), scroll to show final content
+                if wasStreaming && !isStreaming {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(100))
+                        scrollToBottomImmediate(proxy: proxy)
+                    }
                 }
             }
             .onDisappear {
@@ -503,6 +518,11 @@ struct WatchChatView: View {
     private var lastMessageBlockCount: Int {
         guard let lastMessage = messages.last else { return 0 }
         return messageBlocks(for: lastMessage).count
+    }
+
+    /// Track if the last message is streaming (for detecting when streaming completes)
+    private var lastMessageIsStreaming: Bool {
+        messages.last?.isStreaming ?? false
     }
 
     // MARK: - Methods
