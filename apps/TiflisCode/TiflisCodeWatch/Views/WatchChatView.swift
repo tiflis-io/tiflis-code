@@ -67,18 +67,20 @@ struct WatchChatView: View {
     }
 
     /// Load chat history for this session (on-demand)
+    /// Always requests full history to ensure we have all messages
     private func loadHistory() async {
         switch destination {
         case .supervisor:
-            // Only load if no messages yet
+            // Only load if no messages yet (supervisor history is usually pre-loaded)
             if appState.supervisorMessages.isEmpty {
+                NSLog("⌚️ WatchChatView.loadHistory: requesting supervisor history")
                 await appState.requestHistory(sessionId: nil)
             }
         case .agent(let session):
-            // Only load if no messages yet for this session
-            if appState.messages(for: session.id).isEmpty {
-                await appState.requestHistory(sessionId: session.id)
-            }
+            // Always request history for agent sessions - we may have partial data from streaming
+            // The history.response handler will clear and replace existing messages
+            NSLog("⌚️ WatchChatView.loadHistory: requesting history for agent %@", session.id)
+            await appState.requestHistory(sessionId: session.id)
         }
     }
 
