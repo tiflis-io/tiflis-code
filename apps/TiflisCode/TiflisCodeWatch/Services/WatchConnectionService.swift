@@ -36,6 +36,15 @@ final class WatchConnectionService {
     /// Used to avoid re-subscribing and clearing messages when view re-appears
     private var subscribedSessions: Set<String> = []
 
+    /// Timestamps when loading state was set locally (after sending command)
+    /// Used to prevent history/sync responses from resetting loading state too quickly
+    /// Key: sessionId ("supervisor" for supervisor), Value: timestamp when loading was set
+    private var localLoadingSetTimes: [String: Date] = []
+
+    /// Minimum time (seconds) to keep loading state after locally setting it
+    /// This prevents race conditions where server response arrives before command is processed
+    private let loadingProtectionInterval: TimeInterval = 2.0
+
     // MARK: - Initialization
 
     init(
@@ -178,6 +187,58 @@ final class WatchConnectionService {
         // Clear subscription tracking on disconnect
         pendingSubscriptions.removeAll()
         subscribedSessions.removeAll()
+        localLoadingSetTimes.removeAll()
+    }
+
+    // MARK: - Loading State Management
+
+    /// Set loading state locally and record timestamp to prevent premature reset
+    private func setLocalLoadingState(sessionId: String, isLoading: Bool) {
+        if isLoading {
+            localLoadingSetTimes[sessionId] = Date()
+        } else {
+            localLoadingSetTimes.removeValue(forKey: sessionId)
+        }
+
+        if sessionId == "supervisor" {
+            appState?.supervisorIsLoading = isLoading
+        } else {
+            appState?.agentIsLoading[sessionId] = isLoading
+        }
+    }
+
+    /// Check if we should allow resetting loading state from server response
+    /// Returns false if loading was set locally too recently (prevents race conditions)
+    private func canResetLoadingState(sessionId: String) -> Bool {
+        guard let setTime = localLoadingSetTimes[sessionId] else {
+            return true // No local loading set, allow reset
+        }
+        let elapsed = Date().timeIntervalSince(setTime)
+        return elapsed >= loadingProtectionInterval
+    }
+
+    /// Update loading state from server response, respecting local loading protection
+    private func updateLoadingStateFromServer(sessionId: String, isExecuting: Bool) {
+        if isExecuting {
+            // Server says executing - always set to true
+            if sessionId == "supervisor" {
+                appState?.supervisorIsLoading = true
+            } else {
+                appState?.agentIsLoading[sessionId] = true
+            }
+        } else {
+            // Server says not executing - only reset if protection period has passed
+            if canResetLoadingState(sessionId: sessionId) {
+                if sessionId == "supervisor" {
+                    appState?.supervisorIsLoading = false
+                } else {
+                    appState?.agentIsLoading[sessionId] = false
+                }
+                localLoadingSetTimes.removeValue(forKey: sessionId)
+            } else {
+                NSLog("⌚️ WatchConnectionService: Ignoring is_executing=false for %@ (protection period active)", sessionId)
+            }
+        }
     }
 
     // MARK: - Sending Commands
@@ -189,6 +250,9 @@ final class WatchConnectionService {
 
     /// Sends a text command to the supervisor
     func sendSupervisorCommand(text: String, messageId: String) async {
+        // Set loading protection to prevent race condition with sync/history responses
+        setLocalLoadingState(sessionId: "supervisor", isLoading: true)
+
         let requestId = UUID().uuidString
         let message: [String: Any] = [
             "type": "supervisor.command",
@@ -209,6 +273,9 @@ final class WatchConnectionService {
 
     /// Sends a voice command to the supervisor
     func sendSupervisorVoiceCommand(audioData: Data, format: String, messageId: String) async {
+        // Set loading protection to prevent race condition with sync/history responses
+        setLocalLoadingState(sessionId: "supervisor", isLoading: true)
+
         let requestId = UUID().uuidString
         let base64Audio = audioData.base64EncodedString()
 
@@ -235,6 +302,9 @@ final class WatchConnectionService {
 
     /// Sends a text command to an agent session
     func sendAgentCommand(text: String, sessionId: String, messageId: String) async {
+        // Set loading protection to prevent race condition with sync/history responses
+        setLocalLoadingState(sessionId: sessionId, isLoading: true)
+
         let requestId = UUID().uuidString
         let message: [String: Any] = [
             "type": "session.execute",
@@ -256,6 +326,9 @@ final class WatchConnectionService {
 
     /// Sends a voice command to an agent session
     func sendAgentVoiceCommand(audioData: Data, format: String, sessionId: String, messageId: String) async {
+        // Set loading protection to prevent race condition with sync/history responses
+        setLocalLoadingState(sessionId: sessionId, isLoading: true)
+
         let requestId = UUID().uuidString
         let base64Audio = audioData.base64EncodedString()
 
@@ -375,7 +448,8 @@ final class WatchConnectionService {
 
         do {
             try await sendHTTPMessage(message)
-            appState?.supervisorIsLoading = false
+            // Clear loading protection and set loading to false
+            setLocalLoadingState(sessionId: "supervisor", isLoading: false)
             NSLog("⌚️ WatchConnectionService: Cancelled supervisor generation")
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to cancel supervisor: %@", error.localizedDescription)
@@ -392,7 +466,8 @@ final class WatchConnectionService {
 
         do {
             try await sendHTTPMessage(message)
-            appState?.agentIsLoading[sessionId] = false
+            // Clear loading protection and set loading to false
+            setLocalLoadingState(sessionId: sessionId, isLoading: false)
             NSLog("⌚️ WatchConnectionService: Cancelled session %@", sessionId)
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to cancel session: %@", error.localizedDescription)
@@ -543,9 +618,9 @@ final class WatchConnectionService {
                 }
             }
 
-            // Update loading state
+            // Update loading state (with protection against race conditions)
             if let isExecuting = payload["is_executing"] as? Bool {
-                appState?.supervisorIsLoading = isExecuting
+                updateLoadingStateFromServer(sessionId: "supervisor", isExecuting: isExecuting)
             }
         } else if let sessionId = sessionId {
             // Save pending user messages (those with voiceInput blocks waiting for transcription)
@@ -573,9 +648,9 @@ final class WatchConnectionService {
                 }
             }
 
-            // Update loading state
+            // Update loading state (with protection against race conditions)
             if let isExecuting = payload["is_executing"] as? Bool {
-                appState?.agentIsLoading[sessionId] = isExecuting
+                updateLoadingStateFromServer(sessionId: sessionId, isExecuting: isExecuting)
             }
             // Handle current streaming blocks if joining mid-stream
             if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
@@ -603,16 +678,16 @@ final class WatchConnectionService {
 
         NSLog("⌚️ WatchConnectionService: sync.state payload keys: %@", payload.keys.joined(separator: ", "))
 
-        // Update supervisor loading state from sync
+        // Update supervisor loading state from sync (with protection against race conditions)
         if let supervisorIsExecuting = payload["supervisorIsExecuting"] as? Bool {
-            appState?.supervisorIsLoading = supervisorIsExecuting
+            updateLoadingStateFromServer(sessionId: "supervisor", isExecuting: supervisorIsExecuting)
             NSLog("⌚️ WatchConnectionService: sync.state supervisorIsExecuting=%d", supervisorIsExecuting ? 1 : 0)
         }
 
-        // Update agent loading states from sync
+        // Update agent loading states from sync (with protection against race conditions)
         if let executingStates = payload["executingStates"] as? [String: Bool] {
             for (sessionId, isExecuting) in executingStates {
-                appState?.agentIsLoading[sessionId] = isExecuting
+                updateLoadingStateFromServer(sessionId: sessionId, isExecuting: isExecuting)
             }
             NSLog("⌚️ WatchConnectionService: sync.state updated %d agent executing states", executingStates.count)
         }
@@ -690,8 +765,9 @@ final class WatchConnectionService {
 
         // Always set loading indicator when streaming (command might be from another device)
         // This ensures progress shows even for first message with empty/filtered blocks
+        // Note: This is from server, so it overrides any local protection
         if !isComplete {
-            appState?.supervisorIsLoading = true
+            setLocalLoadingState(sessionId: "supervisor", isLoading: true)
             NSLog("⌚️ WatchConnectionService: supervisor.output setting supervisorIsLoading=true")
         }
 
@@ -732,7 +808,8 @@ final class WatchConnectionService {
         }
 
         if isComplete {
-            appState?.supervisorIsLoading = false
+            // Server confirms completion - clear loading and protection
+            setLocalLoadingState(sessionId: "supervisor", isLoading: false)
         }
     }
 
@@ -756,8 +833,9 @@ final class WatchConnectionService {
 
         // Always set loading indicator when streaming (command might be from another device)
         // This ensures progress shows even for first message with empty/filtered blocks
+        // Note: This is from server, so it overrides any local protection
         if !isComplete {
-            appState?.agentIsLoading[sessionId] = true
+            setLocalLoadingState(sessionId: sessionId, isLoading: true)
             NSLog("⌚️ WatchConnectionService: session.output setting agentIsLoading=true for %@", sessionId)
         }
 
@@ -802,7 +880,8 @@ final class WatchConnectionService {
         }
 
         if isComplete {
-            appState?.agentIsLoading[sessionId] = false
+            // Server confirms completion - clear loading and protection
+            setLocalLoadingState(sessionId: sessionId, isLoading: false)
         }
     }
 
@@ -901,11 +980,12 @@ final class WatchConnectionService {
 
         // Voice output means the agent has finished working - reset loading state immediately
         // This provides faster feedback than waiting for the next sync or is_complete message
+        // Clear loading protection since server confirms completion
         if sessionId == "supervisor" {
-            appState?.supervisorIsLoading = false
+            setLocalLoadingState(sessionId: "supervisor", isLoading: false)
             NSLog("⌚️ WatchConnectionService: voice_output received, setting supervisorIsLoading=false")
         } else {
-            appState?.agentIsLoading[sessionId] = false
+            setLocalLoadingState(sessionId: sessionId, isLoading: false)
             NSLog("⌚️ WatchConnectionService: voice_output received, setting agentIsLoading[%@]=false", sessionId)
         }
 
@@ -1050,7 +1130,8 @@ final class WatchConnectionService {
         appState?.addSupervisorMessage(userMessage)
 
         // Set loading state since we expect a response
-        appState?.supervisorIsLoading = true
+        // Use local loading setter to enable protection
+        setLocalLoadingState(sessionId: "supervisor", isLoading: true)
     }
 
     /// Handle session.subscribed response with session history
@@ -1070,8 +1151,9 @@ final class WatchConnectionService {
 
         // Server sends fields at root level (not in payload)
         // Check if session is currently executing (agent is working)
+        // Use protection-aware update to prevent race conditions
         if let isExecuting = message["is_executing"] as? Bool {
-            appState?.agentIsLoading[sessionId] = isExecuting
+            updateLoadingStateFromServer(sessionId: sessionId, isExecuting: isExecuting)
             NSLog("⌚️ WatchConnectionService: session.subscribed is_executing=%d", isExecuting ? 1 : 0)
         }
 
