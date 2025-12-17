@@ -27,10 +27,13 @@ struct WatchChatView: View {
     /// Last scroll timestamp for throttling
     @State private var lastScrollTime: Date = .distantPast
 
-    // MARK: - Stop Confirmation
+    // MARK: - Confirmation Dialogs
 
     /// Whether to show the stop confirmation dialog
     @State private var showStopConfirmation = false
+
+    /// Whether to show the clear context confirmation dialog
+    @State private var showClearContextConfirmation = false
 
     /// Track if view has appeared (to prevent re-scroll on state changes)
     @State private var hasAppeared = false
@@ -168,10 +171,37 @@ struct WatchChatView: View {
             } message: {
                 Text("This will cancel the current agent response.")
             }
+            .confirmationDialog(
+                "Clear Context?",
+                isPresented: $showClearContextConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Clear", role: .destructive) {
+                    Task {
+                        await clearSupervisorContext()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will clear all conversation history with the Supervisor.")
+            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationTitle(navTitle)
         .tint(.white)
+        .toolbar {
+            // Only show clear context button for supervisor (agent sessions don't have clear context)
+            if case .supervisor = destination {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showClearContextConfirmation = true
+                    } label: {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                    }
+                }
+            }
+        }
         .task {
             // Request chat history when view appears (lazy loading)
             await loadHistory()
@@ -562,6 +592,11 @@ struct WatchChatView: View {
         case .agent(let session):
             await appState.connectionService?.cancelSession(sessionId: session.id)
         }
+    }
+
+    /// Clear supervisor context (conversation history)
+    private func clearSupervisorContext() async {
+        await appState.connectionService?.clearSupervisorContext()
     }
 }
 

@@ -470,6 +470,22 @@ final class WatchConnectionService {
         }
     }
 
+    /// Clear supervisor context (conversation history)
+    func clearSupervisorContext() async {
+        let message: [String: Any] = [
+            "type": "supervisor.clear_context",
+            "id": UUID().uuidString
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            NSLog("⌚️ WatchConnectionService: Sent supervisor.clear_context command")
+            // Don't clear locally - wait for server broadcast (supervisor.context_cleared)
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to clear supervisor context: %@", error.localizedDescription)
+        }
+    }
+
     // MARK: - Message Handling
 
     private func handleMessage(_ message: [String: Any]) {
