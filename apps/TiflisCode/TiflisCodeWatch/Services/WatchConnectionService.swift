@@ -554,6 +554,13 @@ final class WatchConnectionService {
                 blocks = [.text(id: UUID().uuidString, text: content)]
             }
 
+            // Only create message if we have actual content blocks
+            // Don't create empty streaming messages - they show unwanted dots
+            guard !blocks.isEmpty else {
+                NSLog("⌚️ WatchConnectionService: Skipping empty supervisor message")
+                return
+            }
+
             let newMessage = Message(
                 id: messageId,
                 sessionId: "supervisor",
@@ -599,6 +606,13 @@ final class WatchConnectionService {
                 blocks = parseContentBlocks(contentBlocks)
             } else if let content = payload["content"] as? String {
                 blocks = [.text(id: UUID().uuidString, text: content)]
+            }
+
+            // Only create message if we have actual content blocks
+            // Don't create empty streaming messages - they show unwanted dots
+            guard !blocks.isEmpty else {
+                NSLog("⌚️ WatchConnectionService: Skipping empty agent message for %@", sessionId)
+                return
             }
 
             let newMessage = Message(
