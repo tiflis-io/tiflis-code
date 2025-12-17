@@ -201,6 +201,9 @@ final class WatchConnectionService {
         let requestId = UUID().uuidString
         let base64Audio = audioData.base64EncodedString()
 
+        NSLog("⌚️ WatchConnectionService: Sending supervisor voice command - audioSize=%d, format=%@, messageId=%@",
+              audioData.count, format, messageId)
+
         let message: [String: Any] = [
             "type": "supervisor.command",
             "id": requestId,
@@ -213,9 +216,9 @@ final class WatchConnectionService {
 
         do {
             try await sendHTTPMessage(message)
-            print("⌚️ WatchConnectionService: Sent supervisor voice command via HTTP")
+            NSLog("⌚️ WatchConnectionService: Sent supervisor voice command via HTTP successfully")
         } catch {
-            NSLog("⌚️ WatchConnectionService: Failed to send voice command: %@", error.localizedDescription)
+            NSLog("⌚️ WatchConnectionService: Failed to send supervisor voice command: %@", error.localizedDescription)
         }
     }
 
@@ -245,6 +248,9 @@ final class WatchConnectionService {
         let requestId = UUID().uuidString
         let base64Audio = audioData.base64EncodedString()
 
+        NSLog("⌚️ WatchConnectionService: Sending agent voice command - sessionId=%@, audioSize=%d, format=%@, messageId=%@",
+              sessionId, audioData.count, format, messageId)
+
         let message: [String: Any] = [
             "type": "session.execute",
             "id": requestId,
@@ -258,7 +264,7 @@ final class WatchConnectionService {
 
         do {
             try await sendHTTPMessage(message)
-            print("⌚️ WatchConnectionService: Sent agent voice command to \(sessionId) via HTTP")
+            NSLog("⌚️ WatchConnectionService: Sent agent voice command to %@ via HTTP successfully", sessionId)
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to send agent voice command: %@", error.localizedDescription)
         }
@@ -576,7 +582,13 @@ final class WatchConnectionService {
     private func handleSupervisorTranscription(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any],
               let text = payload["text"] as? String,
-              let messageId = payload["message_id"] as? String else { return }
+              let messageId = payload["message_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: supervisor.transcription missing required fields")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: Received supervisor transcription - messageId=%@, text=%@",
+              messageId, String(text.prefix(50)))
 
         // Update the user message with transcription
         appState?.updateMessage(id: messageId, sessionId: "supervisor") { msg in
@@ -586,6 +598,9 @@ final class WatchConnectionService {
                 return false
             }) {
                 msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                NSLog("⌚️ WatchConnectionService: Updated supervisor message with transcription")
+            } else {
+                NSLog("⌚️ WatchConnectionService: No voice input block found in supervisor message")
             }
         }
     }
@@ -594,7 +609,13 @@ final class WatchConnectionService {
         guard let sessionId = message["session_id"] as? String,
               let payload = message["payload"] as? [String: Any],
               let text = payload["text"] as? String,
-              let messageId = payload["message_id"] as? String else { return }
+              let messageId = payload["message_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: session.transcription missing required fields")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: Received session transcription - sessionId=%@, messageId=%@, text=%@",
+              sessionId, messageId, String(text.prefix(50)))
 
         appState?.updateMessage(id: messageId, sessionId: sessionId) { msg in
             if let voiceIndex = msg.contentBlocks.firstIndex(where: {
@@ -602,6 +623,9 @@ final class WatchConnectionService {
                 return false
             }) {
                 msg.contentBlocks[voiceIndex] = .text(id: UUID().uuidString, text: text)
+                NSLog("⌚️ WatchConnectionService: Updated agent message with transcription")
+            } else {
+                NSLog("⌚️ WatchConnectionService: No voice input block found in agent message %@", messageId)
             }
         }
     }
@@ -770,8 +794,9 @@ final class WatchConnectionService {
                 return .error(id: id, text: text)
 
             case "voice_input":
-                // Voice input - show transcription as text if available
-                let transcription = block["transcription"] as? String
+                // Voice input - transcription is in "content" field (same as iOS/server format)
+                // Also check "transcription" for backwards compatibility
+                let transcription = content ?? (block["transcription"] as? String)
                 if let text = transcription, !text.isEmpty {
                     // Show transcription as regular text for user messages
                     return .text(id: id, text: text)
