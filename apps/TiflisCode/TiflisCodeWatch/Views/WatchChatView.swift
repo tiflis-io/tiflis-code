@@ -359,7 +359,7 @@ struct WatchChatView: View {
 
     /// Voice playback button row
     @ViewBuilder
-    private func voicePlaybackRow(voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval), role: Message.MessageRole) -> some View {
+    private func voicePlaybackRow(voiceOutput: (id: String, audioURL: URL?, text: String, duration: TimeInterval), role: Message.MessageRole) -> some View {
         HStack {
             if role == .user {
                 Spacer(minLength: 20)

@@ -108,10 +108,11 @@ struct Message: Identifiable, Equatable {
     }
 
     /// Returns first voice output block if present
-    var voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval)? {
+    /// The `id` is the unique audio identifier used for playback state tracking
+    var voiceOutput: (id: String, audioURL: URL?, text: String, duration: TimeInterval)? {
         for block in contentBlocks {
-            if case .voiceOutput(_, let url, let text, let dur) = block {
-                return (url, text, dur)
+            if case .voiceOutput(let id, let url, let text, let dur) = block {
+                return (id, url, text, dur)
             }
         }
         return nil

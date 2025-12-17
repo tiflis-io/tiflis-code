@@ -476,15 +476,15 @@ struct VoiceOutputButton: View {
 /// Button to replay voice output (used in chat view for message.voiceOutput)
 struct VoicePlaybackButton: View {
     @ObservedObject var audioService: WatchAudioService
-    let voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval)
+    let voiceOutput: (id: String, audioURL: URL?, text: String, duration: TimeInterval)
     var requestAudio: ((String) async -> Void)?
 
     @State private var isLoading = false
     @State private var audioResponseCancellable: Any?
 
-    /// The audio ID for this specific voice output
+    /// The audio ID for this specific voice output (unique identifier for playback tracking)
     private var audioId: String {
-        voiceOutput.text
+        voiceOutput.id
     }
 
     /// Check if THIS specific audio is currently playing
