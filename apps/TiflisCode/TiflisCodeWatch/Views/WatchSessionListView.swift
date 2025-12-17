@@ -22,11 +22,6 @@ struct WatchSessionListView: View {
             if !appState.agentSessions.isEmpty {
                 agentSessionsSection
             }
-
-            #if DEBUG
-            // Debug section showing HTTP polling and sync state
-            debugSection
-            #endif
         }
         .listStyle(.carousel)
         .navigationTitle("")
@@ -39,12 +34,6 @@ struct WatchSessionListView: View {
                     Circle()
                         .fill(appState.connectionState.indicatorColor)
                         .frame(width: 6, height: 6)
-                    #if DEBUG
-                    // Debug: show session counts (total/agents)
-                    Text("(\(appState.sessions.count)/\(appState.agentSessions.count))")
-                        .font(.system(size: 8))
-                        .foregroundStyle(.secondary)
-                    #endif
                 }
             }
         }
@@ -101,94 +90,6 @@ struct WatchSessionListView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    #if DEBUG
-    private var debugSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("DEBUG INFO")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.orange)
-
-                // Show uptime to verify app is running
-                debugRow("Uptime", formatUptime(since: appState.debugAppStartTime))
-
-                Group {
-                    debugRow("State", "\(appState.connectionState)")
-                    debugRow("WS Online", appState.workstationOnline ? "Yes" : "No")
-                    debugRow("Sessions", "\(appState.sessions.count)")
-                    debugRow("Agents", "\(appState.agentSessions.count)")
-                    debugRow("Sup Msgs", "\(appState.supervisorMessages.count)")
-                }
-
-                Divider()
-
-                Group {
-                    debugRow("Sync", appState.debugLastSyncState)
-                    debugRow("SyncSess", "\(appState.debugSyncSessionCount)")
-                    debugRow("Parsed", "\(appState.debugSyncParsedCount)")
-                    debugRow("LastMsg", appState.debugLastMessageHandled)
-                }
-
-                if let service = appState.connectionService {
-                    Divider()
-
-                    Group {
-                        debugRow("HTTP", service.httpPollingService.isConnected ? "Connected" : "Disconnected")
-                        debugRow("Poll", service.httpPollingService.debugLastPollResult)
-                        debugRow("MsgsRcvd", "\(service.httpPollingService.debugMessagesReceived)")
-                        debugRow("LastType", service.httpPollingService.debugLastMessageType)
-                        if let lastPoll = service.httpPollingService.debugLastPollTime {
-                            debugRow("LastPoll", formatTime(lastPoll))
-                        }
-                    }
-                } else {
-                    debugRow("Service", "Not initialized")
-                }
-
-                // Manual sync button
-                Button("Force Sync") {
-                    Task {
-                        await appState.requestSync()
-                    }
-                }
-                .font(.system(size: 10))
-                .padding(.top, 4)
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("Debug")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private func debugRow(_ label: String, _ value: String) -> some View {
-        HStack {
-            Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 9))
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-        }
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        return formatter.string(from: date)
-    }
-
-    private func formatUptime(since startTime: Date) -> String {
-        let elapsed = Date().timeIntervalSince(startTime)
-        let mins = Int(elapsed) / 60
-        let secs = Int(elapsed) % 60
-        return "\(mins)m \(secs)s"
-    }
-    #endif
 
     // MARK: - Helper Methods
 

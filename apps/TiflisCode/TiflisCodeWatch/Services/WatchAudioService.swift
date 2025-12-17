@@ -56,6 +56,10 @@ final class WatchAudioService: NSObject, ObservableObject {
     @Published private(set) var isPlaying = false
     @Published private(set) var error: WatchAudioError?
 
+    /// The audio ID currently being played (nil if not playing or unknown)
+    /// Used to show stop button only on the specific voice output being played
+    @Published private(set) var currentlyPlayingAudioId: String?
+
     // MARK: - Private Properties
 
     private var audioRecorder: AVAudioRecorder?
@@ -208,7 +212,10 @@ final class WatchAudioService: NSObject, ObservableObject {
     // MARK: - Playback
 
     /// Play audio data (for TTS)
-    func playAudio(_ data: Data) {
+    /// - Parameters:
+    ///   - data: Audio data to play
+    ///   - audioId: Optional identifier for the audio (used to track which voice output is playing)
+    func playAudio(_ data: Data, audioId: String? = nil) {
         // Stop any ongoing recording or playback
         if isRecording {
             cancelRecording()
@@ -236,7 +243,8 @@ final class WatchAudioService: NSObject, ObservableObject {
             }
 
             isPlaying = true
-            print("⌚️ WatchAudioService: Playback started")
+            currentlyPlayingAudioId = audioId
+            print("⌚️ WatchAudioService: Playback started, audioId=\(audioId ?? "nil")")
         } catch {
             self.error = .playbackFailed(error.localizedDescription)
         }
@@ -247,6 +255,12 @@ final class WatchAudioService: NSObject, ObservableObject {
         audioPlayer?.stop()
         audioPlayer = nil
         isPlaying = false
+        currentlyPlayingAudioId = nil
+    }
+
+    /// Check if a specific audio ID is currently playing
+    func isPlayingAudio(withId audioId: String) -> Bool {
+        return isPlaying && currentlyPlayingAudioId == audioId
     }
 
     // MARK: - Private Methods
@@ -274,8 +288,11 @@ final class WatchAudioService: NSObject, ObservableObject {
                     return
                 }
 
+                // Get audioId for tracking which specific audio is playing
+                let audioId = notification.userInfo?["audioId"] as? String
+
                 Task { @MainActor in
-                    self?.playAudio(audioData)
+                    self?.playAudio(audioData, audioId: audioId)
                 }
             }
             .store(in: &cancellables)
@@ -324,6 +341,7 @@ extension WatchAudioService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
             self.isPlaying = false
+            self.currentlyPlayingAudioId = nil
             print("⌚️ WatchAudioService: Playback finished")
         }
     }
@@ -331,6 +349,7 @@ extension WatchAudioService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
             self.isPlaying = false
+            self.currentlyPlayingAudioId = nil
             self.error = .playbackFailed(error?.localizedDescription ?? "Decode error")
         }
     }

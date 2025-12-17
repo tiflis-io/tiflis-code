@@ -32,6 +32,10 @@ final class WatchConnectionService {
     /// Used to prevent race condition where session.output arrives before history
     private var pendingSubscriptions: Set<String> = []
 
+    /// Sessions that have been successfully subscribed (received session.subscribed)
+    /// Used to avoid re-subscribing and clearing messages when view re-appears
+    private var subscribedSessions: Set<String> = []
+
     // MARK: - Initialization
 
     init(
@@ -171,6 +175,9 @@ final class WatchConnectionService {
     func disconnect() {
         httpPollingService.disconnect()
         appState?.connectionState = .disconnected
+        // Clear subscription tracking on disconnect
+        pendingSubscriptions.removeAll()
+        subscribedSessions.removeAll()
     }
 
     // MARK: - Sending Commands
@@ -316,6 +323,12 @@ final class WatchConnectionService {
     /// Subscribe to an agent session to receive real-time updates
     /// This is required for agent chats - without subscription, session.output messages won't be received
     func subscribeToSession(sessionId: String) async {
+        // Skip if already subscribed - avoid clearing messages when view re-appears
+        if subscribedSessions.contains(sessionId) {
+            NSLog("⌚️ WatchConnectionService: Session %@ already subscribed, skipping", sessionId)
+            return
+        }
+
         // Mark as pending to prevent race condition with session.output messages
         // that arrive via polling before session.subscribed response
         pendingSubscriptions.insert(sessionId)
@@ -505,6 +518,14 @@ final class WatchConnectionService {
 
         // Parse and add messages
         if isSupervisor {
+            // Save pending user messages (those with voiceInput blocks waiting for transcription)
+            let pendingSupervisorMessages = appState?.supervisorMessages.filter { message in
+                message.role == .user && message.contentBlocks.contains { block in
+                    if case .voiceInput = block { return true }
+                    return false
+                }
+            } ?? []
+
             // Clear existing supervisor messages before loading history
             appState?.clearSupervisorMessages()
             for msgData in limitedHistory {
@@ -512,11 +533,29 @@ final class WatchConnectionService {
                     appState?.addSupervisorMessage(msg)
                 }
             }
+
+            // Re-add pending user messages that weren't in history
+            for pendingMsg in pendingSupervisorMessages {
+                let alreadyExists = appState?.supervisorMessages.contains { $0.id == pendingMsg.id } ?? false
+                if !alreadyExists {
+                    appState?.addSupervisorMessage(pendingMsg)
+                    NSLog("⌚️ WatchConnectionService: Preserved pending supervisor user message %@", pendingMsg.id)
+                }
+            }
+
             // Update loading state
             if let isExecuting = payload["is_executing"] as? Bool {
                 appState?.supervisorIsLoading = isExecuting
             }
         } else if let sessionId = sessionId {
+            // Save pending user messages (those with voiceInput blocks waiting for transcription)
+            let pendingAgentMessages = appState?.agentMessages[sessionId]?.filter { message in
+                message.role == .user && message.contentBlocks.contains { block in
+                    if case .voiceInput = block { return true }
+                    return false
+                }
+            } ?? []
+
             // Clear existing messages for this session before loading history
             appState?.clearAgentMessages(for: sessionId)
             for msgData in limitedHistory {
@@ -524,6 +563,16 @@ final class WatchConnectionService {
                     appState?.addAgentMessage(msg, for: sessionId)
                 }
             }
+
+            // Re-add pending user messages that weren't in history
+            for pendingMsg in pendingAgentMessages {
+                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == pendingMsg.id } ?? false
+                if !alreadyExists {
+                    appState?.addAgentMessage(pendingMsg, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: Preserved pending agent user message %@", pendingMsg.id)
+                }
+            }
+
             // Update loading state
             if let isExecuting = payload["is_executing"] as? Bool {
                 appState?.agentIsLoading[sessionId] = isExecuting
@@ -850,13 +899,25 @@ final class WatchConnectionService {
             appState?.appendBlockToLastAssistantMessage(voiceOutputBlock, sessionId: sessionId)
         }
 
+        // Voice output means the agent has finished working - reset loading state immediately
+        // This provides faster feedback than waiting for the next sync or is_complete message
+        if sessionId == "supervisor" {
+            appState?.supervisorIsLoading = false
+            NSLog("⌚️ WatchConnectionService: voice_output received, setting supervisorIsLoading=false")
+        } else {
+            appState?.agentIsLoading[sessionId] = false
+            NSLog("⌚️ WatchConnectionService: voice_output received, setting agentIsLoading[%@]=false", sessionId)
+        }
+
         // Post notification for auto-playback
         // Include shouldAutoPlay flag - only true if initiated from this device
+        // Include audioId for tracking which specific audio is playing
         NotificationCenter.default.post(
             name: NSNotification.Name("WatchTTSAudioReceived"),
             object: nil,
             userInfo: [
                 "audioData": audioData,
+                "audioId": audioId,
                 "sessionId": sessionId,
                 "shouldAutoPlay": isFromThisDevice
             ]
@@ -937,6 +998,9 @@ final class WatchConnectionService {
     private func handleSessionTerminated(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else { return }
         appState?.removeSession(id: sessionId)
+        // Clear subscription tracking for terminated session
+        pendingSubscriptions.remove(sessionId)
+        subscribedSessions.remove(sessionId)
     }
 
     private func handleUserMessage(_ message: [String: Any]) {
@@ -999,6 +1063,9 @@ final class WatchConnectionService {
         // Remove from pending subscriptions - we now have the official history
         // After this, session.output messages will be processed normally
         let wasPending = pendingSubscriptions.remove(sessionId) != nil
+
+        // Mark as subscribed to prevent re-subscribing when view re-appears
+        subscribedSessions.insert(sessionId)
         NSLog("⌚️ WatchConnectionService: session.subscribed for %@ (wasPending=%d)", sessionId, wasPending ? 1 : 0)
 
         // Server sends fields at root level (not in payload)
@@ -1010,17 +1077,36 @@ final class WatchConnectionService {
 
         // Load history if present (at root level, not in payload)
         if let history = message["history"] as? [[String: Any]] {
+            // Save pending user messages (those with voiceInput blocks waiting for transcription)
+            // These are locally-sent messages that haven't been confirmed by server yet
+            let pendingUserMessages = appState?.agentMessages[sessionId]?.filter { message in
+                message.role == .user && message.contentBlocks.contains { block in
+                    if case .voiceInput = block { return true }
+                    return false
+                }
+            } ?? []
+
             // Clear existing messages before loading history
             appState?.clearAgentMessages(for: sessionId)
 
             // Limit to last 10 messages (5 request-response pairs) for watchOS performance
             let limitedHistory = history.suffix(10)
-            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d of %d history messages",
-                  limitedHistory.count, history.count)
+            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d of %d history messages, preserving %d pending user messages",
+                  limitedHistory.count, history.count, pendingUserMessages.count)
 
             for msgData in limitedHistory {
                 if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
                     appState?.addAgentMessage(msg, for: sessionId)
+                }
+            }
+
+            // Re-add pending user messages that weren't in history
+            for pendingMsg in pendingUserMessages {
+                // Check if this message ID is already in the loaded history
+                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == pendingMsg.id } ?? false
+                if !alreadyExists {
+                    appState?.addAgentMessage(pendingMsg, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: Preserved pending user message %@", pendingMsg.id)
                 }
             }
         } else {

@@ -16,6 +16,22 @@ struct WatchChatView: View {
     @EnvironmentObject var appState: WatchAppState
     @StateObject private var audioService = WatchAudioService.shared
 
+    // MARK: - Scroll Throttling
+
+    /// Task for throttled scroll-to-bottom
+    @State private var scrollTask: Task<Void, Never>?
+
+    /// Minimum interval between scroll operations (milliseconds)
+    private let scrollThrottleInterval: UInt64 = 300
+
+    /// Last scroll timestamp for throttling
+    @State private var lastScrollTime: Date = .distantPast
+
+    // MARK: - Stop Confirmation
+
+    /// Whether to show the stop confirmation dialog
+    @State private var showStopConfirmation = false
+
     var body: some View {
         // Messages list - each content block is a separate bubble (like iOS)
         ScrollViewReader { proxy in
@@ -53,26 +69,38 @@ struct WatchChatView: View {
                 .padding(.bottom, 80)
             }
             .onAppear {
-                scrollToBottom(proxy: proxy, animated: false)
+                scrollToBottomThrottled(proxy: proxy)
             }
             .onChange(of: messages.count) { _, _ in
-                // Instant scroll on new messages (like iOS)
-                scrollToBottom(proxy: proxy, animated: false)
+                // Throttled scroll on new messages
+                scrollToBottomThrottled(proxy: proxy)
             }
-            .onChange(of: isLoading) { _, _ in
-                // Instant scroll when loading state changes
-                scrollToBottom(proxy: proxy, animated: false)
+            .onChange(of: isLoading) { _, newValue in
+                // Immediate scroll when loading starts, throttled otherwise
+                if newValue {
+                    scrollToBottomImmediate(proxy: proxy)
+                } else {
+                    scrollToBottomThrottled(proxy: proxy)
+                }
+            }
+            .onChange(of: lastMessageBlockCount) { _, _ in
+                // Throttled scroll when streaming content updates
+                scrollToBottomThrottled(proxy: proxy)
+            }
+            .onDisappear {
+                // Cancel pending scroll task when view disappears
+                scrollTask?.cancel()
+                scrollTask = nil
             }
             .overlay(alignment: .bottom) {
-                // Bottom action buttons
-                HStack(spacing: 12) {
+                // Bottom action buttons - main button centered, FAB to the right
+                ZStack {
                     // Main button: Stop (when loading) or Voice Record (when idle)
+                    // Centered horizontally in the ZStack
                     if isLoading {
-                        // Stop button - red, to cancel agent generation
+                        // Stop button - red, to cancel agent generation (shows confirmation)
                         Button {
-                            Task {
-                                await stopGeneration()
-                            }
+                            showStopConfirmation = true
                         } label: {
                             ZStack {
                                 Circle()
@@ -85,7 +113,7 @@ struct WatchChatView: View {
                         }
                         .buttonStyle(.plain)
                     } else {
-                        // Voice input button (blue, like iOS)
+                        // Voice input button (blue when idle, orange when recording)
                         WatchVoiceButton(audioService: audioService) { audioData, format in
                             Task {
                                 await sendVoiceCommand(audioData: audioData, format: format)
@@ -93,24 +121,42 @@ struct WatchChatView: View {
                         }
                     }
 
-                    // Scroll to bottom FAB - smaller, translucent (like iOS/Telegram)
+                    // Scroll to bottom FAB - positioned to the right of center
                     // Always visible on watchOS since scroll position tracking isn't available
                     if !messages.isEmpty {
-                        Button {
-                            scrollToBottom(proxy: proxy, animated: false)
-                        } label: {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.8))
-                                .frame(width: 36, height: 36)
-                                .background(Color.gray.opacity(0.5))
-                                .clipShape(Circle())
+                        HStack {
+                            Spacer()
+                            Button {
+                                scrollToBottom(proxy: proxy, animated: false)
+                            } label: {
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .frame(width: 36, height: 36)
+                                    .background(Color.gray.opacity(0.5))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 4)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .padding(.bottom, 8)
                 .animation(.easeInOut(duration: 0.15), value: isLoading)
+            }
+            .confirmationDialog(
+                "Stop Generation?",
+                isPresented: $showStopConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button("Stop", role: .destructive) {
+                    Task {
+                        await stopGeneration()
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will cancel the current agent response.")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -413,33 +459,72 @@ struct WatchChatView: View {
         messages.contains { $0.isStreaming }
     }
 
+    /// Track the block count of the last message for detecting streaming content updates
+    private var lastMessageBlockCount: Int {
+        guard let lastMessage = messages.last else { return 0 }
+        return messageBlocks(for: lastMessage).count
+    }
+
     // MARK: - Methods
 
-    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
-        // Determine the correct scroll target ID
-        // IDs in the view are: "\(message.id)-\(blockIndex)" for blocks, "\(message.id)-streaming" for streaming, "loading" for loading
-        let scrollTarget: String?
-
+    /// Determine the scroll target ID based on current message state
+    private func getScrollTarget() -> String? {
         // Loading indicator is now always shown when isLoading (not conditional on hasStreamingMessage)
         if isLoading {
-            scrollTarget = "loading"
+            return "loading"
         } else if let lastMessage = messages.last {
             let blocks = messageBlocks(for: lastMessage)
             if lastMessage.isStreaming && lastMessage.contentBlocks.isEmpty {
                 // Streaming indicator is shown
-                scrollTarget = "\(lastMessage.id)-streaming"
+                return "\(lastMessage.id)-streaming"
             } else if blocks.isEmpty {
                 // No displayable blocks
-                scrollTarget = nil
+                return nil
             } else {
                 // Scroll to the last block of the last message
-                scrollTarget = "\(lastMessage.id)-\(blocks.count - 1)"
+                return "\(lastMessage.id)-\(blocks.count - 1)"
             }
         } else {
-            scrollTarget = nil
+            return nil
         }
+    }
 
-        guard let target = scrollTarget else { return }
+    /// Immediate scroll to bottom (no throttling)
+    private func scrollToBottomImmediate(proxy: ScrollViewProxy) {
+        guard let target = getScrollTarget() else { return }
+        proxy.scrollTo(target, anchor: .bottom)
+        lastScrollTime = Date()
+    }
+
+    /// Throttled scroll to bottom - ensures we don't scroll too frequently during streaming
+    /// This prevents scroll conflicts and ensures the final scroll always reaches the bottom
+    private func scrollToBottomThrottled(proxy: ScrollViewProxy) {
+        let now = Date()
+        let timeSinceLastScroll = now.timeIntervalSince(lastScrollTime) * 1000 // Convert to ms
+
+        if timeSinceLastScroll >= Double(scrollThrottleInterval) {
+            // Enough time has passed, scroll immediately
+            scrollToBottomImmediate(proxy: proxy)
+        } else {
+            // Throttle: schedule a scroll after the remaining interval
+            // Cancel any existing pending scroll task
+            scrollTask?.cancel()
+
+            let remainingTime = UInt64(Double(scrollThrottleInterval) - timeSinceLastScroll)
+            scrollTask = Task { @MainActor in
+                do {
+                    try await Task.sleep(nanoseconds: remainingTime * 1_000_000)
+                    guard !Task.isCancelled else { return }
+                    scrollToBottomImmediate(proxy: proxy)
+                } catch {
+                    // Task was cancelled, ignore
+                }
+            }
+        }
+    }
+
+    private func scrollToBottom(proxy: ScrollViewProxy, animated: Bool = true) {
+        guard let target = getScrollTarget() else { return }
 
         if animated {
             withAnimation(.easeOut(duration: 0.2)) {

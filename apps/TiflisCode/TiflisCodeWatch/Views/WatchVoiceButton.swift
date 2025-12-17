@@ -21,15 +21,16 @@ struct WatchVoiceButton: View {
             handleTap()
         } label: {
             ZStack {
-                // Background circle - blue when idle, red when recording (matches iOS)
+                // Background circle - blue when idle, orange when recording
+                // (orange differentiates from red stop-agent button on watchOS)
                 Circle()
-                    .fill(audioService.isRecording ? Color.red : Color.blue)
+                    .fill(audioService.isRecording ? Color.orange : Color.blue)
                     .frame(width: 60, height: 60)
 
-                // Recording animation
+                // Recording animation - pulsating orange circles
                 if audioService.isRecording {
                     Circle()
-                        .stroke(Color.red.opacity(0.5), lineWidth: 3)
+                        .stroke(Color.orange.opacity(0.5), lineWidth: 3)
                         .frame(width: 70, height: 70)
                         .scaleEffect(isPressed ? 1.1 : 1.0)
                         .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), value: isPressed)
@@ -80,7 +81,7 @@ struct WatchVoiceButtonCompact: View {
         } label: {
             Image(systemName: audioService.isRecording ? "stop.circle.fill" : "mic.circle.fill")
                 .font(.system(size: 32))
-                .foregroundStyle(audioService.isRecording ? .red : .accentColor)
+                .foregroundStyle(audioService.isRecording ? .orange : .accentColor)
         }
         .buttonStyle(.plain)
     }

@@ -482,6 +482,16 @@ struct VoicePlaybackButton: View {
     @State private var isLoading = false
     @State private var audioResponseCancellable: Any?
 
+    /// The audio ID for this specific voice output
+    private var audioId: String {
+        voiceOutput.text
+    }
+
+    /// Check if THIS specific audio is currently playing
+    private var isThisAudioPlaying: Bool {
+        audioService.isPlayingAudio(withId: audioId)
+    }
+
     var body: some View {
         Button {
             playVoice()
@@ -491,7 +501,8 @@ struct VoicePlaybackButton: View {
                     ProgressView()
                         .scaleEffect(0.5)
                 } else {
-                    Image(systemName: audioService.isPlaying ? "stop.fill" : "play.fill")
+                    // Show stop only if THIS audio is playing, not any audio
+                    Image(systemName: isThisAudioPlaying ? "stop.fill" : "play.fill")
                         .font(.caption2)
                 }
                 if voiceOutput.duration > 0 {
@@ -518,39 +529,46 @@ struct VoicePlaybackButton: View {
     }
 
     private func setupAudioResponseListener() {
-        let audioId = voiceOutput.text
         audioResponseCancellable = NotificationCenter.default.addObserver(
             forName: NSNotification.Name("WatchAudioResponseReceived"),
             object: nil,
             queue: .main
-        ) { notification in
+        ) { [audioId] notification in
             guard let userInfo = notification.userInfo,
                   let messageId = userInfo["messageId"] as? String,
                   messageId == audioId else { return }
 
             isLoading = false
 
-            // If audio data was received, play it
+            // If audio data was received, play it with the audioId for tracking
             if let audioData = userInfo["audioData"] as? Data {
-                audioService.playAudio(audioData)
+                audioService.playAudio(audioData, audioId: audioId)
             }
         }
     }
 
     private func playVoice() {
+        // If THIS audio is playing, stop it
+        if isThisAudioPlaying {
+            audioService.stopPlayback()
+            return
+        }
+
+        // If another audio is playing, stop it first
         if audioService.isPlaying {
             audioService.stopPlayback()
-        } else if let url = voiceOutput.audioURL,
-                  let data = try? Data(contentsOf: url) {
+        }
+
+        if let url = voiceOutput.audioURL,
+           let data = try? Data(contentsOf: url) {
             // Try URL first (legacy)
-            audioService.playAudio(data)
+            audioService.playAudio(data, audioId: audioId)
         } else {
             // Use audioId stored in text field to lookup from cache
-            let audioId = voiceOutput.text
             Task {
                 if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
                     await MainActor.run {
-                        audioService.playAudio(data)
+                        audioService.playAudio(data, audioId: audioId)
                     }
                 } else if let requestAudio = requestAudio {
                     // Cache miss - request audio from server
