@@ -17,16 +17,32 @@ struct WatchChatView: View {
     @StateObject private var audioService = WatchAudioService.shared
 
     var body: some View {
-        // Messages list
+        // Messages list - each content block is a separate bubble (like iOS)
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 6) {
                     ForEach(messages.suffix(15)) { message in
-                        WatchMessageRow(
-                            message: message,
-                            audioService: audioService
-                        )
-                        .id(message.id)
+                        // Split message into separate bubbles per content block
+                        ForEach(Array(messageBlocks(for: message).enumerated()), id: \.offset) { index, block in
+                            WatchMessageBlockBubble(
+                                block: block,
+                                role: message.role,
+                                audioService: audioService
+                            )
+                            .id("\(message.id)-\(index)")
+                        }
+
+                        // Streaming indicator for the message
+                        if message.isStreaming {
+                            streamingIndicator(for: message)
+                                .id("\(message.id)-streaming")
+                        }
+
+                        // Voice playback button (if message has voice output)
+                        if let voiceOutput = message.voiceOutput {
+                            voicePlaybackRow(voiceOutput: voiceOutput, role: message.role)
+                                .id("\(message.id)-voice")
+                        }
                     }
 
                     // Loading indicator
@@ -63,6 +79,59 @@ struct WatchChatView: View {
         .task {
             // Request chat history when view appears (lazy loading)
             await loadHistory()
+        }
+    }
+
+    /// Get content blocks for a message, or a placeholder if empty
+    private func messageBlocks(for message: Message) -> [MessageContentBlock] {
+        if message.contentBlocks.isEmpty {
+            return [.text(id: "empty-\(message.id)", text: "...")]
+        }
+        return message.contentBlocks
+    }
+
+    /// Streaming indicator view
+    @ViewBuilder
+    private func streamingIndicator(for message: Message) -> some View {
+        HStack {
+            if message.role == .user {
+                Spacer(minLength: 20)
+            }
+
+            HStack(spacing: 2) {
+                ForEach(0..<3, id: \.self) { _ in
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 3, height: 3)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color.secondary.opacity(0.2))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+
+            if message.role == .assistant {
+                Spacer(minLength: 20)
+            }
+        }
+    }
+
+    /// Voice playback button row
+    @ViewBuilder
+    private func voicePlaybackRow(voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval), role: Message.MessageRole) -> some View {
+        HStack {
+            if role == .user {
+                Spacer(minLength: 20)
+            }
+
+            VoicePlaybackButton(
+                audioService: audioService,
+                voiceOutput: voiceOutput
+            )
+
+            if role == .assistant {
+                Spacer(minLength: 20)
+            }
         }
     }
 
