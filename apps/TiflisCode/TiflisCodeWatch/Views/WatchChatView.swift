@@ -289,8 +289,8 @@ struct WatchChatView: View {
         }
     }
 
-    /// Load chat history for this session (on-demand)
-    /// Always requests full history to ensure we have all messages
+    /// Load chat history and subscribe to session updates (on-demand)
+    /// For agent sessions, subscribes to receive real-time session.output messages
     private func loadHistory() async {
         switch destination {
         case .supervisor:
@@ -300,10 +300,12 @@ struct WatchChatView: View {
                 await appState.requestHistory(sessionId: nil)
             }
         case .agent(let session):
-            // Always request history for agent sessions - we may have partial data from streaming
-            // The history.response handler will clear and replace existing messages
-            NSLog("⌚️ WatchChatView.loadHistory: requesting history for agent %@", session.id)
-            await appState.requestHistory(sessionId: session.id)
+            // Subscribe to agent session to receive real-time updates
+            // This is critical - without subscription, session.output messages won't be received
+            // because workstation broadcasts agent messages only to subscribed clients
+            NSLog("⌚️ WatchChatView.loadHistory: subscribing to agent session %@", session.id)
+            await appState.connectionService?.subscribeToSession(sessionId: session.id)
+            // Note: session.subscribed response includes history, so no separate history request needed
         }
     }
 

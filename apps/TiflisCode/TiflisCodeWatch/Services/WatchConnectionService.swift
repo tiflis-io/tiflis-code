@@ -309,6 +309,39 @@ final class WatchConnectionService {
         }
     }
 
+    /// Subscribe to an agent session to receive real-time updates
+    /// This is required for agent chats - without subscription, session.output messages won't be received
+    func subscribeToSession(sessionId: String) async {
+        let message: [String: Any] = [
+            "type": "session.subscribe",
+            "id": UUID().uuidString,
+            "session_id": sessionId
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            NSLog("⌚️ WatchConnectionService: Subscribed to session %@", sessionId)
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to subscribe to session: %@", error.localizedDescription)
+        }
+    }
+
+    /// Unsubscribe from an agent session
+    func unsubscribeFromSession(sessionId: String) async {
+        let message: [String: Any] = [
+            "type": "session.unsubscribe",
+            "id": UUID().uuidString,
+            "session_id": sessionId
+        ]
+
+        do {
+            try await sendHTTPMessage(message)
+            NSLog("⌚️ WatchConnectionService: Unsubscribed from session %@", sessionId)
+        } catch {
+            NSLog("⌚️ WatchConnectionService: Failed to unsubscribe from session: %@", error.localizedDescription)
+        }
+    }
+
     // MARK: - Message Handling
 
     private func handleMessage(_ message: [String: Any]) {
@@ -384,8 +417,12 @@ final class WatchConnectionService {
             appState?.connectionState = .authenticated
 
         case "supervisor.user_message":
-            // User message from another device - could add to supervisor messages if needed
-            NSLog("⌚️ WatchConnectionService: supervisor.user_message received (from another device)")
+            // User message from another device - add to supervisor messages
+            handleSupervisorUserMessage(message)
+
+        case "session.subscribed":
+            // Response to session.subscribe - contains session history
+            handleSessionSubscribed(message)
 
         case "supervisor.context_cleared":
             // Supervisor context was cleared - could refresh supervisor messages
@@ -535,6 +572,11 @@ final class WatchConnectionService {
 
         let isComplete = payload["is_complete"] as? Bool ?? true
 
+        // Set loading indicator if streaming (command might be from another device)
+        if !isComplete {
+            appState?.supervisorIsLoading = true
+        }
+
         // Get or create assistant message
         let messageId = message["id"] as? String ?? UUID().uuidString
 
@@ -585,6 +627,11 @@ final class WatchConnectionService {
 
         let isComplete = payload["is_complete"] as? Bool ?? true
         let messageId = message["id"] as? String ?? UUID().uuidString
+
+        // Set loading indicator if streaming (command might be from another device)
+        if !isComplete {
+            appState?.agentIsLoading[sessionId] = true
+        }
 
         NSLog("⌚️ WatchConnectionService: session.output for %@, messageId=%@, isComplete=%d",
               sessionId, messageId, isComplete ? 1 : 0)
@@ -818,6 +865,79 @@ final class WatchConnectionService {
             appState?.addSupervisorMessage(userMessage)
         } else {
             appState?.addAgentMessage(userMessage, for: sessionId)
+        }
+    }
+
+    /// Handle user message sent from another device to supervisor
+    private func handleSupervisorUserMessage(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let content = payload["content"] as? String,
+              let fromDeviceId = payload["from_device_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: supervisor.user_message missing required fields")
+            return
+        }
+
+        // Skip if this is from the same device
+        if fromDeviceId == deviceIDManager.deviceID {
+            NSLog("⌚️ WatchConnectionService: Skipping own supervisor.user_message")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: supervisor.user_message from other device: %@", String(content.prefix(50)))
+
+        let userMessage = Message(
+            sessionId: "supervisor",
+            role: .user,
+            content: content
+        )
+        appState?.addSupervisorMessage(userMessage)
+
+        // Set loading state since we expect a response
+        appState?.supervisorIsLoading = true
+    }
+
+    /// Handle session.subscribed response with session history
+    private func handleSessionSubscribed(_ message: [String: Any]) {
+        guard let sessionId = message["session_id"] as? String,
+              let payload = message["payload"] as? [String: Any] else {
+            NSLog("⌚️ WatchConnectionService: session.subscribed missing session_id or payload")
+            return
+        }
+
+        NSLog("⌚️ WatchConnectionService: session.subscribed for %@", sessionId)
+
+        // Check if session is currently executing (agent is working)
+        if let isExecuting = payload["is_executing"] as? Bool {
+            appState?.agentIsLoading[sessionId] = isExecuting
+            NSLog("⌚️ WatchConnectionService: session.subscribed is_executing=%d", isExecuting ? 1 : 0)
+        }
+
+        // Load history if present
+        if let history = payload["history"] as? [[String: Any]] {
+            // Clear existing messages before loading history
+            appState?.clearAgentMessages(for: sessionId)
+
+            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d history messages", history.count)
+
+            for msgData in history.suffix(20) {
+                if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
+                    appState?.addAgentMessage(msg, for: sessionId)
+                }
+            }
+        }
+
+        // Handle current streaming blocks if joining mid-stream
+        if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+            let blocks = parseContentBlocks(streamingBlocks)
+            let streamingMessage = Message(
+                id: UUID().uuidString,
+                sessionId: sessionId,
+                role: .assistant,
+                contentBlocks: blocks,
+                isStreaming: true
+            )
+            appState?.addAgentMessage(streamingMessage, for: sessionId)
+            NSLog("⌚️ WatchConnectionService: session.subscribed added streaming message with %d blocks", blocks.count)
         }
     }
 
