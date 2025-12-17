@@ -362,6 +362,20 @@ final class WatchConnectionService {
         case "connection.workstation_online":
             appState?.workstationOnline = true
 
+        case "error":
+            // Handle error messages from the server
+            let errorPayload = message["payload"] as? [String: Any]
+            let errorCode = errorPayload?["code"] as? String ?? "UNKNOWN"
+            let errorMessage = errorPayload?["message"] as? String ?? "Unknown error"
+            let relatedId = message["id"] as? String
+            NSLog("⌚️ WatchConnectionService: Server error - code=%@, message=%@, id=%@",
+                  errorCode, errorMessage, relatedId ?? "none")
+
+            // If this was an auth error, update connection state
+            if errorCode == "UNAUTHENTICATED" {
+                appState?.connectionState = .error("Not authenticated")
+            }
+
         default:
             print("⌚️ WatchConnectionService: Unhandled message type: \(messageType)")
         }
