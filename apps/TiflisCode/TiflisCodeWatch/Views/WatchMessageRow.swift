@@ -388,6 +388,11 @@ struct VoiceOutputButton: View {
     @State private var isLoading = false
     @State private var audioResponseCancellable: Any?
 
+    /// Check if THIS specific audio is currently playing
+    private var isThisAudioPlaying: Bool {
+        audioService.isPlayingAudio(withId: audioId)
+    }
+
     var body: some View {
         Button {
             playAudio()
@@ -397,7 +402,8 @@ struct VoiceOutputButton: View {
                     ProgressView()
                         .scaleEffect(0.5)
                 } else {
-                    Image(systemName: audioService.isPlaying ? "stop.fill" : "speaker.wave.2.fill")
+                    // Show stop only if THIS audio is playing, not any audio
+                    Image(systemName: isThisAudioPlaying ? "stop.fill" : "speaker.wave.2.fill")
                         .font(.system(size: 10))
                 }
                 if duration > 0 {
@@ -429,37 +435,44 @@ struct VoiceOutputButton: View {
             forName: NSNotification.Name("WatchAudioResponseReceived"),
             object: nil,
             queue: .main
-        ) { notification in
+        ) { [audioId] notification in
             guard let userInfo = notification.userInfo,
                   let messageId = userInfo["messageId"] as? String,
                   messageId == audioId else { return }
 
             isLoading = false
 
-            // If audio data was received, play it
+            // If audio data was received, play it with audioId for tracking
             if let audioData = userInfo["audioData"] as? Data {
-                audioService.playAudio(audioData)
+                audioService.playAudio(audioData, audioId: audioId)
             }
         }
     }
 
     private func playAudio() {
+        // If THIS audio is playing, stop it
+        if isThisAudioPlaying {
+            audioService.stopPlayback()
+            return
+        }
+
+        // If another audio is playing, stop it first
         if audioService.isPlaying {
             audioService.stopPlayback()
-        } else {
-            Task {
-                // Try cache first
-                if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
-                    await MainActor.run {
-                        audioService.playAudio(data)
-                    }
-                } else if let requestAudio = requestAudio {
-                    // Request from server
-                    await MainActor.run {
-                        isLoading = true
-                    }
-                    await requestAudio(audioId)
+        }
+
+        Task {
+            // Try cache first
+            if let data = await WatchAudioCache.shared.retrieve(forId: audioId) {
+                await MainActor.run {
+                    audioService.playAudio(data, audioId: audioId)
                 }
+            } else if let requestAudio = requestAudio {
+                // Request from server
+                await MainActor.run {
+                    isLoading = true
+                }
+                await requestAudio(audioId)
             }
         }
     }
