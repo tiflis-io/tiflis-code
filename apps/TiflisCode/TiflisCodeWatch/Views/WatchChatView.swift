@@ -82,12 +82,159 @@ struct WatchChatView: View {
         }
     }
 
-    /// Get content blocks for a message, or a placeholder if empty
+    /// Get content blocks for a message, splitting large text blocks into smaller chunks
+    /// watchOS has a tiny screen - max ~4-5 lines per bubble
     private func messageBlocks(for message: Message) -> [MessageContentBlock] {
         if message.contentBlocks.isEmpty {
             return [.text(id: "empty-\(message.id)", text: "...")]
         }
-        return message.contentBlocks
+
+        var result: [MessageContentBlock] = []
+        for block in message.contentBlocks {
+            switch block {
+            case .text(let id, let text):
+                // Split large text blocks into smaller chunks
+                let chunks = splitTextForWatch(text, baseId: id)
+                result.append(contentsOf: chunks)
+            case .code(let id, let language, let code):
+                // Split large code blocks too
+                let chunks = splitCodeForWatch(code, language: language, baseId: id)
+                result.append(contentsOf: chunks)
+            default:
+                // Other block types pass through unchanged
+                result.append(block)
+            }
+        }
+        return result
+    }
+
+    // MARK: - Text Splitting for watchOS
+
+    /// Characters per line on watchOS (small screen, caption2 font)
+    private let charsPerLine = 25
+
+    /// Maximum lines per bubble on watchOS
+    private let maxLinesPerBubble = 5
+
+    /// Maximum characters per bubble
+    private var maxCharsPerBubble: Int { charsPerLine * maxLinesPerBubble }
+
+    /// Split text into chunks suitable for watchOS display
+    private func splitTextForWatch(_ text: String, baseId: String) -> [MessageContentBlock] {
+        let estimatedLines = estimateLineCount(text)
+
+        // If text fits in one bubble, return as-is
+        if estimatedLines <= maxLinesPerBubble {
+            return [.text(id: baseId, text: text)]
+        }
+
+        // Split into chunks
+        var chunks: [MessageContentBlock] = []
+        var remaining = text
+        var chunkIndex = 0
+
+        while !remaining.isEmpty {
+            let chunk = extractChunk(from: remaining, maxChars: maxCharsPerBubble)
+            chunks.append(.text(id: "\(baseId)-chunk-\(chunkIndex)", text: chunk))
+            remaining = String(remaining.dropFirst(chunk.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+            chunkIndex += 1
+
+            // Safety limit to prevent infinite loops
+            if chunkIndex > 50 { break }
+        }
+
+        return chunks
+    }
+
+    /// Split code into chunks suitable for watchOS display
+    private func splitCodeForWatch(_ code: String, language: String?, baseId: String) -> [MessageContentBlock] {
+        let lines = code.components(separatedBy: "\n")
+
+        // If code fits in one bubble, return as-is
+        if lines.count <= maxLinesPerBubble {
+            return [.code(id: baseId, language: language, code: code)]
+        }
+
+        // Split by lines
+        var chunks: [MessageContentBlock] = []
+        var chunkIndex = 0
+        var currentLines: [String] = []
+
+        for line in lines {
+            currentLines.append(line)
+
+            if currentLines.count >= maxLinesPerBubble {
+                let chunkCode = currentLines.joined(separator: "\n")
+                // Only show language label on first chunk
+                let chunkLang = chunkIndex == 0 ? language : nil
+                chunks.append(.code(id: "\(baseId)-chunk-\(chunkIndex)", language: chunkLang, code: chunkCode))
+                currentLines = []
+                chunkIndex += 1
+            }
+        }
+
+        // Flush remaining lines
+        if !currentLines.isEmpty {
+            let chunkCode = currentLines.joined(separator: "\n")
+            let chunkLang = chunkIndex == 0 ? language : nil
+            chunks.append(.code(id: "\(baseId)-chunk-\(chunkIndex)", language: chunkLang, code: chunkCode))
+        }
+
+        return chunks
+    }
+
+    /// Estimate line count based on text length and newlines
+    private func estimateLineCount(_ text: String) -> Int {
+        let newlineCount = text.components(separatedBy: "\n").count
+        let wrappedLineCount = max(1, text.count / charsPerLine)
+        return max(newlineCount, wrappedLineCount)
+    }
+
+    /// Extract a chunk of text, trying to break at natural boundaries
+    private func extractChunk(from text: String, maxChars: Int) -> String {
+        if text.count <= maxChars {
+            return text
+        }
+
+        let searchWindow = String(text.prefix(maxChars))
+        let minSplit = maxChars / 2
+
+        // Try paragraph boundary (\n\n)
+        if let range = searchWindow.range(of: "\n\n", options: .backwards) {
+            let offset = searchWindow.distance(from: searchWindow.startIndex, to: range.upperBound)
+            if offset > minSplit {
+                return String(text.prefix(offset))
+            }
+        }
+
+        // Try sentence boundary
+        for delimiter in [". ", "! ", "? ", ".\n", "!\n", "?\n"] {
+            if let range = searchWindow.range(of: delimiter, options: .backwards) {
+                let offset = searchWindow.distance(from: searchWindow.startIndex, to: range.upperBound)
+                if offset > minSplit {
+                    return String(text.prefix(offset))
+                }
+            }
+        }
+
+        // Try line boundary
+        if let range = searchWindow.range(of: "\n", options: .backwards) {
+            let offset = searchWindow.distance(from: searchWindow.startIndex, to: range.upperBound)
+            if offset > minSplit {
+                return String(text.prefix(offset))
+            }
+        }
+
+        // Try word boundary
+        if let range = searchWindow.range(of: " ", options: .backwards) {
+            let offset = searchWindow.distance(from: searchWindow.startIndex, to: range.lowerBound)
+            if offset > minSplit / 2 {
+                return String(text.prefix(offset))
+            }
+        }
+
+        // Hard split at max chars
+        return searchWindow
     }
 
     /// Streaming indicator view
