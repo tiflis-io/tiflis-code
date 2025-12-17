@@ -223,7 +223,13 @@ private fun NavigationContent(
                 sessionId = sessionId,
                 sessionType = session?.type ?: SessionType.CLAUDE,
                 sessionName = session?.displayName,
-                onMenuClick = onMenuClick
+                onMenuClick = onMenuClick,
+                onSessionTerminated = {
+                    // Navigate back to supervisor after session termination
+                    navController.navigate(Screen.Supervisor.route) {
+                        popUpTo(Screen.Supervisor.route) { inclusive = true }
+                    }
+                }
             )
         }
 
@@ -237,7 +243,13 @@ private fun NavigationContent(
             TerminalScreen(
                 appState = appState,
                 sessionId = sessionId,
-                onMenuClick = onMenuClick
+                onMenuClick = onMenuClick,
+                onSessionTerminated = {
+                    // Navigate back to supervisor after session termination
+                    navController.navigate(Screen.Supervisor.route) {
+                        popUpTo(Screen.Supervisor.route) { inclusive = true }
+                    }
+                }
             )
         }
 

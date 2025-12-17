@@ -95,11 +95,11 @@ export default function InstallPage() {
           <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
             <li>
               <strong>Tunnel Server:</strong> Any Linux VPS or local machine
-              with Docker, or Node.js 22+
+              with Docker, or Node.js 24+
             </li>
             <li>
               <strong>Workstation:</strong> macOS, Linux, or Windows (via WSL2)
-              with Node.js 22+
+              with Node.js 24+
             </li>
             <li>
               <strong>Mobile App:</strong> iOS 17+ (iPhone), watchOS 10+ (Apple Watch),
@@ -480,17 +480,27 @@ TTS_VOICE=Rachel`}</CodeBlock>
           </p>
 
           <h4 className="text-base font-semibold mt-4 mb-2">Examples</h4>
-          <CodeBlock>{`# Claude with custom settings file
-AGENT_ALIAS_ZAI="claude --settings /Users/yourname/.zai/settings.json"
+          <CodeBlock>{`# Claude with specific model
+AGENT_ALIAS_CLAUDE_OPUS="claude --model opus"`}</CodeBlock>
 
-# Claude with specific model
-AGENT_ALIAS_CLAUDE_OPUS="claude --model opus"
+          <h4 className="text-base font-semibold mt-4 mb-2">
+            Isolated Config Directories
+          </h4>
+          <p className="text-gray-600 dark:text-gray-400 mb-2">
+            Run multiple agent instances with separate configurations by setting custom config directories.
+            This is useful for separating personal and work projects.
+          </p>
+          <CodeBlock>{`# Personal Claude instance
+AGENT_ALIAS_CLAUDE_PERSONAL="CLAUDE_CONFIG_DIR=/Users/yourname/.claude-personal claude"
 
-# Claude with custom config directory (env var prefix)
-AGENT_ALIAS_INVENT="CLAUDE_CONFIG_DIR=/Users/yourname/.claude-invent claude"
+# Work Claude instance (e.g., for Acme Corp)
+AGENT_ALIAS_CLAUDE_ACME="CLAUDE_CONFIG_DIR=/Users/yourname/.claude-acme claude"
 
-# OpenCode with Cerebras model
-AGENT_ALIAS_CEREBRAS="opencode --model cerebras/zai-glm-4.6"`}</CodeBlock>
+# Personal OpenCode instance
+AGENT_ALIAS_OPENCODE_PERSONAL="OPENCODE_CONFIG_DIR=/Users/yourname/.opencode-personal XDG_DATA_HOME=/Users/yourname/.opencode-personal/data opencode"
+
+# Work OpenCode instance
+AGENT_ALIAS_OPENCODE_ACME="OPENCODE_CONFIG_DIR=/Users/yourname/.opencode-acme XDG_DATA_HOME=/Users/yourname/.opencode-acme/data opencode"`}</CodeBlock>
           <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
             Note: Values with spaces must be quoted. You can prefix commands with environment
             variables (e.g., <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">VAR=value command</code>).
@@ -528,7 +538,7 @@ TTS_MODEL=tts-1
 TTS_VOICE=nova
 
 # Custom Agent Aliases
-AGENT_ALIAS_ZAI="claude --settings /Users/yourname/.zai/settings.json"`}</CodeBlock>
+AGENT_ALIAS_CLAUDE_ACME="CLAUDE_CONFIG_DIR=/Users/yourname/.claude-acme claude"`}</CodeBlock>
         </Section>
 
         {/* Service Management */}
@@ -582,11 +592,11 @@ rm -rf ~/.tiflis-code`}</CodeBlock>
             Node.js not found
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-2">
-            Install Node.js 22+ using nvm:
+            Install Node.js 24+ using nvm:
           </p>
           <CodeBlock>{`curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
 source ~/.bashrc  # or ~/.zshrc
-nvm install 22`}</CodeBlock>
+nvm install 24`}</CodeBlock>
 
           <h3 className="text-lg font-semibold mt-6 mb-2">
             Connection refused
@@ -603,12 +613,7 @@ nvm install 22`}</CodeBlock>
           </p>
         </Section>
 
-        {/* Next Steps */}
-        <Section title="Next Steps">
-          <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
-            <li>Explore agent aliases for custom AI agent configurations</li>
-          </ul>
-        </Section>
+
       </div>
 
       {/* Footer */}

@@ -632,6 +632,18 @@ async function bootstrap(): Promise<void> {
         })
       );
 
+      // Determine which base agent types should be hidden (from env settings)
+      const hiddenBaseTypes: string[] = [];
+      if (env.HIDE_BASE_CURSOR) {
+        hiddenBaseTypes.push("cursor");
+      }
+      if (env.HIDE_BASE_CLAUDE) {
+        hiddenBaseTypes.push("claude");
+      }
+      if (env.HIDE_BASE_OPENCODE) {
+        hiddenBaseTypes.push("opencode");
+      }
+
       // Get workspaces with their projects
       const workspacesList = await workspaceDiscovery.listWorkspaces();
       const workspaces = await Promise.all(
@@ -702,6 +714,7 @@ async function bootstrap(): Promise<void> {
           supervisorHistory,
           agentHistories,
           availableAgents,
+          hiddenBaseTypes,
           workspaces,
           supervisorIsExecuting,
           executingStates,

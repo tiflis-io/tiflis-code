@@ -98,6 +98,26 @@ const EnvSchema = z.object({
   CLAUDE_SESSION_LOCK_WAIT_MS: z.coerce.number().default(1500),
 
   // ─────────────────────────────────────────────────────────────
+  // Agent Visibility Configuration
+  // Hide base agent options in mobile apps (only show aliases)
+  // ─────────────────────────────────────────────────────────────
+  /** Hide base Cursor agent option (only show aliases) */
+  HIDE_BASE_CURSOR: z
+    .string()
+    .transform((val) => val?.toLowerCase() === "true")
+    .default("false"),
+  /** Hide base Claude agent option (only show aliases) */
+  HIDE_BASE_CLAUDE: z
+    .string()
+    .transform((val) => val?.toLowerCase() === "true")
+    .default("false"),
+  /** Hide base OpenCode agent option (only show aliases) */
+  HIDE_BASE_OPENCODE: z
+    .string()
+    .transform((val) => val?.toLowerCase() === "true")
+    .default("false"),
+
+  // ─────────────────────────────────────────────────────────────
   // Terminal Configuration
   // ─────────────────────────────────────────────────────────────
   /** Terminal output buffer size (number of messages, in-memory only, does not survive restarts) */
@@ -114,8 +134,8 @@ export type Env = z.infer<typeof EnvSchema>;
  * Example: AGENT_ALIAS_ZAI="claude --settings ~/.zai/settings.json"
  * Results in: { name: 'zai', baseCommand: 'claude', additionalArgs: ['--settings', '~/.zai/settings.json'], envVars: {} }
  *
- * Example with env vars: AGENT_ALIAS_INVENT="CLAUDE_CONFIG_DIR=/path claude"
- * Results in: { name: 'invent', baseCommand: 'claude', additionalArgs: [], envVars: { CLAUDE_CONFIG_DIR: '/path' } }
+ * Example with env vars: AGENT_ALIAS_CUSTOM="CLAUDE_CONFIG_DIR=/path claude"
+ * Results in: { name: 'custom', baseCommand: 'claude', additionalArgs: [], envVars: { CLAUDE_CONFIG_DIR: '/path' } }
  */
 export interface AgentAlias {
   /** Alias name (lowercase, derived from env var name after AGENT_ALIAS_) */
@@ -138,7 +158,7 @@ export interface AgentAlias {
  *   AGENT_ALIAS_ZAI=claude --settings ~/.zai/settings.json
  *   AGENT_ALIAS_CLAUDE_OPUS=claude --model opus
  *   AGENT_ALIAS_CURSOR_PRO=cursor-agent --pro-mode
- *   AGENT_ALIAS_INVENT=CLAUDE_CONFIG_DIR=/path/to/config claude
+ *   AGENT_ALIAS_CUSTOM=CLAUDE_CONFIG_DIR=/path/to/config claude
  *
  * @returns Map of alias name (lowercase) to AgentAlias config
  */

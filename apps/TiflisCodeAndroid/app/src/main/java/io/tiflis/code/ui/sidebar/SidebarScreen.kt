@@ -9,7 +9,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -29,6 +28,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.tiflis.code.R
+import io.tiflis.code.domain.models.AgentConfig
 import io.tiflis.code.domain.models.Session
 import io.tiflis.code.domain.models.SessionType
 import io.tiflis.code.ui.navigation.Screen
@@ -312,7 +312,7 @@ private fun SwipeableSessionItem(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CreateSessionDialog(
     appState: AppState,
@@ -320,6 +320,7 @@ private fun CreateSessionDialog(
     onCreate: (SessionType, String?, String?, String?, String?) -> Unit
 ) {
     val availableAgents by appState.availableAgents.collectAsState()
+    val hiddenBaseTypes by appState.hiddenBaseTypes.collectAsState()
     val workspaces by appState.workspaces.collectAsState()
 
     var selectedType by remember { mutableStateOf<SessionType?>(null) }
@@ -336,11 +337,32 @@ private fun CreateSessionDialog(
     val currentProject = projects.find { it.name == selectedProject }
     val worktrees = currentProject?.worktrees ?: emptyList()
 
+    // Build filtered list of available options (like iOS agentOptions)
+    val agentOptions = if (availableAgents.isEmpty()) {
+        // Fallback when no agents available from workstation
+        listOf(
+            AgentConfig("claude", "claude", "Claude Code Agent", false),
+            AgentConfig("cursor", "cursor", "Cursor Agent", false),
+            AgentConfig("opencode", "opencode", "OpenCode Agent", false)
+        )
+    } else {
+        // Filter out base agents that are hidden via workstation settings
+        availableAgents.filter { agent ->
+            // If this is an alias, always show it
+            if (agent.isAlias) {
+                true
+            } else {
+                // If this is a base agent, only show it if not hidden
+                !hiddenBaseTypes.contains(agent.baseType)
+            }
+        }
+    }
+
     // Validation: agent sessions require workspace and project
     val canCreate = when {
-        selectedType == null -> false
+        selectedType == null && selectedAgent == null -> false
         selectedType == SessionType.TERMINAL -> true
-        selectedType?.isAgent == true -> selectedWorkspace != null && selectedProject != null
+        selectedType?.isAgent == true || selectedAgent != null -> selectedWorkspace != null && selectedProject != null
         else -> true
     }
 
@@ -350,73 +372,58 @@ private fun CreateSessionDialog(
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Session type selection
+                // Session type selection header
                 Text(
                     text = stringResource(R.string.session_select_type),
-                    style = MaterialTheme.typography.labelMedium
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    listOf(
-                        SessionType.CURSOR,
-                        SessionType.CLAUDE,
-                        SessionType.OPENCODE,
-                        SessionType.TERMINAL
-                    ).forEach { type ->
-                        FilterChip(
-                            selected = selectedType == type,
-                            onClick = {
-                                selectedType = type
-                                selectedAgent = null
-                                // Reset workspace selection for terminal
-                                if (type == SessionType.TERMINAL) {
-                                    selectedWorkspace = null
-                                    selectedProject = null
-                                    selectedWorktree = null
-                                }
-                            },
-                            label = { Text(type.displayName) }
-                        )
+                // Terminal option (always shown)
+                AgentTypeListItem(
+                    name = "Terminal",
+                    sessionType = SessionType.TERMINAL,
+                    isAlias = false,
+                    isSelected = selectedType == SessionType.TERMINAL && selectedAgent == null,
+                    onClick = {
+                        selectedType = SessionType.TERMINAL
+                        selectedAgent = null
+                        selectedWorkspace = null
+                        selectedProject = null
+                        selectedWorktree = null
                     }
-                }
+                )
 
-                // Agent alias selection (if applicable)
-                if (selectedType?.isAgent == true && availableAgents.isNotEmpty()) {
-                    val agentAliases = availableAgents.filter {
-                        SessionType.fromString(it.baseType) == selectedType
-                    }
-                    if (agentAliases.isNotEmpty()) {
-                        Text(
-                            text = "Agent Alias (optional)",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            agentAliases.forEach { agent ->
-                                FilterChip(
-                                    selected = selectedAgent == agent.name,
-                                    onClick = {
-                                        selectedAgent = if (selectedAgent == agent.name) null else agent.name
-                                    },
-                                    label = { Text(agent.name) }
-                                )
-                            }
+                // Agent options (base + aliases, filtered)
+                agentOptions.forEach { agent ->
+                    AgentTypeListItem(
+                        name = if (agent.isAlias) "${agent.name} (${agent.baseType})" else agent.name.replaceFirstChar { it.uppercase() },
+                        sessionType = agent.sessionType,
+                        isAlias = agent.isAlias,
+                        isSelected = if (agent.isAlias) {
+                            selectedAgent == agent.name
+                        } else {
+                            selectedType == agent.sessionType && selectedAgent == null
+                        },
+                        onClick = {
+                            selectedType = agent.sessionType
+                            selectedAgent = if (agent.isAlias) agent.name else null
                         }
-                    }
+                    )
                 }
 
-                // Workspace selection (for agent sessions)
-                if (selectedType?.isAgent == true && workspaces.isNotEmpty()) {
+                // Workspace/Project selection (for agent sessions)
+                if ((selectedType?.isAgent == true || selectedAgent != null) && workspaces.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Text(
                         text = stringResource(R.string.session_select_workspace),
-                        style = MaterialTheme.typography.labelMedium
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     // Workspace dropdown
@@ -460,7 +467,8 @@ private fun CreateSessionDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Project",
-                            style = MaterialTheme.typography.labelMedium
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         var projectExpanded by remember { mutableStateOf(false) }
@@ -503,7 +511,8 @@ private fun CreateSessionDialog(
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "Worktree (optional)",
-                            style = MaterialTheme.typography.labelMedium
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
                         var worktreeExpanded by remember { mutableStateOf(false) }
@@ -549,7 +558,7 @@ private fun CreateSessionDialog(
                     }
 
                     // Show validation message if workspace/project not selected
-                    if (selectedType?.isAgent == true && (selectedWorkspace == null || selectedProject == null)) {
+                    if (selectedWorkspace == null || selectedProject == null) {
                         Text(
                             text = "* Workspace and project are required for agent sessions",
                             style = MaterialTheme.typography.bodySmall,
@@ -563,8 +572,9 @@ private fun CreateSessionDialog(
         confirmButton = {
             TextButton(
                 onClick = {
-                    selectedType?.let { type ->
-                        onCreate(type, selectedAgent, selectedWorkspace, selectedProject, selectedWorktree)
+                    val type = selectedType ?: agentOptions.find { it.name == selectedAgent }?.sessionType
+                    type?.let {
+                        onCreate(it, selectedAgent, selectedWorkspace, selectedProject, selectedWorktree)
                     }
                 },
                 enabled = canCreate
@@ -578,6 +588,66 @@ private fun CreateSessionDialog(
             }
         }
     )
+}
+
+/**
+ * List item for agent type selection (mirrors iOS AgentTypeRow).
+ */
+@Composable
+private fun AgentTypeListItem(
+    name: String,
+    sessionType: SessionType,
+    isAlias: Boolean,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = if (isSelected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            // Session icon
+            SessionIcon(
+                sessionType = sessionType,
+                modifier = Modifier.size(32.dp)
+            )
+
+            // Name and subtitle
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = name,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                if (isAlias) {
+                    Text(
+                        text = "Custom alias",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            // Checkmark when selected
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = "Selected",
+                    tint = sessionType.accentColor()
+                )
+            }
+        }
+    }
 }
 
 /**

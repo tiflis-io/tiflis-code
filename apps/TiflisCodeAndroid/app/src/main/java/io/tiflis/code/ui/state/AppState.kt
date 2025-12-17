@@ -64,6 +64,7 @@ class AppState @Inject constructor(
     val workspacesRoot: StateFlow<String?> = connectionService.workspacesRoot
     val workspaces: StateFlow<List<WorkspaceConfig>> = connectionService.workspaces
     val availableAgents: StateFlow<List<AgentConfig>> = connectionService.availableAgents
+    val hiddenBaseTypes: StateFlow<List<String>> = connectionService.hiddenBaseTypes
 
     // Sessions
     private val _sessions = MutableStateFlow<List<Session>>(emptyList())

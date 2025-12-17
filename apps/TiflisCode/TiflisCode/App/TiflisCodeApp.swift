@@ -126,6 +126,8 @@ final class AppState: ObservableObject {
 
     /// Available agent types (base + aliases from workstation)
     @Published var availableAgents: [AgentConfig] = []
+    /// Base agent types that should be hidden (from workstation settings)
+    @Published var hiddenBaseTypes: [String] = []
     /// Available workspaces with their projects
     @Published var workspaces: [WorkspaceConfig] = []
 
@@ -686,6 +688,12 @@ final class AppState: ObservableObject {
                 )
             }
             print("🔄 handleSyncStateMessage: Loaded \(availableAgents.count) available agents")
+        }
+
+        // Parse hidden base types (from workstation settings)
+        if let hiddenBaseTypesArray = payload["hiddenBaseTypes"] as? [String] {
+            hiddenBaseTypes = hiddenBaseTypesArray
+            print("🔄 handleSyncStateMessage: Loaded \(hiddenBaseTypes.count) hidden base types")
         }
 
         // Parse workspaces with their projects

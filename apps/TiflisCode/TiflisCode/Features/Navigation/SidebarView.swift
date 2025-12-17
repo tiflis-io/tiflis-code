@@ -219,13 +219,24 @@ struct CreateSessionSheet: View {
 
     /// Computed list of agent options (agents + terminal)
     private var agentOptions: [AgentConfig] {
-        appState.availableAgents.isEmpty
-            ? [
+        if appState.availableAgents.isEmpty {
+            // Fallback when no agents available from workstation
+            return [
                 AgentConfig(name: "claude", baseType: "claude", description: "Claude Code Agent", isAlias: false),
                 AgentConfig(name: "cursor", baseType: "cursor", description: "Cursor Agent", isAlias: false),
                 AgentConfig(name: "opencode", baseType: "opencode", description: "OpenCode Agent", isAlias: false),
             ]
-            : appState.availableAgents
+        } else {
+            // Filter out base agents that are hidden via workstation settings
+            return appState.availableAgents.filter { agent in
+                // If this is an alias, always show it
+                if agent.isAlias {
+                    return true
+                }
+                // If this is a base agent, only show it if not hidden
+                return !appState.hiddenBaseTypes.contains(agent.baseType)
+            }
+        }
     }
 
     /// Computed list of workspace names

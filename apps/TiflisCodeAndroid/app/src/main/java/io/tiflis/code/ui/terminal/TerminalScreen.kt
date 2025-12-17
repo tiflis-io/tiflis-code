@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -45,6 +46,7 @@ fun TerminalScreen(
     appState: AppState,
     sessionId: String,
     onMenuClick: () -> Unit,
+    onSessionTerminated: (() -> Unit)? = null,
     viewModel: TerminalViewModel = hiltViewModel()
 ) {
     val connectionState by appState.connectionState.collectAsState()
@@ -53,6 +55,10 @@ fun TerminalScreen(
 
     val session = appState.sessions.collectAsState().value.find { it.id == sessionId }
     val terminalState by viewModel.state.collectAsState()
+
+    // Menu state
+    var showMenu by remember { mutableStateOf(false) }
+    var showTerminateDialog by remember { mutableStateOf(false) }
 
     // Subscribe to terminal session on mount
     LaunchedEffect(sessionId) {
@@ -92,6 +98,23 @@ fun TerminalScreen(
                         isConnecting = connectionState.isConnecting,
                         workstationOnline = workstationOnline
                     )
+
+                    // Menu button with terminate option
+                    IconButton(onClick = { showMenu = true }) {
+                        Icon(Icons.Default.MoreVert, contentDescription = "More")
+                    }
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.session_terminate)) },
+                            onClick = {
+                                showMenu = false
+                                showTerminateDialog = true
+                            }
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color(0xFF1E1E1E)
@@ -231,5 +254,33 @@ fun TerminalScreen(
                 }
             }
         }
+    }
+
+    // Terminate session confirmation dialog
+    if (showTerminateDialog) {
+        AlertDialog(
+            onDismissRequest = { showTerminateDialog = false },
+            title = { Text(stringResource(R.string.session_terminate)) },
+            text = { Text(stringResource(R.string.session_terminate_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showTerminateDialog = false
+                        appState.terminateSession(sessionId)
+                        onSessionTerminated?.invoke()
+                    },
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Text(stringResource(R.string.action_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTerminateDialog = false }) {
+                    Text(stringResource(R.string.action_cancel))
+                }
+            }
+        )
     }
 }

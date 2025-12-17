@@ -65,6 +65,10 @@ class ConnectionService @Inject constructor(
     private val _availableAgents = MutableStateFlow<List<AgentConfig>>(emptyList())
     val availableAgents: StateFlow<List<AgentConfig>> = _availableAgents.asStateFlow()
 
+    // Base agent types that should be hidden (from workstation settings)
+    private val _hiddenBaseTypes = MutableStateFlow<List<String>>(emptyList())
+    val hiddenBaseTypes: StateFlow<List<String>> = _hiddenBaseTypes.asStateFlow()
+
     // Restored subscriptions (from reconnect)
     private val _restoredSubscriptions = MutableStateFlow<List<String>>(emptyList())
     val restoredSubscriptions: StateFlow<List<String>> = _restoredSubscriptions.asStateFlow()
@@ -304,6 +308,15 @@ class ConnectionService @Inject constructor(
         val agentsArray = payload["availableAgents"]?.jsonArray
         if (agentsArray != null) {
             _availableAgents.value = parseAgents(agentsArray)
+        }
+
+        // Parse hidden base types (from workstation settings)
+        val hiddenBaseTypesArray = payload["hiddenBaseTypes"]?.jsonArray
+        if (hiddenBaseTypesArray != null) {
+            val hiddenTypes = hiddenBaseTypesArray.map { 
+                it.jsonPrimitive.content 
+            }
+            _hiddenBaseTypes.value = hiddenTypes
         }
 
         // Emit sync.state for AppState to handle sessions and messages
