@@ -97,21 +97,9 @@ final class WatchAppState: ObservableObject {
 
         NSLog("⌚️ WatchAppState init: bindings set up")
 
-        // Handle initial connection setup in a deferred task
+        // Handle initial connection setup in a deferred task (no delay - credentials already checked)
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-
-            // Small delay to allow WatchConnectivity activation to complete
-            try? await Task.sleep(for: .milliseconds(100))
-
-            // Re-check credentials in case they were updated during activation
-            let currentHasCredentials = self.connectivityManager.hasCredentials
-            NSLog("⌚️ WatchAppState init task: currentHasCredentials=%d, self.hasCredentials=%d",
-                  currentHasCredentials ? 1 : 0, self.hasCredentials ? 1 : 0)
-
-            if currentHasCredentials != self.hasCredentials {
-                self.hasCredentials = currentHasCredentials
-            }
 
             if self.hasCredentials && self.connectionService == nil {
                 NSLog("⌚️ WatchAppState init task: credentials available, initializing connection service")

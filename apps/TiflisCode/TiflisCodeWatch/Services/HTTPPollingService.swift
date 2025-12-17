@@ -44,6 +44,9 @@ final class HTTPPollingService: ObservableObject {
 
     // Polling configuration
     private let pollIntervalSeconds: TimeInterval = 2.0
+    private let initialPollIntervalSeconds: TimeInterval = 0.3  // Faster polling during startup
+    private let initialPollCount: Int = 5  // Number of fast polls before switching to normal interval
+    private var pollCount: Int = 0  // Track poll iterations
     private let pollTimeoutSeconds: TimeInterval = 30.0
 
     private let urlSession: URLSession
@@ -225,6 +228,7 @@ final class HTTPPollingService: ObservableObject {
     /// Starts the polling loop
     private func startPolling() {
         pollingTask?.cancel()
+        pollCount = 0  // Reset poll count on new connection
 
         pollingTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -241,8 +245,13 @@ final class HTTPPollingService: ObservableObject {
                     }
                 }
 
-                // Wait before next poll
-                try? await Task.sleep(for: .seconds(self.pollIntervalSeconds))
+                // Use faster polling during startup, then switch to normal interval
+                self.pollCount += 1
+                let interval = self.pollCount <= self.initialPollCount
+                    ? self.initialPollIntervalSeconds
+                    : self.pollIntervalSeconds
+
+                try? await Task.sleep(for: .seconds(interval))
             }
         }
     }

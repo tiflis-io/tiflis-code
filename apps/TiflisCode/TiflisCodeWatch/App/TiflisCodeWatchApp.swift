@@ -41,15 +41,9 @@ struct TiflisCodeWatchApp: App {
                     watchLogger.error("⌚️ App .task started - hasCredentials=\(appState.hasCredentials)")
                     print("⌚️ [WATCH] App .task started - hasCredentials=\(appState.hasCredentials)")
 
-                    // Give activation a moment to complete
-                    try? await Task.sleep(for: .seconds(1))
-
-                    watchLogger.error("⌚️ App .task after sleep - hasCredentials=\(appState.hasCredentials), syncState=\(String(describing: connectivityManager.syncState))")
-                    print("⌚️ [WATCH] App .task after sleep - hasCredentials=\(appState.hasCredentials)")
-
-                    // Start credential sync with retry logic if needed
+                    // Start credential sync if needed (no delay - WatchAppState handles connection)
                     if !appState.hasCredentials {
-                        watchLogger.error("⌚️ App: No credentials after activation, starting sync with retries")
+                        watchLogger.error("⌚️ App: No credentials, starting sync with retries")
                         print("⌚️ [WATCH] No credentials, starting sync")
                         connectivityManager.startCredentialSync()
                     } else {
