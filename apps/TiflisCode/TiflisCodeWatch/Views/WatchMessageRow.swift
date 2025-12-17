@@ -67,15 +67,15 @@ struct WatchMessageBlockBubble: View {
             HStack(spacing: 4) {
                 Image(systemName: toolIcon(for: status))
                     .font(.system(size: 10))
-                    .foregroundStyle(toolColor(for: status))
+                    .foregroundStyle(.white)
                 Text(name)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.9))
             }
-            .padding(.vertical, 2)
-            .padding(.horizontal, 6)
-            .background(Color.secondary.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .background(toolBackgroundColor(for: status))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
         case .thinking(_, let text):
             HStack(alignment: .top, spacing: 4) {
@@ -140,6 +140,10 @@ struct WatchMessageBlockBubble: View {
                     .foregroundStyle(.red)
             }
 
+        case .voiceOutput(_, _, let audioId, let duration):
+            // Voice output with replay button
+            VoiceOutputButton(audioService: audioService, audioId: audioId, duration: duration)
+
         default:
             EmptyView()
         }
@@ -158,6 +162,14 @@ struct WatchMessageBlockBubble: View {
         case .running: return .blue
         case .completed: return .green
         case .failed: return .red
+        }
+    }
+
+    private func toolBackgroundColor(for status: ToolStatus) -> Color {
+        switch status {
+        case .running: return .blue.opacity(0.7)
+        case .completed: return .green.opacity(0.6)
+        case .failed: return .red.opacity(0.7)
         }
     }
 }
@@ -215,10 +227,7 @@ struct WatchMessageRow: View {
     // MARK: - Computed Properties
 
     private var displayBlocks: [MessageContentBlock] {
-        // Return message blocks, or create a placeholder if empty
-        if message.contentBlocks.isEmpty {
-            return [.text(id: "empty", text: "...")]
-        }
+        // Return message blocks, skip placeholder - streaming indicator handles empty state
         return message.contentBlocks
     }
 
@@ -264,15 +273,15 @@ struct WatchMessageRow: View {
             HStack(spacing: 4) {
                 Image(systemName: toolIcon(for: status))
                     .font(.system(size: 10))
-                    .foregroundStyle(toolColor(for: status))
+                    .foregroundStyle(.white)
                 Text(name)
                     .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.9))
             }
-            .padding(.vertical, 2)
-            .padding(.horizontal, 6)
-            .background(Color.secondary.opacity(0.15))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .background(toolBackgroundColor(for: status))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
 
         case .thinking(_, let text):
             HStack(alignment: .top, spacing: 4) {
@@ -357,14 +366,64 @@ struct WatchMessageRow: View {
         case .failed: return .red
         }
     }
+
+    private func toolBackgroundColor(for status: ToolStatus) -> Color {
+        switch status {
+        case .running: return .blue.opacity(0.7)
+        case .completed: return .green.opacity(0.6)
+        case .failed: return .red.opacity(0.7)
+        }
+    }
 }
 
-/// Button to replay voice output
+/// Compact voice output button for content blocks
+struct VoiceOutputButton: View {
+    @ObservedObject var audioService: WatchAudioService
+    let audioId: String
+    let duration: TimeInterval
+
+    var body: some View {
+        Button {
+            playAudio()
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: audioService.isPlaying ? "stop.fill" : "speaker.wave.2.fill")
+                    .font(.system(size: 10))
+                if duration > 0 {
+                    Text(formatDuration(duration))
+                        .font(.system(size: 10))
+                }
+            }
+            .foregroundStyle(.white)
+            .padding(.vertical, 3)
+            .padding(.horizontal, 8)
+            .background(Color.purple.opacity(0.7))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func playAudio() {
+        if audioService.isPlaying {
+            audioService.stopPlayback()
+        } else if let data = WatchAudioCache.shared.retrieve(forId: audioId) {
+            audioService.playAudio(data)
+        }
+    }
+
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let seconds = Int(duration)
+        if seconds < 60 {
+            return "\(seconds)s"
+        }
+        return "\(seconds / 60):\(String(format: "%02d", seconds % 60))"
+    }
+}
+
+/// Button to replay voice output (used in chat view for message.voiceOutput)
 struct VoicePlaybackButton: View {
     @ObservedObject var audioService: WatchAudioService
     let voiceOutput: (audioURL: URL?, text: String, duration: TimeInterval)
-
-    @State private var cachedAudioData: Data?
 
     var body: some View {
         Button {
@@ -373,8 +432,10 @@ struct VoicePlaybackButton: View {
             HStack(spacing: 4) {
                 Image(systemName: audioService.isPlaying ? "stop.fill" : "play.fill")
                     .font(.caption2)
-                Text(formatDuration(voiceOutput.duration))
-                    .font(.caption2)
+                if voiceOutput.duration > 0 {
+                    Text(formatDuration(voiceOutput.duration))
+                        .font(.caption2)
+                }
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 8)
@@ -390,9 +451,14 @@ struct VoicePlaybackButton: View {
             audioService.stopPlayback()
         } else if let url = voiceOutput.audioURL,
                   let data = try? Data(contentsOf: url) {
+            // Try URL first (legacy)
             audioService.playAudio(data)
-        } else if let data = cachedAudioData {
-            audioService.playAudio(data)
+        } else {
+            // Use audioId stored in text field to lookup from cache
+            let audioId = voiceOutput.text
+            if let data = WatchAudioCache.shared.retrieve(forId: audioId) {
+                audioService.playAudio(data)
+            }
         }
     }
 

@@ -661,10 +661,32 @@ final class WatchConnectionService {
         guard let payload = message["payload"] as? [String: Any],
               let audioBase64 = payload["audio"] as? String else { return }
 
-        // Decode audio and notify for playback
+        // Decode audio
         guard let audioData = Data(base64Encoded: audioBase64) else { return }
 
-        // Post notification for audio playback
+        let messageId = message["id"] as? String ?? UUID().uuidString
+        let duration = payload["duration"] as? Double ?? 0
+
+        // Save audio data for replay and add voice output block to message
+        let audioId = UUID().uuidString
+        WatchAudioCache.shared.store(audioData, forId: audioId)
+
+        // Create voice output block
+        let voiceOutputBlock = MessageContentBlock.voiceOutput(
+            id: audioId,
+            audioURL: nil,
+            text: audioId,  // Store audioId for cache lookup
+            duration: duration
+        )
+
+        // Add to last assistant message
+        if sessionId == "supervisor" {
+            appState?.appendBlockToLastAssistantMessage(voiceOutputBlock, sessionId: nil)
+        } else {
+            appState?.appendBlockToLastAssistantMessage(voiceOutputBlock, sessionId: sessionId)
+        }
+
+        // Post notification for auto-playback (if TTS enabled)
         NotificationCenter.default.post(
             name: NSNotification.Name("WatchTTSAudioReceived"),
             object: nil,
@@ -831,6 +853,12 @@ final class WatchConnectionService {
                 }
                 // If no transcription, show voice input indicator
                 return .voiceInput(id: id, audioURL: nil, transcription: transcription, duration: 0)
+
+            case "voice_output":
+                // Voice output - audio is stored in cache by audioId
+                let audioId = block["audio_id"] as? String ?? id
+                let duration = block["duration"] as? Double ?? 0
+                return .voiceOutput(id: id, audioURL: nil, text: audioId, duration: duration)
 
             default:
                 // Skip code, thinking blocks, etc. on watchOS

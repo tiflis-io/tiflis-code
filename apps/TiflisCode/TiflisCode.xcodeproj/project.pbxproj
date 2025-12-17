@@ -28,6 +28,7 @@
 		2D94D56EF7A819BA5ED836C5 /* ToolCallView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3FD7C551396E2EA2F4128B6C /* ToolCallView.swift */; };
 		2EC90A4214BF14D328792549 /* WatchConnectivityManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = E99334A7E71B1F5818678E80 /* WatchConnectivityManager.swift */; };
 		2F8AD653D7E32A6C580D46F2 /* WatchAudioService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F12733B4BF344D07AFDFBEC /* WatchAudioService.swift */; };
+		2F8AD653D7E32A6C580D46F3 /* WatchAudioCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F12733B4BF344D07AFDFBED /* WatchAudioCache.swift */; };
 		30B7BCCF3A6701E4F24563ED /* ChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F7E39FD3E80285CE5E52310 /* ChatView.swift */; };
 		374794E6BAE6E62146274000 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B5473A38F6C188E71D88D9AE /* Assets.xcassets */; };
 		3C4E352D636682EF9ABCE02C /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C2904D9A71D4757DFF1D2095 /* Assets.xcassets */; };
@@ -162,6 +163,7 @@
 		545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketMessage.swift; sourceTree = "<group>"; };
 		5A9D71621BD7959120729B16 /* CommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBuilder.swift; sourceTree = "<group>"; };
 		5F12733B4BF344D07AFDFBEC /* WatchAudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioService.swift; sourceTree = "<group>"; };
+		5F12733B4BF344D07AFDFBED /* WatchAudioCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioCache.swift; sourceTree = "<group>"; };
 		5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewUIKit.swift; sourceTree = "<group>"; };
 		5FB1BEED973DC537B7D26340 /* MessageSegmentBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSegmentBubble.swift; sourceTree = "<group>"; };
 		61A0F73A3CF29F80AC963CEB /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
@@ -296,6 +298,7 @@
 			isa = PBXGroup;
 			children = (
 				CCD312958BD4D17EC63CA9FE /* HTTPPollingService.swift */,
+				5F12733B4BF344D07AFDFBED /* WatchAudioCache.swift */,
 				5F12733B4BF344D07AFDFBEC /* WatchAudioService.swift */,
 				3C9931520835EDDB8D266F87 /* WatchConnectionService.swift */,
 				3A564D313B3BF0883B23384C /* WatchConnectivityManager.swift */,
@@ -760,6 +763,7 @@
 				4ECF9198A26A8B2EE60F36E7 /* TiflisCodeWatchApp.swift in Sources */,
 				248CF7C36370193C1B02FD8D /* View+Extensions.swift in Sources */,
 				63F277EA60B33B71A6081536 /* WatchAppState.swift in Sources */,
+				2F8AD653D7E32A6C580D46F3 /* WatchAudioCache.swift in Sources */,
 				2F8AD653D7E32A6C580D46F2 /* WatchAudioService.swift in Sources */,
 				846F7F698BC798193CF66B5F /* WatchChatView.swift in Sources */,
 				510D5569E7F2FE8B5A538880 /* WatchConnectionService.swift in Sources */,

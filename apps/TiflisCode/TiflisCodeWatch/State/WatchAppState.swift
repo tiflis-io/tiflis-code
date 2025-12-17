@@ -331,6 +331,23 @@ final class WatchAppState: ObservableObject {
         }
     }
 
+    /// Append a content block to the last assistant message (for voice output)
+    func appendBlockToLastAssistantMessage(_ block: MessageContentBlock, sessionId: String?) {
+        if sessionId == nil {
+            // Supervisor
+            if let lastIndex = supervisorMessages.lastIndex(where: { $0.role == .assistant }) {
+                supervisorMessages[lastIndex].contentBlocks.append(block)
+            }
+        } else if let sessionId = sessionId {
+            // Agent session
+            if var messages = agentMessages[sessionId],
+               let lastIndex = messages.lastIndex(where: { $0.role == .assistant }) {
+                messages[lastIndex].contentBlocks.append(block)
+                agentMessages[sessionId] = messages
+            }
+        }
+    }
+
     /// Get messages for a session
     func messages(for sessionId: String) -> [Message] {
         if sessionId == "supervisor" {
