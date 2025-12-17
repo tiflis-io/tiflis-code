@@ -20,6 +20,13 @@ final class HTTPPollingService: ObservableObject {
     @Published private(set) var workstationName: String?
     @Published private(set) var lastError: String?
 
+    // MARK: - Debug State (visible in UI when logs don't work)
+
+    @Published var debugLastPollTime: Date?
+    @Published var debugLastPollResult: String = "Not polled"
+    @Published var debugMessagesReceived: Int = 0
+    @Published var debugLastMessageType: String = "None"
+
     // MARK: - Message Publisher
 
     /// Publisher for received messages from the server
@@ -264,8 +271,12 @@ final class HTTPPollingService: ObservableObject {
             throw HTTPPollingError.invalidResponse
         }
 
+        // Update debug state
+        debugLastPollTime = Date()
+
         if httpResponse.statusCode == 200 {
             guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                debugLastPollResult = "Invalid JSON response"
                 return
             }
 
@@ -284,8 +295,14 @@ final class HTTPPollingService: ObservableObject {
 
             // Process messages
             if let messages = json["messages"] as? [[String: Any]] {
+                debugLastPollResult = "OK: \(messages.count) msgs, seq=\(currentSequence)"
+
                 for message in messages {
                     if let messageData = message["data"] as? [String: Any] {
+                        debugMessagesReceived += 1
+                        if let msgType = messageData["type"] as? String {
+                            debugLastMessageType = msgType
+                        }
                         messageSubject.send(messageData)
                     }
                 }
@@ -293,6 +310,8 @@ final class HTTPPollingService: ObservableObject {
                 if !messages.isEmpty {
                     NSLog("⌚️ HTTPPollingService: Received %d messages", messages.count)
                 }
+            } else {
+                debugLastPollResult = "OK: no messages array"
             }
         } else if httpResponse.statusCode == 404 {
             // Client not found - need to reconnect

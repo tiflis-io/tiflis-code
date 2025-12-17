@@ -7,11 +7,29 @@
 //
 
 import SwiftUI
+import os.log
+@preconcurrency import WatchConnectivity
+
+/// Unified logger for watchOS app - uses os_log which appears in Console.app
+/// Filter in Console.app: subsystem:io.tiflis.TiflisCodeWatch
+let watchLogger = Logger(subsystem: "io.tiflis.TiflisCodeWatch", category: "app")
 
 @main
 struct TiflisCodeWatchApp: App {
     @StateObject private var appState = WatchAppState()
     @StateObject private var connectivityManager = WatchConnectivityManager.shared
+
+    init() {
+        // Log at earliest possible moment using os_log with .error level (always visible)
+        // Note: .info and .debug are filtered by default on device/simulator
+        watchLogger.error("⌚️ TiflisCodeWatchApp init() - WCSession.isSupported=\(WCSession.isSupported())")
+
+        // Also use print which sometimes works in Xcode
+        print("⌚️ [WATCH] TiflisCodeWatchApp init() - WCSession.isSupported=\(WCSession.isSupported())")
+
+        // Activate WatchConnectivity immediately in init for fastest startup
+        WatchConnectivityManager.shared.activate()
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -19,16 +37,24 @@ struct TiflisCodeWatchApp: App {
                 .environmentObject(appState)
                 .environmentObject(connectivityManager)
                 .task {
-                    // Activate WatchConnectivity after app launches
-                    connectivityManager.activate()
+                    // Use .error level so logs are always visible (not filtered)
+                    watchLogger.error("⌚️ App .task started - hasCredentials=\(appState.hasCredentials)")
+                    print("⌚️ [WATCH] App .task started - hasCredentials=\(appState.hasCredentials)")
 
-                    // Wait for activation to complete (2 seconds is more reliable)
-                    try? await Task.sleep(for: .seconds(2))
+                    // Give activation a moment to complete
+                    try? await Task.sleep(for: .seconds(1))
+
+                    watchLogger.error("⌚️ App .task after sleep - hasCredentials=\(appState.hasCredentials), syncState=\(String(describing: connectivityManager.syncState))")
+                    print("⌚️ [WATCH] App .task after sleep - hasCredentials=\(appState.hasCredentials)")
 
                     // Start credential sync with retry logic if needed
                     if !appState.hasCredentials {
-                        NSLog("⌚️ App: No credentials after activation, starting sync with retries")
+                        watchLogger.error("⌚️ App: No credentials after activation, starting sync with retries")
+                        print("⌚️ [WATCH] No credentials, starting sync")
                         connectivityManager.startCredentialSync()
+                    } else {
+                        watchLogger.error("⌚️ App: Already have credentials, skipping sync")
+                        print("⌚️ [WATCH] Already have credentials")
                     }
                 }
         }

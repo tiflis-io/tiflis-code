@@ -40,6 +40,8 @@ targets:
       - path: TiflisCode/Resources/Info.plist
     dependencies:
       - package: SwiftTerm
+      - target: TiflisCodeWatch
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: io.tiflis.TiflisCode
@@ -96,10 +98,6 @@ targets:
         NSMicrophoneUsageDescription: "Microphone access is required to record voice commands for AI agents."
         WKApplication: true
         WKCompanionAppBundleIdentifier: io.tiflis.TiflisCode
-    dependencies:
-      - target: TiflisCode
-        embed: false
-        link: false
 
   TiflisCodeTests:
     type: bundle.unit-test

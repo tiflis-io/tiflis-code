@@ -136,12 +136,16 @@ struct WatchChatView: View {
     }
 
     private var messages: [Message] {
+        let msgs: [Message]
         switch destination {
         case .supervisor:
-            return appState.supervisorMessages
+            msgs = appState.supervisorMessages
+            NSLog("⌚️ WatchChatView.messages (supervisor): count=%d", msgs.count)
         case .agent(let session):
-            return appState.messages(for: session.id)
+            msgs = appState.messages(for: session.id)
+            NSLog("⌚️ WatchChatView.messages (agent %@): count=%d", session.id, msgs.count)
         }
+        return msgs
     }
 
     private var isLoading: Bool {

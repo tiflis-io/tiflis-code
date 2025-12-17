@@ -68,6 +68,37 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
         credentials?.isValid ?? false
     }
 
+    #if DEBUG
+    /// Debug: Returns description of WCSession activation state
+    var activationStateDescription: String {
+        guard let session = session else { return "no session" }
+        switch session.activationState {
+        case .notActivated: return "notActivated"
+        case .inactive: return "inactive"
+        case .activated: return "activated"
+        @unknown default: return "unknown"
+        }
+    }
+
+    /// Debug: Returns number of keys in receivedApplicationContext
+    var receivedContextKeyCount: Int {
+        session?.receivedApplicationContext.count ?? -1
+    }
+
+    /// Debug: Returns number of keys in shared App Group defaults
+    var sharedDefaultsKeyCount: Int {
+        guard let shared = sharedDefaults else { return -1 }
+        let url = shared.string(forKey: sharedTunnelURLKey) ?? ""
+        let id = shared.string(forKey: sharedTunnelIdKey) ?? ""
+        let key = shared.string(forKey: sharedAuthKeyKey) ?? ""
+        var count = 0
+        if !url.isEmpty { count += 1 }
+        if !id.isEmpty { count += 1 }
+        if !key.isEmpty { count += 1 }
+        return count
+    }
+    #endif
+
     // MARK: - Retry Configuration
 
     private let maxRetryAttempts = 8
@@ -86,13 +117,57 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
     private let ttsEnabledKey = "watch_ttsEnabled"
     private let sttLanguageKey = "watch_sttLanguage"
 
+    // App Group for shared storage (fallback for Simulator)
+    private let appGroupId = "group.io.tiflis.TiflisCode"
+    private var sharedDefaults: UserDefaults? {
+        UserDefaults(suiteName: appGroupId)
+    }
+
+    // Keys for App Group shared storage
+    private let sharedTunnelURLKey = "shared_tunnelURL"
+    private let sharedTunnelIdKey = "shared_tunnelId"
+    private let sharedAuthKeyKey = "shared_authKey"
+
     // MARK: - Initialization
 
     private override init() {
         self.userDefaults = .standard
         super.init()
+        NSLog("⌚️ WatchConnectivityManager init started")
         loadStoredCredentials()
         loadStoredSettings()
+
+        // Also check App Group shared defaults on init (for Simulator)
+        checkSharedDefaultsSync()
+        NSLog("⌚️ WatchConnectivityManager init completed, hasCredentials=%d", hasCredentials ? 1 : 0)
+    }
+
+    /// Synchronous check of App Group shared defaults (called from init)
+    private func checkSharedDefaultsSync() {
+        guard let shared = sharedDefaults else {
+            NSLog("⌚️ checkSharedDefaultsSync: could not access App Group defaults")
+            return
+        }
+
+        let tunnelURL = shared.string(forKey: sharedTunnelURLKey) ?? ""
+        let tunnelId = shared.string(forKey: sharedTunnelIdKey) ?? ""
+        let authKey = shared.string(forKey: sharedAuthKeyKey) ?? ""
+
+        NSLog("⌚️ checkSharedDefaultsSync: tunnelURL=%@, tunnelId=%@, authKey=%d chars",
+              tunnelURL.isEmpty ? "empty" : "present",
+              tunnelId.isEmpty ? "empty" : tunnelId,
+              authKey.count)
+
+        if !tunnelURL.isEmpty && !tunnelId.isEmpty && !authKey.isEmpty {
+            // Store directly without Task since we're in init
+            userDefaults.set(tunnelURL, forKey: tunnelURLKey)
+            userDefaults.set(tunnelId, forKey: tunnelIdKey)
+            userDefaults.set(authKey, forKey: authKeyKey)
+            userDefaults.synchronize()
+
+            credentials = WatchCredentials(tunnelURL: tunnelURL, tunnelId: tunnelId, authKey: authKey)
+            NSLog("⌚️ checkSharedDefaultsSync: credentials loaded from App Group!")
+        }
     }
 
     // MARK: - Public Methods
@@ -100,15 +175,85 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
     /// Activates WatchConnectivity session
     /// Call this from App init
     func activate() {
+        NSLog("⌚️ WatchConnectivityManager.activate() called")
+
         guard WCSession.isSupported() else {
-            print("⌚️ WatchConnectivity is not supported")
+            NSLog("⌚️ WatchConnectivity is not supported")
             return
         }
 
+        NSLog("⌚️ WCSession.isSupported() = true, activating...")
         session = WCSession.default
         session?.delegate = self
         session?.activate()
-        print("⌚️ WatchConnectivity session activating...")
+        NSLog("⌚️ WatchConnectivity session activate() called, waiting for delegate callback...")
+    }
+
+    /// Forces a check of application context for credentials
+    /// Call this if credentials haven't synced
+    func checkApplicationContext() {
+        NSLog("⌚️ checkApplicationContext called")
+
+        // First try WatchConnectivity context
+        if let session = session, session.activationState == .activated {
+            let context = session.receivedApplicationContext
+            NSLog("⌚️ checkApplicationContext: receivedApplicationContext has %d keys", context.count)
+
+            if !context.isEmpty {
+                let tunnelURL = context[WatchConnectivityKey.tunnelURL] as? String ?? ""
+                let tunnelId = context[WatchConnectivityKey.tunnelId] as? String ?? ""
+                let authKey = context[WatchConnectivityKey.authKey] as? String ?? ""
+
+                NSLog("⌚️ checkApplicationContext: tunnelURL=%@, tunnelId=%@, authKey=%d chars",
+                      tunnelURL.isEmpty ? "empty" : "present",
+                      tunnelId.isEmpty ? "empty" : tunnelId,
+                      authKey.count)
+
+                if !tunnelURL.isEmpty && !tunnelId.isEmpty && !authKey.isEmpty {
+                    let creds = WatchCredentials(tunnelURL: tunnelURL, tunnelId: tunnelId, authKey: authKey)
+                    Task { @MainActor in
+                        self.storeCredentials(creds)
+                        NSLog("⌚️ checkApplicationContext: credentials stored from WC context!")
+                    }
+                    return
+                }
+            }
+        } else {
+            NSLog("⌚️ checkApplicationContext: session not activated, skipping WC context check")
+        }
+
+        // Fallback: Check App Group shared defaults (works in Simulator)
+        checkSharedDefaults()
+    }
+
+    /// Checks App Group shared UserDefaults for credentials
+    /// This is a fallback for Simulator where WatchConnectivity is unreliable
+    func checkSharedDefaults() {
+        NSLog("⌚️ checkSharedDefaults called")
+
+        guard let shared = sharedDefaults else {
+            NSLog("⌚️ checkSharedDefaults: could not access App Group defaults")
+            return
+        }
+
+        let tunnelURL = shared.string(forKey: sharedTunnelURLKey) ?? ""
+        let tunnelId = shared.string(forKey: sharedTunnelIdKey) ?? ""
+        let authKey = shared.string(forKey: sharedAuthKeyKey) ?? ""
+
+        NSLog("⌚️ checkSharedDefaults: tunnelURL=%@, tunnelId=%@, authKey=%d chars",
+              tunnelURL.isEmpty ? "empty" : "present",
+              tunnelId.isEmpty ? "empty" : tunnelId,
+              authKey.count)
+
+        if !tunnelURL.isEmpty && !tunnelId.isEmpty && !authKey.isEmpty {
+            let creds = WatchCredentials(tunnelURL: tunnelURL, tunnelId: tunnelId, authKey: authKey)
+            Task { @MainActor in
+                self.storeCredentials(creds)
+                NSLog("⌚️ checkSharedDefaults: credentials stored from App Group!")
+            }
+        } else {
+            NSLog("⌚️ checkSharedDefaults: no valid credentials in shared defaults")
+        }
     }
 
     /// Requests credentials from iPhone
@@ -177,7 +322,10 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
         retryTask?.cancel()
         retryTask = nil
 
-        // If we already have credentials, no need to sync
+        // First, check application context directly (most reliable in Simulator)
+        checkApplicationContext()
+
+        // If we already have credentials after context check, no need to sync
         if hasCredentials {
             syncState = .success
             NSLog("⌚️ startCredentialSync: already have credentials")
@@ -206,10 +354,16 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
                 NSLog("⌚️ startCredentialSync: attempt %d/%d", attempt, self.maxRetryAttempts)
                 self.syncState = .syncing(attempt: attempt)
 
-                // Request credentials
-                self.requestCredentials()
+                // Try multiple methods:
+                // 1. Check application context again (may have been updated)
+                self.checkApplicationContext()
 
-                // Wait with exponential backoff (1s, 2s, 4s, 8s, 16s) capped at 30s
+                // 2. If still no credentials, request from iPhone
+                if !self.hasCredentials {
+                    self.requestCredentials()
+                }
+
+                // Wait with exponential backoff (0.5s, 1s, 2s, 4s...) capped at 30s
                 let delay = min(self.initialRetryDelay * pow(2.0, Double(attempt - 1)), 30.0)
                 NSLog("⌚️ startCredentialSync: waiting %.1fs before next attempt", delay)
 
@@ -509,6 +663,8 @@ extension WatchConnectivityManager: WCSessionDelegate {
             let contextKey = context[WatchConnectivityKey.authKey] as? String ?? ""
             NSLog("⌚️ Watch context details: tunnelURL=%@, tunnelId=%@, authKey=%d chars",
                   contextURL.isEmpty ? "empty" : "present", contextId, contextKey.count)
+        } else {
+            NSLog("⌚️ Watch: receivedApplicationContext is EMPTY")
         }
 
         Task { @MainActor in
@@ -560,6 +716,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        // Log immediately before MainActor dispatch
+        let msgType = message[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("⌚️ didReceiveMessage (no reply): type=%@, keys=%d", msgType, message.count)
+
         // Use nonisolated(unsafe) to bypass Sendable check for [String: Any]
         // This is safe because we immediately dispatch to MainActor
         nonisolated(unsafe) let messageCopy = message
@@ -574,6 +734,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
         didReceiveMessage message: [String: Any],
         replyHandler: @escaping ([String: Any]) -> Void
     ) {
+        // Log immediately before MainActor dispatch
+        let msgType = message[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("⌚️ didReceiveMessage (WITH reply): type=%@, keys=%d", msgType, message.count)
+
         // Use nonisolated(unsafe) to bypass Sendable check for [String: Any]
         nonisolated(unsafe) let messageCopy = message
 
@@ -586,6 +750,10 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
+        // Log immediately before MainActor dispatch
+        let msgType = userInfo[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("⌚️ didReceiveUserInfo: type=%@, keys=%d", msgType, userInfo.count)
+
         // Use nonisolated(unsafe) to bypass Sendable check for [String: Any]
         nonisolated(unsafe) let userInfoCopy = userInfo
 
@@ -598,6 +766,16 @@ extension WatchConnectivityManager: WCSessionDelegate {
         _ session: WCSession,
         didReceiveApplicationContext applicationContext: [String: Any]
     ) {
+        // Log immediately before MainActor dispatch
+        let tunnelURL = applicationContext[WatchConnectivityKey.tunnelURL] as? String ?? ""
+        let tunnelId = applicationContext[WatchConnectivityKey.tunnelId] as? String ?? ""
+        let authKey = applicationContext[WatchConnectivityKey.authKey] as? String ?? ""
+        NSLog("⌚️ didReceiveApplicationContext: keys=%d, tunnelURL=%@, tunnelId=%@, authKey=%d chars",
+              applicationContext.count,
+              tunnelURL.isEmpty ? "empty" : "present",
+              tunnelId.isEmpty ? "empty" : tunnelId,
+              authKey.count)
+
         // Use nonisolated(unsafe) to bypass Sendable check for [String: Any]
         nonisolated(unsafe) let contextCopy = applicationContext
 

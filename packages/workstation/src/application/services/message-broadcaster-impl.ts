@@ -88,15 +88,29 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
 
   /**
    * Sends a message to a specific client by device ID.
+   *
+   * Note: We always send to tunnel regardless of local registry state because:
+   * 1. HTTP polling clients (watchOS) don't authenticate with the workstation
+   *    - They only authenticate with the tunnel server
+   *    - The tunnel handles message queuing for HTTP clients
+   * 2. After workstation restart, WebSocket clients may still be connected to the tunnel
+   *    but not yet re-authenticated with the workstation
    */
   sendToClient(deviceId: string, message: string): boolean {
+    // Log for debugging
     const device = new DeviceId(deviceId);
     const client = this.deps.clientRegistry.getByDeviceId(device);
+    this.logger.info(
+      {
+        deviceId,
+        clientInRegistry: !!client,
+        clientAuthenticated: client?.isAuthenticated,
+        messagePreview: message.slice(0, 100),
+      },
+      "sendToClient - sending via tunnel (supports HTTP polling clients)"
+    );
 
-    if (!client?.isAuthenticated) {
-      return false;
-    }
-
+    // Always forward to tunnel - it knows about both WebSocket and HTTP polling clients
     return this.deps.tunnelClient.sendToDevice(deviceId, message);
   }
 

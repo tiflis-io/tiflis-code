@@ -19,7 +19,7 @@ final class WatchConnectionService {
     // MARK: - Dependencies
 
     private let connectivityManager: WatchConnectivityManager
-    private let httpPollingService: HTTPPollingService
+    let httpPollingService: HTTPPollingService  // Made public for debug access
     private weak var appState: WatchAppState?
     private let deviceIDManager: DeviceIDManaging
 
@@ -267,7 +267,7 @@ final class WatchConnectionService {
     /// Requests state sync from workstation
     func requestSync() async {
         let message: [String: Any] = [
-            "type": "sync.request",
+            "type": "sync",
             "id": UUID().uuidString
         ]
 
@@ -282,7 +282,13 @@ final class WatchConnectionService {
     // MARK: - Message Handling
 
     private func handleMessage(_ message: [String: Any]) {
-        guard let messageType = message["type"] as? String else { return }
+        guard let messageType = message["type"] as? String else {
+            appState?.debugLastMessageHandled = "No type field"
+            return
+        }
+
+        // Update debug state
+        appState?.debugLastMessageHandled = messageType
 
         switch messageType {
         case "sync.state":
@@ -330,6 +336,7 @@ final class WatchConnectionService {
 
     private func handleSyncState(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any] else {
+            appState?.debugLastSyncState = "No payload"
             NSLog("⌚️ WatchConnectionService: sync.state has no payload")
             return
         }
@@ -338,12 +345,24 @@ final class WatchConnectionService {
 
         // Handle sessions
         if let sessionsData = payload["sessions"] as? [[String: Any]] {
+            appState?.debugSyncSessionCount = sessionsData.count
             NSLog("⌚️ WatchConnectionService: sync.state has %d sessions", sessionsData.count)
+            var parsedSessions = 0
             for sessionData in sessionsData {
                 if let session = parseSession(sessionData) {
                     appState?.updateSession(session)
+                    parsedSessions += 1
                 }
             }
+            appState?.debugSyncParsedCount = parsedSessions
+            appState?.debugLastSyncState = "Sessions: \(sessionsData.count), Parsed: \(parsedSessions)"
+            NSLog("⌚️ WatchConnectionService: parsed and added %d agent sessions, appState.sessions.count=%d, agentSessions.count=%d",
+                  parsedSessions,
+                  appState?.sessions.count ?? -1,
+                  appState?.agentSessions.count ?? -1)
+        } else {
+            appState?.debugLastSyncState = "No sessions array"
+            NSLog("⌚️ WatchConnectionService: sync.state has NO sessions array!")
         }
 
         // Handle supervisor history
@@ -356,8 +375,10 @@ final class WatchConnectionService {
                     parsedCount += 1
                 }
             }
+            appState?.debugLastSyncState += ", SupervisorMsgs: \(parsedCount)"
             NSLog("⌚️ WatchConnectionService: parsed %d supervisor messages", parsedCount)
         } else {
+            appState?.debugLastSyncState += ", No supervisorHistory"
             NSLog("⌚️ WatchConnectionService: sync.state has no supervisorHistory")
         }
 
@@ -549,17 +570,32 @@ final class WatchConnectionService {
     // MARK: - Parsing Helpers
 
     private func parseSession(_ data: [String: Any]) -> Session? {
-        guard let sessionId = data["session_id"] as? String,
-              let sessionTypeStr = data["session_type"] as? String,
+        let sessionId = data["session_id"] as? String
+        let sessionTypeStr = data["session_type"] as? String
+
+        NSLog("⌚️ parseSession: session_id=%@, session_type=%@, all keys=%@",
+              sessionId ?? "nil",
+              sessionTypeStr ?? "nil",
+              data.keys.joined(separator: ", "))
+
+        guard let sessionId = sessionId,
+              let sessionTypeStr = sessionTypeStr,
               let sessionType = Session.SessionType(rawValue: sessionTypeStr) else {
+            NSLog("⌚️ parseSession: FAILED to parse - sessionId=%@, typeStr=%@",
+                  sessionId ?? "nil", sessionTypeStr ?? "nil")
             return nil
         }
 
         // Skip terminal sessions
-        guard sessionType.isAgent else { return nil }
+        guard sessionType.isAgent else {
+            NSLog("⌚️ parseSession: skipping non-agent session type=%@", sessionTypeStr)
+            return nil
+        }
 
         let statusStr = data["status"] as? String ?? "active"
         let status = Session.SessionStatus(rawValue: statusStr) ?? .active
+
+        NSLog("⌚️ parseSession: SUCCESS - creating Session id=%@, type=%@", sessionId, sessionTypeStr)
 
         return Session(
             id: sessionId,

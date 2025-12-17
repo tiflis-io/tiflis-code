@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+@preconcurrency import WatchConnectivity
 
 /// Setup view shown when no credentials are configured
 /// Instructs user to sync credentials from iPhone app
@@ -16,23 +17,21 @@ struct WatchSetupView: View {
 
     var body: some View {
         ScrollView {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
                 // App icon
                 Image("TiflisLogo")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 40, height: 40)
+                    .frame(width: 36, height: 36)
 
                 // Title
                 Text("Tiflis Code")
                     .font(.headline)
 
-                // Instructions
-                Text("Open the Tiflis Code app on your iPhone and connect to your workstation first.")
+                // Instructions - simplified
+                Text("Connect on iPhone first")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
 
                 // Sync status
                 syncStatusView
@@ -41,31 +40,64 @@ struct WatchSetupView: View {
                 Button {
                     connectivityManager.startCredentialSync()
                 } label: {
-                    HStack {
-                        if isSyncing {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                        } else {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                        }
-                        Text(syncButtonText)
-                    }
+                    Text(syncButtonText)
                 }
                 .disabled(isSyncing)
                 .buttonStyle(.borderedProminent)
 
-                // Error message
-                if let error = connectivityManager.credentialError {
-                    Text(error)
+                // Status indicator - simplified
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(connectivityManager.isPhoneReachable ? Color.green : Color.orange)
+                        .frame(width: 6, height: 6)
+                    Text(connectivityManager.isPhoneReachable ? "iPhone ready" : "Open iPhone app")
                         .font(.caption2)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
+                        .foregroundStyle(.secondary)
                 }
 
-                // Status indicators
-                statusIndicators
+                // Debug section
+                #if DEBUG
+                Divider()
+                    .padding(.vertical, 4)
+
+                VStack(spacing: 4) {
+                    Text("Debug Info")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    // Show activation state
+                    Text("WC: \(activationStateText)")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    // Show context key count
+                    Text("Ctx: \(contextKeyCount) keys")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.secondary)
+
+                    // Show App Group key count
+                    Text("AG: \(appGroupKeyCount)/3 keys")
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(appGroupKeyCount == 3 ? .green : .secondary)
+
+                    Button {
+                        connectivityManager.checkApplicationContext()
+                    } label: {
+                        Text("Check All")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.bordered)
+                }
+                #endif
             }
-            .padding()
+            .padding(.horizontal, 8)
+        }
+        .onAppear {
+            // Auto-start sync when setup view appears
+            NSLog("⌚️ WatchSetupView appeared, starting credential sync")
+            if !connectivityManager.hasCredentials {
+                connectivityManager.startCredentialSync()
+            }
         }
     }
 
@@ -89,6 +121,20 @@ struct WatchSetupView: View {
         }
     }
 
+    #if DEBUG
+    private var activationStateText: String {
+        connectivityManager.activationStateDescription
+    }
+
+    private var contextKeyCount: Int {
+        connectivityManager.receivedContextKeyCount
+    }
+
+    private var appGroupKeyCount: Int {
+        connectivityManager.sharedDefaultsKeyCount
+    }
+    #endif
+
     // MARK: - Subviews
 
     @ViewBuilder
@@ -100,7 +146,7 @@ struct WatchSetupView: View {
             HStack(spacing: 4) {
                 ProgressView()
                     .scaleEffect(0.6)
-                Text("Syncing (attempt \(attempt)/5)")
+                Text("Syncing (\(attempt)/8)")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -114,19 +160,6 @@ struct WatchSetupView: View {
         }
     }
 
-    private var statusIndicators: some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(connectivityManager.isPhoneReachable ? Color.green : Color.red)
-                    .frame(width: 6, height: 6)
-                Text(connectivityManager.isPhoneReachable ? "iPhone reachable" : "iPhone not reachable")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.top, 8)
-    }
 }
 
 #Preview {

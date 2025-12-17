@@ -31,6 +31,17 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
     private var session: WCSession?
     private let queue = DispatchQueue(label: "io.tiflis.WatchConnectivity", qos: .userInitiated)
 
+    // App Group for shared storage (fallback for Simulator)
+    private let appGroupId = "group.io.tiflis.TiflisCode"
+    private var sharedDefaults: UserDefaults? {
+        UserDefaults(suiteName: appGroupId)
+    }
+
+    // Keys for App Group shared storage
+    private let sharedTunnelURLKey = "shared_tunnelURL"
+    private let sharedTunnelIdKey = "shared_tunnelId"
+    private let sharedAuthKeyKey = "shared_authKey"
+
     // MARK: - Initialization
 
     private override init() {
@@ -138,14 +149,6 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
     }
 
     private func doUpdateApplicationContext() {
-        guard let session = session, session.activationState == .activated else {
-            NSLog("📱 Cannot update context: session not activated")
-            return
-        }
-
-        // Don't check isPaired or isWatchAppInstalled - they may report incorrectly
-        // Just try to update and handle error if it fails
-
         let tunnelURL = UserDefaults.standard.string(forKey: "tunnelURL") ?? ""
         let tunnelId = UserDefaults.standard.string(forKey: "tunnelId") ?? ""
         let authKey = KeychainManager().getAuthKey() ?? ""
@@ -154,6 +157,22 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
 
         NSLog("📱 Preparing context: tunnelURL=%@, tunnelId=%@, authKey=%d chars",
               tunnelURL.isEmpty ? "empty" : "present", tunnelId, authKey.count)
+
+        // Also write to App Group shared defaults (fallback for Simulator)
+        if let shared = sharedDefaults {
+            shared.set(tunnelURL, forKey: sharedTunnelURLKey)
+            shared.set(tunnelId, forKey: sharedTunnelIdKey)
+            shared.set(authKey, forKey: sharedAuthKeyKey)
+            shared.synchronize()
+            NSLog("📱 Credentials written to App Group shared defaults")
+        } else {
+            NSLog("📱 WARNING: Could not access App Group shared defaults")
+        }
+
+        guard let session = session, session.activationState == .activated else {
+            NSLog("📱 Cannot update WC context: session not activated")
+            return
+        }
 
         let context: [String: Any] = [
             WatchConnectivityKey.tunnelURL: tunnelURL,
@@ -179,6 +198,9 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
             return
         }
 
+        let msgType = message[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("📱 Sending message: type=%@, isReachable=%d", msgType, session.isReachable ? 1 : 0)
+
         // Always try sendMessage first, fall back to transferUserInfo on error
         // Don't rely on isReachable as it may report false even when Watch is reachable
         session.sendMessage(message, replyHandler: nil) { [weak self] error in
@@ -186,7 +208,7 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
             // Fall back to transferUserInfo which queues for delivery
             self?.session?.transferUserInfo(message)
         }
-        NSLog("📱 Message sent via sendMessage")
+        NSLog("📱 Message sent via sendMessage (type=%@)", msgType)
     }
 
     private func handleCredentialsRequest(replyHandler: (([String: Any]) -> Void)?) {
@@ -298,20 +320,23 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
-        NSLog("📱 didReceiveMessage (no reply): %d keys", message.count)
+        let msgType = message[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("📱 didReceiveMessage (no reply): type=%@, keys=%d", msgType, message.count)
 
         guard let messageType = WatchConnectivityMessage.messageType(from: message) else {
             NSLog("📱 Unknown message type")
             return
         }
 
-        NSLog("📱 Message type: %@", messageType.rawValue)
+        NSLog("📱 Processing message type: %@", messageType.rawValue)
 
         switch messageType {
         case .credentialsRequest:
+            NSLog("📱 Received credentials request from Watch, handling...")
             handleCredentialsRequest(replyHandler: nil)
 
         default:
+            NSLog("📱 Ignoring message type: %@", messageType.rawValue)
             break
         }
     }
@@ -366,20 +391,23 @@ extension WatchConnectivityManager: WCSessionDelegate {
     }
 
     func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any]) {
-        NSLog("📱 didReceiveUserInfo: %d keys", userInfo.count)
+        let msgType = userInfo[WatchConnectivityKey.messageType] as? String ?? "no-type"
+        NSLog("📱 didReceiveUserInfo: type=%@, keys=%d", msgType, userInfo.count)
 
         guard let messageType = WatchConnectivityMessage.messageType(from: userInfo) else {
             NSLog("📱 Unknown userInfo type")
             return
         }
 
-        NSLog("📱 UserInfo type: %@", messageType.rawValue)
+        NSLog("📱 Processing userInfo type: %@", messageType.rawValue)
 
         switch messageType {
         case .credentialsRequest:
+            NSLog("📱 Received credentials request from Watch (via userInfo), handling...")
             handleCredentialsRequest(replyHandler: nil)
 
         default:
+            NSLog("📱 Ignoring userInfo type: %@", messageType.rawValue)
             break
         }
     }

@@ -60,6 +60,14 @@ final class WatchAppState: ObservableObject {
     /// STT language (synced from iPhone)
     @Published var sttLanguage: String = "en"
 
+    // MARK: - Debug State (visible in UI when logs don't work)
+
+    @Published var debugAppStartTime: Date = Date()
+    @Published var debugLastSyncState: String = "No sync received"
+    @Published var debugSyncSessionCount: Int = 0
+    @Published var debugSyncParsedCount: Int = 0
+    @Published var debugLastMessageHandled: String = "None"
+
     // MARK: - Dependencies
 
     let connectivityManager: WatchConnectivityManager

@@ -3,26 +3,22 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 63;
+	objectVersion = 77;
 	objects = {
 
 /* Begin PBXBuildFile section */
-		03096CEE78C5496D95D853E6 /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */; };
-		7CFFD4553D874BF9B5AA0F9E /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */; };
-		D9200F27C4EA41BAB283138D /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3838ABB07245BD85DA444C /* CommandSending.swift */; };
-		4535D54918294C90A5FAEA71 /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B3838ABB07245BD85DA444C /* CommandSending.swift */; };
-		C5F25969E2D34929927FB092 /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CDE89646F44D468869622D /* CommandSender.swift */; };
-		C2F7B7E8DD824497842CFDA9 /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CDE89646F44D468869622D /* CommandSender.swift */; };
-		3B0AAB647A674C2EAE77EB67 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */; };
-		FEF04DB792854124B0CCC667 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */; };
 		050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
+		07B747C219E03769286FCADA /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAC46AC5C7CF41A0321EEC3A /* CommandSending.swift */; };
 		08E1CCC679862E9ABCDF6A8C /* CancelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B805F2C22BC3492A11AE6942 /* CancelView.swift */; };
 		0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		0D93AD3E6B27DD6926A57C43 /* AgentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5E70F9FE87A722D9D13259 /* AgentType.swift */; };
+		114BB6B09B63B678D0DB2CFD /* MessageSegmentBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5FB1BEED973DC537B7D26340 /* MessageSegmentBubble.swift */; };
+		18D2447B87268C85C9393F3F /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAC46AC5C7CF41A0321EEC3A /* CommandSending.swift */; };
 		1AA46119450009A543FBD9D1 /* ConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD369F38E321907820448CEA /* ConnectionService.swift */; };
 		1B174E3F83C8F8A8BEEE4C20 /* ActionButtonsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E5D56168CEFA7749CEDF1697 /* ActionButtonsView.swift */; };
 		1C47FE55685B1E3B62D07552 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5E7DEF52A06D185EC483DC /* Session.swift */; };
 		1ED835F5ACD35D2D732EEE62 /* KeyboardTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A58729FE7BEAFC8D368635F3 /* KeyboardTheme.swift */; };
+		1FEF5A538B3CBB29DBED3539 /* MessageSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9B28358B2BC9B75A5A9A85C /* MessageSplitter.swift */; };
 		227135E2C952F99070A1B795 /* WatchConnectivityProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE992A7B1CC8D0EE90701C5 /* WatchConnectivityProtocol.swift */; };
 		248CF7C36370193C1B02FD8D /* View+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */; };
 		29B5D73E4900554B45E33C6D /* ConnectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD369F38E321907820448CEA /* ConnectionService.swift */; };
@@ -49,15 +45,15 @@
 		5496CA4F56413377B69CD14A /* WatchConnectivityProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAE992A7B1CC8D0EE90701C5 /* WatchConnectivityProtocol.swift */; };
 		5607EE86E132A6B3016D3FE2 /* ErrorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6F7302C908845E1CDC4EB29 /* ErrorView.swift */; };
 		630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */; };
-		AA1B2C3D4E5F6A7B8C9D0E1F /* MessageSplitter.swift in Sources */ = {isa = PBXBuildFile; fileRef = BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */; };
-		CC3D4E5F6A7B8C9D0E1F2A3B /* MessageSegmentBubble.swift in Sources */ = {isa = PBXBuildFile; fileRef = DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */; };
 		63F277EA60B33B71A6081536 /* WatchAppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42E32699B7F1F374845E25B8 /* WatchAppState.swift */; };
 		6A038B6789808CF20CD61768 /* SwiftTerm in Frameworks */ = {isa = PBXBuildFile; productRef = 5A15037F4628204D7C405F29 /* SwiftTerm */; };
 		6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */; };
 		70A77CCF3CED2FF7CD4CE34A /* MessageContentBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5054E9EFCEE85C0182BD5D /* MessageContentBlock.swift */; };
+		7529F5D406D6A8638BD2E797 /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50742433ABF0EB4FA817D389 /* CommandSendError.swift */; };
 		7B167969FE14DD38AD0387B4 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
 		7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45A48D49667369980A068E8 /* TerminalView.swift */; };
 		7E0C0A236161F8340AB76CA0 /* TerminalToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E763AC6E5F196C7C42A88923 /* TerminalToolbarView.swift */; };
+		7ED799C96E1C58CC78FB9EBB /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F496AA6368BADD108C7D926E /* CommandSender.swift */; };
 		82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */; };
 		8444949C9D527E419E60EBB7 /* WatchVoiceButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 662E4751826225CE9F94787D /* WatchVoiceButton.swift */; };
 		846F7F698BC798193CF66B5F /* WatchChatView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C264C54F8BEDA2BE5CA4A7E2 /* WatchChatView.swift */; };
@@ -66,6 +62,8 @@
 		9559DBF6D3103DC1C33E4D3F /* AudioPlayerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = CF7FB38C60FD30624BF8960E /* AudioPlayerService.swift */; };
 		9596525844BF9D74BB0175AA /* WatchRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CA25CE2D696FA9BD6310BE1 /* WatchRootView.swift */; };
 		969E91845091999E9CC51677 /* CodeBlockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CA73AD70C740907E24776F1 /* CodeBlockView.swift */; };
+		9778711E61F97B26A58F4CFF /* CommandSender.swift in Sources */ = {isa = PBXBuildFile; fileRef = F496AA6368BADD108C7D926E /* CommandSender.swift */; };
+		9C45B42BBFA9B0B2119F292D /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50742433ABF0EB4FA817D389 /* CommandSendError.swift */; };
 		9C490649F3DE5C1A53AE52D6 /* ThinkingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E143932AFF8ABAA6E142C2 /* ThinkingView.swift */; };
 		A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
 		A61CAD060921D84F841049E2 /* WebSocketClientProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */; };
@@ -83,8 +81,10 @@
 		C431D4E024DC3D9EB732D86D /* AgentType.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5E70F9FE87A722D9D13259 /* AgentType.swift */; };
 		C83E4E3EB0AB84B4B385DFD7 /* KeychainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1EB369A0324105A5DCC91A1C /* KeychainManager.swift */; };
 		C858E0EBC178B965250B2FF0 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1075CEFB65E42C5562E167F /* ContentView.swift */; };
+		CC614C6786CAEC6914E04B84 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9D71621BD7959120729B16 /* CommandBuilder.swift */; };
 		CCBF881D51D0ABF034C60A9D /* WatchMessageRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD64D65FF6BE103A4950E8D9 /* WatchMessageRow.swift */; };
 		CCDB23AA6683E34A83E54A2C /* DeviceIDManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */; };
+		CEA4F470D4AED4E1D2E3BCC0 /* CommandBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A9D71621BD7959120729B16 /* CommandBuilder.swift */; };
 		D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */; };
 		D1AD39526D5B100BD5089976 /* Session.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A5E7DEF52A06D185EC483DC /* Session.swift */; };
 		D324496E9B7BA86A95C06CA3 /* StatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB05908B6D9DF22B91DD2ABC /* StatusView.swift */; };
@@ -97,19 +97,13 @@
 		EC17615E8319BC4A21B44D71 /* ContentParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32E60A01A6CD8188BE8F9028 /* ContentParser.swift */; };
 		EF26B7A50383107003FBE8D6 /* AudioRecorderService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9198101A018669751B8947F9 /* AudioRecorderService.swift */; };
 		F05D50732CB17199DA7B2972 /* Message.swift in Sources */ = {isa = PBXBuildFile; fileRef = F742B2C565A5712825647601 /* Message.swift */; };
+		F4B039582BF22BCA6998568F /* TiflisCodeWatch.app in Embed Watch Content */ = {isa = PBXBuildFile; fileRef = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		F780D9AF3F8218D3D1EEFD4F /* WatchSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6DF8B8F6B2AACB452B39D30 /* WatchSetupView.swift */; };
 		F98803747A1C889C9EF80109 /* WebSocketMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */; };
 		FF9E20D2913903915F7B3D09 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C734ED3376BD4F3D6E4488D /* QRScannerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		08BBB2CC15F219C153E8F8E6 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 53E2D679081C5CF973E01199;
-			remoteInfo = TiflisCode;
-		};
 		2DDF79AA52FD3E783A28DB2F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
@@ -124,13 +118,30 @@
 			remoteGlobalIDString = 53E2D679081C5CF973E01199;
 			remoteInfo = TiflisCode;
 		};
+		D83B1E96AC9E818B7737BAD5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CA542FD336ED9AFE20E6AA41;
+			remoteInfo = TiflisCodeWatch;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		465485B125F1BC9E60C64A9C /* Embed Watch Content */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "$(CONTENTS_FOLDER_PATH)/Watch";
+			dstSubfolderSpec = 16;
+			files = (
+				F4B039582BF22BCA6998568F /* TiflisCodeWatch.app in Embed Watch Content */,
+			);
+			name = "Embed Watch Content";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
-		F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSendError.swift; sourceTree = "<group>"; };
-		9B3838ABB07245BD85DA444C /* CommandSending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSending.swift; sourceTree = "<group>"; };
-		F1CDE89646F44D468869622D /* CommandSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSender.swift; sourceTree = "<group>"; };
-		CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBuilder.swift; sourceTree = "<group>"; };
 		0879370583002DA2D718CF50 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		0B4CC7A25F1ECFCBEA3CAD66 /* TiflisCodeWatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeWatchApp.swift; sourceTree = "<group>"; };
 		0C734ED3376BD4F3D6E4488D /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
@@ -147,16 +158,19 @@
 		42E32699B7F1F374845E25B8 /* WatchAppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAppState.swift; sourceTree = "<group>"; };
 		4A14553D8E8D069DA83944B0 /* TerminalStateOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalStateOverlay.swift; sourceTree = "<group>"; };
 		4A8C48EAEB341ACC38458001 /* KeyboardKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardKey.swift; sourceTree = "<group>"; };
+		50742433ABF0EB4FA817D389 /* CommandSendError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSendError.swift; sourceTree = "<group>"; };
 		545632D8FA9BF801E2F014A6 /* WebSocketMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebSocketMessage.swift; sourceTree = "<group>"; };
+		5A9D71621BD7959120729B16 /* CommandBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandBuilder.swift; sourceTree = "<group>"; };
 		5F12733B4BF344D07AFDFBEC /* WatchAudioService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioService.swift; sourceTree = "<group>"; };
 		5F6919CCC5C9AEDBA31B5CF5 /* TerminalViewUIKit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewUIKit.swift; sourceTree = "<group>"; };
+		5FB1BEED973DC537B7D26340 /* MessageSegmentBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSegmentBubble.swift; sourceTree = "<group>"; };
 		61A0F73A3CF29F80AC963CEB /* CrashReporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashReporter.swift; sourceTree = "<group>"; };
 		65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "String+Extensions.swift"; sourceTree = "<group>"; };
 		662E4751826225CE9F94787D /* WatchVoiceButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchVoiceButton.swift; sourceTree = "<group>"; };
 		68528358025709970E234FF0 /* TiflisCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeUITests.swift; sourceTree = "<group>"; };
 		6A5E7DEF52A06D185EC483DC /* Session.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Session.swift; sourceTree = "<group>"; };
 		6F02585A36CABA3FD2DF7229 /* DeviceIDManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceIDManager.swift; sourceTree = "<group>"; };
-		723A2D053CB58A252A985D76 /* Tiflis Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		723A2D053CB58A252A985D76 /* TiflisCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TiflisCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		79E143932AFF8ABAA6E142C2 /* ThinkingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingView.swift; sourceTree = "<group>"; };
 		7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
 		7CA73AD70C740907E24776F1 /* CodeBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockView.swift; sourceTree = "<group>"; };
@@ -166,12 +180,10 @@
 		8D26075E60296AACB4B12EC3 /* TiflisCode.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TiflisCode.entitlements; sourceTree = "<group>"; };
 		8DE949D05B4F58E37665751F /* TiflisCodeWatch.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TiflisCodeWatch.entitlements; sourceTree = "<group>"; };
 		9198101A018669751B8947F9 /* AudioRecorderService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioRecorderService.swift; sourceTree = "<group>"; };
-		96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tiflis Code Watch.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TiflisCodeWatch.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9CA25CE2D696FA9BD6310BE1 /* WatchRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRootView.swift; sourceTree = "<group>"; };
 		9F7E39FD3E80285CE5E52310 /* ChatView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChatView.swift; sourceTree = "<group>"; };
 		A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageBubble.swift; sourceTree = "<group>"; };
-		BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSplitter.swift; sourceTree = "<group>"; };
-		DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSegmentBubble.swift; sourceTree = "<group>"; };
 		A58729FE7BEAFC8D368635F3 /* KeyboardTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardTheme.swift; sourceTree = "<group>"; };
 		A59B45A0EBC9A24221BF78BF /* WatchSessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSessionListView.swift; sourceTree = "<group>"; };
 		ADED53C77EDCB0FC57714BF9 /* CrashLogView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CrashLogView.swift; sourceTree = "<group>"; };
@@ -191,6 +203,7 @@
 		D20190820F4474054253D38F /* TerminalContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalContentView.swift; sourceTree = "<group>"; };
 		D36AF85F9A8F1B9FD4C87979 /* SidebarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SidebarView.swift; sourceTree = "<group>"; };
 		DA4B8979F0BB2C2BBEEAD46A /* ConnectionIndicator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionIndicator.swift; sourceTree = "<group>"; };
+		DAC46AC5C7CF41A0321EEC3A /* CommandSending.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSending.swift; sourceTree = "<group>"; };
 		DAE992A7B1CC8D0EE90701C5 /* WatchConnectivityProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchConnectivityProtocol.swift; sourceTree = "<group>"; };
 		DD369F38E321907820448CEA /* ConnectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionService.swift; sourceTree = "<group>"; };
 		E0E3BC13F2DC4C86D7C4809D /* Color+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Color+Extensions.swift"; sourceTree = "<group>"; };
@@ -206,8 +219,10 @@
 		EEFB352247A4D4566C00A9EB /* TiflisCodeApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TiflisCodeApp.swift; sourceTree = "<group>"; };
 		F1075CEFB65E42C5562E167F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		F155610A06E7271BC7F04751 /* WatchMainView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMainView.swift; sourceTree = "<group>"; };
+		F496AA6368BADD108C7D926E /* CommandSender.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommandSender.swift; sourceTree = "<group>"; };
 		F6DF8B8F6B2AACB452B39D30 /* WatchSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSetupView.swift; sourceTree = "<group>"; };
 		F742B2C565A5712825647601 /* Message.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Message.swift; sourceTree = "<group>"; };
+		F9B28358B2BC9B75A5A9A85C /* MessageSplitter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MessageSplitter.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -230,9 +245,9 @@
 				7CA73AD70C740907E24776F1 /* CodeBlockView.swift */,
 				B6F7302C908845E1CDC4EB29 /* ErrorView.swift */,
 				A302E8671CD5F46BEB2042F8 /* MessageBubble.swift */,
-				DD4E5F6A7B8C9D0E1F2A3B4C /* MessageSegmentBubble.swift */,
-				BB2C3D4E5F6A7B8C9D0E1F2A /* MessageSplitter.swift */,
 				E66E4FC156D6B0054B2BCBA7 /* MessageContentView.swift */,
+				5FB1BEED973DC537B7D26340 /* MessageSegmentBubble.swift */,
+				F9B28358B2BC9B75A5A9A85C /* MessageSplitter.swift */,
 				861C8E9521B9F35E6255C252 /* PromptInputBar.swift */,
 				EB05908B6D9DF22B91DD2ABC /* StatusView.swift */,
 				79E143932AFF8ABAA6E142C2 /* ThinkingView.swift */,
@@ -299,8 +314,8 @@
 		339E88F4A771837E1D7CB66F /* Models */ = {
 			isa = PBXGroup;
 			children = (
-				F4A0CAD9619C4A09B9455FF9 /* CommandSendError.swift */,
 				8C5E70F9FE87A722D9D13259 /* AgentType.swift */,
+				50742433ABF0EB4FA817D389 /* CommandSendError.swift */,
 				3E96900D8413F72E4B064E10 /* ConnectionState.swift */,
 				F742B2C565A5712825647601 /* Message.swift */,
 				8C5054E9EFCEE85C0182BD5D /* MessageContentBlock.swift */,
@@ -374,10 +389,10 @@
 		646CCDD1563EEEC96ACC3776 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				723A2D053CB58A252A985D76 /* Tiflis Code.app */,
+				723A2D053CB58A252A985D76 /* TiflisCode.app */,
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
-				96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */,
+				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -471,9 +486,9 @@
 		A01EF65F15C0494100BD754D /* WebSocket */ = {
 			isa = PBXGroup;
 			children = (
-				CEB8DE06BCD54C988CE9902B /* CommandBuilder.swift */,
-				F1CDE89646F44D468869622D /* CommandSender.swift */,
-				9B3838ABB07245BD85DA444C /* CommandSending.swift */,
+				5A9D71621BD7959120729B16 /* CommandBuilder.swift */,
+				F496AA6368BADD108C7D926E /* CommandSender.swift */,
+				DAC46AC5C7CF41A0321EEC3A /* CommandSending.swift */,
 				DD369F38E321907820448CEA /* ConnectionService.swift */,
 				CFF8D1A97BF593C89C2A1138 /* WebSocketClient.swift */,
 				B901014CBF1D74AB8CD0A354 /* WebSocketClientProtocol.swift */,
@@ -627,17 +642,19 @@
 				91D2533F4F7AD0DC2D994E24 /* Sources */,
 				CDCAE4CEA8C8F63DAC40AEED /* Resources */,
 				054A1F3CD484DA9DB028218D /* Frameworks */,
+				465485B125F1BC9E60C64A9C /* Embed Watch Content */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				E1F1D55DBEB14C59EC50B3CE /* PBXTargetDependency */,
 			);
 			name = TiflisCode;
 			packageProductDependencies = (
 				5A15037F4628204D7C405F29 /* SwiftTerm */,
 			);
 			productName = TiflisCode;
-			productReference = 723A2D053CB58A252A985D76 /* Tiflis Code.app */;
+			productReference = 723A2D053CB58A252A985D76 /* TiflisCode.app */;
 			productType = "com.apple.product-type.application";
 		};
 		CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */ = {
@@ -650,13 +667,12 @@
 			buildRules = (
 			);
 			dependencies = (
-				F51173BA9CF6087D2AE8D5C0 /* PBXTargetDependency */,
 			);
 			name = TiflisCodeWatch;
 			packageProductDependencies = (
 			);
 			productName = TiflisCodeWatch;
-			productReference = 96BDC92482CBE5D5BFCEC3D5 /* Tiflis Code Watch.app */;
+			productReference = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -675,6 +691,12 @@
 					44349C86ACAAA7C5BEDB2B6A = {
 						DevelopmentTeam = "";
 					};
+					53E2D679081C5CF973E01199 = {
+						DevelopmentTeam = "";
+					};
+					CA542FD336ED9AFE20E6AA41 = {
+						DevelopmentTeam = "";
+					};
 				};
 			};
 			buildConfigurationList = 1A7E425D9B9123ADB9A7C702 /* Build configuration list for PBXProject "TiflisCode" */;
@@ -690,6 +712,7 @@
 			packageReferences = (
 				A6A74FE6382F8B6CF05A2CEF /* XCRemoteSwiftPackageReference "SwiftTerm" */,
 			);
+			preferredProjectObjectVersion = 77;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
@@ -728,6 +751,10 @@
 			files = (
 				C431D4E024DC3D9EB732D86D /* AgentType.swift in Sources */,
 				47D6326E2EF6BF3C758A0916 /* Color+Extensions.swift in Sources */,
+				CEA4F470D4AED4E1D2E3BCC0 /* CommandBuilder.swift in Sources */,
+				7529F5D406D6A8638BD2E797 /* CommandSendError.swift in Sources */,
+				9778711E61F97B26A58F4CFF /* CommandSender.swift in Sources */,
+				18D2447B87268C85C9393F3F /* CommandSending.swift in Sources */,
 				29B5D73E4900554B45E33C6D /* ConnectionService.swift in Sources */,
 				050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */,
 				CCDB23AA6683E34A83E54A2C /* DeviceIDManager.swift in Sources */,
@@ -752,10 +779,6 @@
 				F780D9AF3F8218D3D1EEFD4F /* WatchSetupView.swift in Sources */,
 				8444949C9D527E419E60EBB7 /* WatchVoiceButton.swift in Sources */,
 				A24347BF84D3A86C0A79ED7C /* WebSocketClient.swift in Sources */,
-				03096CEE78C5496D95D853E6 /* CommandSendError.swift in Sources */,
-				D9200F27C4EA41BAB283138D /* CommandSending.swift in Sources */,
-				C5F25969E2D34929927FB092 /* CommandSender.swift in Sources */,
-				3B0AAB647A674C2EAE77EB67 /* CommandBuilder.swift in Sources */,
 				A61CAD060921D84F841049E2 /* WebSocketClientProtocol.swift in Sources */,
 				DBF5E596AC5FA8C67D5824CC /* WebSocketMessage.swift in Sources */,
 			);
@@ -783,6 +806,10 @@
 				6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */,
 				969E91845091999E9CC51677 /* CodeBlockView.swift in Sources */,
 				E16803E23F9EF5B26E9F5397 /* Color+Extensions.swift in Sources */,
+				CC614C6786CAEC6914E04B84 /* CommandBuilder.swift in Sources */,
+				9C45B42BBFA9B0B2119F292D /* CommandSendError.swift in Sources */,
+				7ED799C96E1C58CC78FB9EBB /* CommandSender.swift in Sources */,
+				07B747C219E03769286FCADA /* CommandSending.swift in Sources */,
 				82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */,
 				1AA46119450009A543FBD9D1 /* ConnectionService.swift in Sources */,
 				0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */,
@@ -797,10 +824,10 @@
 				C83E4E3EB0AB84B4B385DFD7 /* KeychainManager.swift in Sources */,
 				F05D50732CB17199DA7B2972 /* Message.swift in Sources */,
 				630D198D5274837956CFFB12 /* MessageBubble.swift in Sources */,
-				CC3D4E5F6A7B8C9D0E1F2A3B /* MessageSegmentBubble.swift in Sources */,
-				AA1B2C3D4E5F6A7B8C9D0E1F /* MessageSplitter.swift in Sources */,
 				E134B360B8876346342FA484 /* MessageContentBlock.swift in Sources */,
 				BE7FD40F3B033EB39C753F1E /* MessageContentView.swift in Sources */,
+				114BB6B09B63B678D0DB2CFD /* MessageSegmentBubble.swift in Sources */,
+				1FEF5A538B3CBB29DBED3539 /* MessageSplitter.swift in Sources */,
 				4DFE844E46CDAA43FD6718AB /* PromptInputBar.swift in Sources */,
 				FF9E20D2913903915F7B3D09 /* QRScannerView.swift in Sources */,
 				1C47FE55685B1E3B62D07552 /* Session.swift in Sources */,
@@ -822,10 +849,6 @@
 				2EC90A4214BF14D328792549 /* WatchConnectivityManager.swift in Sources */,
 				5496CA4F56413377B69CD14A /* WatchConnectivityProtocol.swift in Sources */,
 				D0486C5A7B817C72B050A33F /* WebSocketClient.swift in Sources */,
-				7CFFD4553D874BF9B5AA0F9E /* CommandSendError.swift in Sources */,
-				4535D54918294C90A5FAEA71 /* CommandSending.swift in Sources */,
-				C2F7B7E8DD824497842CFDA9 /* CommandSender.swift in Sources */,
-				FEF04DB792854124B0CCC667 /* CommandBuilder.swift in Sources */,
 				536A7FE56FE78B6C906137F9 /* WebSocketClientProtocol.swift in Sources */,
 				F98803747A1C889C9EF80109 /* WebSocketMessage.swift in Sources */,
 			);
@@ -852,10 +875,10 @@
 			target = 53E2D679081C5CF973E01199 /* TiflisCode */;
 			targetProxy = 2DDF79AA52FD3E783A28DB2F /* PBXContainerItemProxy */;
 		};
-		F51173BA9CF6087D2AE8D5C0 /* PBXTargetDependency */ = {
+		E1F1D55DBEB14C59EC50B3CE /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 53E2D679081C5CF973E01199 /* TiflisCode */;
-			targetProxy = 08BBB2CC15F219C153E8F8E6 /* PBXContainerItemProxy */;
+			target = CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */;
+			targetProxy = D83B1E96AC9E818B7737BAD5 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -1038,7 +1061,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TiflisCode/Resources/TiflisCode.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1075,7 +1097,6 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = TiflisCode/Resources/TiflisCode.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCode/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1094,7 +1115,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TiflisCodeWatch/Resources/TiflisCodeWatch.entitlements;
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCodeWatch/Resources/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCode.watchkitapp;
 				PRODUCT_NAME = "Tiflis Code Watch";
@@ -1110,7 +1130,6 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = TiflisCodeWatch/Resources/TiflisCodeWatch.entitlements;
-				DEVELOPMENT_TEAM = 58JXA53L96;
 				INFOPLIST_FILE = TiflisCodeWatch/Resources/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCode.watchkitapp;
 				PRODUCT_NAME = "Tiflis Code Watch";
