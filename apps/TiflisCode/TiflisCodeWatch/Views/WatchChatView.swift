@@ -71,21 +71,24 @@ struct WatchChatView: View {
             .onAppear {
                 scrollToBottomThrottled(proxy: proxy)
             }
-            .onChange(of: messages.count) { _, _ in
-                // Throttled scroll on new messages
-                scrollToBottomThrottled(proxy: proxy)
-            }
-            .onChange(of: isLoading) { _, newValue in
-                // Immediate scroll when loading starts, throttled otherwise
-                if newValue {
-                    scrollToBottomImmediate(proxy: proxy)
-                } else {
+            .onChange(of: messages.count) { oldCount, newCount in
+                // Only scroll when messages are ADDED (not on initial load or removal)
+                if newCount > oldCount {
                     scrollToBottomThrottled(proxy: proxy)
                 }
             }
-            .onChange(of: lastMessageBlockCount) { _, _ in
-                // Throttled scroll when streaming content updates
-                scrollToBottomThrottled(proxy: proxy)
+            .onChange(of: isLoading) { oldValue, newValue in
+                // Only scroll when loading STARTS (false -> true)
+                // Don't scroll when loading stops - user might be reading
+                if !oldValue && newValue {
+                    scrollToBottomImmediate(proxy: proxy)
+                }
+            }
+            .onChange(of: lastMessageBlockCount) { oldCount, newCount in
+                // Only scroll when blocks are ADDED (streaming new content)
+                if newCount > oldCount {
+                    scrollToBottomThrottled(proxy: proxy)
+                }
             }
             .onDisappear {
                 // Cancel pending scroll task when view disappears
