@@ -406,9 +406,10 @@ final class WatchConnectivityManager: NSObject, ObservableObject, @unchecked Sen
         credentials?.authKey ?? userDefaults.string(forKey: authKeyKey)
     }
 
-    /// Gets whether TTS is enabled
+    /// Gets whether TTS is enabled - always true on watchOS
+    /// Watch app always plays TTS responses, independent of iPhone settings
     func getTTSEnabled() -> Bool {
-        settings?.ttsEnabled ?? userDefaults.bool(forKey: ttsEnabledKey)
+        return true
     }
 
     /// Gets the STT language
