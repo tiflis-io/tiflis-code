@@ -58,6 +58,8 @@ import {
   type BaseAgentType,
 } from "./config/constants.js";
 import { SupervisorAgent } from "./infrastructure/agents/supervisor/supervisor-agent.js";
+import { MockSupervisorAgent } from "./infrastructure/mock/mock-supervisor-agent.js";
+import { MockAgentSessionManager } from "./infrastructure/mock/mock-agent-session-manager.js";
 import {
   AuthMessageSchema,
   getMessageType,
@@ -327,7 +329,20 @@ async function bootstrap(): Promise<void> {
     workspacesRoot: env.WORKSPACES_ROOT,
   });
   const ptyManager = new PtyManager({ logger });
-  const agentSessionManager = new AgentSessionManager(logger);
+
+  // Create agent session manager (mock or real based on MOCK_MODE)
+  // Note: MockAgentSessionManager implements the same interface as AgentSessionManager
+  const agentSessionManager = env.MOCK_MODE
+    ? (new MockAgentSessionManager({ logger, fixturesPath: env.MOCK_FIXTURES_PATH }) as unknown as AgentSessionManager)
+    : new AgentSessionManager(logger);
+
+  if (env.MOCK_MODE) {
+    logger.info(
+      { fixturesPath: env.MOCK_FIXTURES_PATH ?? "built-in" },
+      "Mock mode enabled - using mock agent session manager"
+    );
+  }
+
   const sessionManager = new InMemorySessionManager({
     ptyManager,
     agentSessionManager,
@@ -389,17 +404,28 @@ async function bootstrap(): Promise<void> {
   // Placeholder for late-bound message broadcaster
   let messageBroadcaster: MessageBroadcasterImpl | null = null;
 
-  // Create Supervisor Agent with LangGraph
-  const supervisorAgent = new SupervisorAgent({
-    sessionManager,
-    agentSessionManager,
-    workspaceDiscovery,
-    workspacesRoot: env.WORKSPACES_ROOT,
-    logger,
-    getMessageBroadcaster: () => messageBroadcaster,
-    getChatHistoryService: () => chatHistoryService,
-  });
-  logger.info("Supervisor Agent initialized with LangGraph");
+  // Create Supervisor Agent (mock or real based on MOCK_MODE)
+  // Note: MockSupervisorAgent implements the same interface as SupervisorAgent
+  const supervisorAgent = env.MOCK_MODE
+    ? (new MockSupervisorAgent({
+        logger,
+        fixturesPath: env.MOCK_FIXTURES_PATH,
+      }) as unknown as SupervisorAgent)
+    : new SupervisorAgent({
+        sessionManager,
+        agentSessionManager,
+        workspaceDiscovery,
+        workspacesRoot: env.WORKSPACES_ROOT,
+        logger,
+        getMessageBroadcaster: () => messageBroadcaster,
+        getChatHistoryService: () => chatHistoryService,
+      });
+
+  if (env.MOCK_MODE) {
+    logger.info("Mock Supervisor Agent initialized for screenshot automation");
+  } else {
+    logger.info("Supervisor Agent initialized with LangGraph");
+  }
 
   // Tunnel client will be initialized below
 

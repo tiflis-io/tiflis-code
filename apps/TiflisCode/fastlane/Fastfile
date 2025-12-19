@@ -1,0 +1,121 @@
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+#
+# Fastfile for Tiflis Code iOS App
+# Automated screenshot generation for App Store submissions
+
+default_platform(:ios)
+
+platform :ios do
+  # ─────────────────────────────────────────────────────────────
+  # Screenshot Generation
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Generate screenshots for App Store"
+  lane :screenshots do
+    # Ensure test environment is configured
+    ensure_test_environment
+
+    capture_screenshots(
+      scheme: "TiflisCode",
+      devices: [
+        "iPhone 16 Pro Max",
+        "iPhone 16 Pro",
+        "iPad Pro 13-inch (M4)"
+      ],
+      languages: ["en-US"],
+      clear_previous_screenshots: true,
+      output_directory: "./screenshots",
+      stop_after_first_error: false,
+      skip_open_summary: true,
+      dark_mode: false
+    )
+  end
+
+  desc "Generate screenshots including dark mode variants"
+  lane :screenshots_all do
+    # Light mode
+    capture_screenshots(
+      scheme: "TiflisCode",
+      devices: [
+        "iPhone 16 Pro Max",
+        "iPhone 16 Pro",
+        "iPad Pro 13-inch (M4)"
+      ],
+      languages: ["en-US"],
+      clear_previous_screenshots: true,
+      output_directory: "./screenshots/light",
+      stop_after_first_error: false,
+      skip_open_summary: true,
+      dark_mode: false
+    )
+
+    # Dark mode
+    capture_screenshots(
+      scheme: "TiflisCode",
+      devices: [
+        "iPhone 16 Pro Max",
+        "iPhone 16 Pro",
+        "iPad Pro 13-inch (M4)"
+      ],
+      languages: ["en-US"],
+      clear_previous_screenshots: false,
+      output_directory: "./screenshots/dark",
+      stop_after_first_error: false,
+      skip_open_summary: true,
+      dark_mode: true
+    )
+  end
+
+  desc "Generate watchOS screenshots"
+  lane :watchos_screenshots do
+    capture_screenshots(
+      scheme: "TiflisCodeWatch",
+      devices: [
+        "Apple Watch Series 10 (46mm)",
+        "Apple Watch Ultra 2"
+      ],
+      languages: ["en-US"],
+      clear_previous_screenshots: true,
+      output_directory: "./screenshots/watchos",
+      stop_after_first_error: false,
+      skip_open_summary: true
+    )
+  end
+
+  # ─────────────────────────────────────────────────────────────
+  # Helper Methods
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Ensure test environment is running"
+  private_lane :ensure_test_environment do
+    # Check if test environment variables are set
+    unless ENV["TEST_TUNNEL_URL"]
+      UI.user_error!("TEST_TUNNEL_URL not set. Start the test environment first:\n  ./scripts/screenshot-test-env.sh setup && ./scripts/screenshot-test-env.sh start")
+    end
+
+    UI.message("Using test environment: #{ENV['TEST_TUNNEL_URL']}")
+  end
+
+  # ─────────────────────────────────────────────────────────────
+  # Build Lanes (for CI)
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Build for testing"
+  lane :build_for_testing do
+    xcodebuild(
+      scheme: "TiflisCode",
+      destination: "platform=iOS Simulator,name=iPhone 16 Pro",
+      build_for_testing: true
+    )
+  end
+
+  desc "Run UI tests"
+  lane :ui_tests do
+    run_tests(
+      scheme: "TiflisCode",
+      devices: ["iPhone 16 Pro"],
+      only_testing: ["TiflisCodeUITests/ScreenshotTests"]
+    )
+  end
+end

@@ -1,0 +1,79 @@
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+#
+# Snapfile for Tiflis Code iOS App
+# Configuration for snapshot (screenshot) generation
+
+# ─────────────────────────────────────────────────────────────
+# Devices
+# ─────────────────────────────────────────────────────────────
+
+# iPhone devices (App Store requires 6.7" and 6.1" screenshots)
+devices([
+  "iPhone 16 Pro Max",      # 6.7" Super Retina XDR
+  "iPhone 16 Pro",          # 6.1" Super Retina XDR
+  "iPad Pro 13-inch (M4)"   # 12.9" Liquid Retina XDR
+])
+
+# ─────────────────────────────────────────────────────────────
+# Languages
+# ─────────────────────────────────────────────────────────────
+
+languages([
+  "en-US"
+])
+
+# ─────────────────────────────────────────────────────────────
+# Configuration
+# ─────────────────────────────────────────────────────────────
+
+# Xcode scheme to use
+scheme("TiflisCode")
+
+# Output directory for screenshots
+output_directory("./screenshots")
+
+# Clear previous screenshots before capture
+clear_previous_screenshots(true)
+
+# Don't stop if one screenshot fails
+stop_after_first_error(false)
+
+# Skip opening the HTML summary after completion
+skip_open_summary(true)
+
+# Wait time after launching the app (seconds)
+launch_arguments(["-UITesting"])
+
+# Erase simulator before running
+erase_simulator(false)
+
+# Reinstall app before running
+reinstall_app(false)
+
+# App identifier
+app_identifier("com.tiflis.TiflisCode")
+
+# ─────────────────────────────────────────────────────────────
+# Test Configuration
+# ─────────────────────────────────────────────────────────────
+
+# Test class to run (only screenshot tests)
+testplan("ScreenshotTests")
+
+# Concurrent simulators (set to 1 for more reliable screenshots)
+concurrent_simulators(false)
+
+# Derived data path (speeds up subsequent runs)
+derived_data_path("./build/DerivedData")
+
+# ─────────────────────────────────────────────────────────────
+# Appearance
+# ─────────────────────────────────────────────────────────────
+
+# Use light mode by default (can be overridden with dark_mode lane)
+dark_mode(false)
+
+# Override status bar (iOS 13+)
+override_status_bar(true)
+override_status_bar_arguments("--time 9:41 --batteryState charged --batteryLevel 100 --cellularMode active --cellularBars 4")

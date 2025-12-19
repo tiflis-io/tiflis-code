@@ -1,0 +1,43 @@
+{
+  "scenarios": {
+    "greeting": {
+      "triggers": ["hello", "hi", "hey"],
+      "response": {
+        "text": "Hello! I'm OpenCode, an open-source AI coding assistant. I'm here to help you with:\n\n• Code generation and editing\n• Debugging and troubleshooting\n• Documentation writing\n• Architecture discussions\n\nHow can I help you today?",
+        "delay_ms": 25
+      }
+    },
+    "implement": {
+      "triggers": ["implement", "add", "create", "build", "write"],
+      "response": {
+        "text": "I'll implement that feature for you.\n\n**Analyzing requirements...**\n\nBased on the codebase structure, I'll create:\n\n1. `src/components/NotificationBanner.tsx` — UI component\n2. `src/hooks/useNotifications.ts` — state management\n3. `src/types/notification.ts` — TypeScript types\n\n```tsx\nexport function NotificationBanner({ notification }: Props) {\n  const { dismiss } = useNotifications();\n  \n  return (\n    <div className={styles.banner}>\n      <span>{notification.message}</span>\n      <button onClick={() => dismiss(notification.id)}>\n        Dismiss\n      </button>\n    </div>\n  );\n}\n```\n\n✓ Files created\n✓ Types defined\n✓ Follows project conventions",
+        "delay_ms": 30
+      }
+    },
+    "fix": {
+      "triggers": ["fix", "bug", "error", "debug"],
+      "response": {
+        "text": "Let me debug this issue.\n\n**Investigation:**\n• Reproduced the error\n• Traced through the call stack\n• Found the root cause\n\n**Problem:** Memory leak in useEffect cleanup\n\n**Solution:**\n```typescript\nuseEffect(() => {\n  const subscription = api.subscribe(handler);\n  return () => subscription.unsubscribe(); // Added cleanup\n}, [handler]);\n```\n\n✓ Memory leak fixed\n✓ Added cleanup function\n✓ Verified with React DevTools",
+        "delay_ms": 30
+      }
+    },
+    "explain": {
+      "triggers": ["explain", "how", "what", "why"],
+      "response": {
+        "text": "Let me explain how this works.\n\nThe **WebSocket connection flow** in this codebase:\n\n```\nClient → Tunnel Server → Workstation\n         (relay)         (processing)\n```\n\n1. Client initiates WebSocket connection to tunnel\n2. Tunnel authenticates and assigns a connection ID\n3. Messages are relayed bidirectionally\n4. Workstation processes commands and sends responses\n\nThe tunnel doesn't inspect message content — it's purely a relay that handles connection management and routing.",
+        "delay_ms": 25
+      }
+    },
+    "docs": {
+      "triggers": ["doc", "docs", "document", "documentation", "readme"],
+      "response": {
+        "text": "I'll generate documentation for this module.\n\n```markdown\n# Authentication Module\n\n## Overview\nHandles user authentication and session management.\n\n## Usage\n```typescript\nimport { AuthService } from './auth';\n\nconst auth = new AuthService(config);\nawait auth.login(credentials);\n```\n\n## API Reference\n\n### `login(credentials)`\nAuthenticates a user and returns a session token.\n\n### `logout()`\nInvalidates the current session.\n```\n\n✓ Generated README.md\n✓ Added API documentation\n✓ Included usage examples",
+        "delay_ms": 30
+      }
+    }
+  },
+  "default_response": {
+    "text": "I'm OpenCode, ready to assist with your coding tasks. I can help you:\n\n• Write and modify code\n• Debug issues\n• Generate documentation\n• Explain complex logic\n\nWhat would you like to work on?",
+    "delay_ms": 25
+  }
+}

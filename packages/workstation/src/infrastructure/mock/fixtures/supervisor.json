@@ -1,0 +1,50 @@
+{
+  "scenarios": {
+    "greeting": {
+      "triggers": ["hello", "hi", "hey", "help"],
+      "response": {
+        "text": "Hello! I'm the Supervisor agent for Tiflis Code. I can help you:\n\n• **Manage workspaces** — list your projects and codebases\n• **Create sessions** — start Claude, Cursor, or OpenCode agents\n• **Open terminals** — access your development environment\n• **Manage worktrees** — create git worktrees for parallel work\n\nWhat would you like to do?",
+        "delay_ms": 25
+      }
+    },
+    "list_workspaces": {
+      "triggers": ["workspace", "workspaces", "project", "projects", "list", "show"],
+      "response": {
+        "text": "Here are your available workspaces:\n\n📁 **tiflis**\n   └── tiflis-code (main, feature/auth, feature/ui)\n   └── tiflis-api (main)\n\n📁 **personal**\n   └── portfolio-site (main)\n   └── dotfiles (main)\n\nWould you like to create a session in one of these projects?",
+        "delay_ms": 25
+      }
+    },
+    "create_session": {
+      "triggers": ["create", "start", "new session", "open claude", "open cursor"],
+      "response": {
+        "text": "I'll create a new Claude session for you in tiflis-code.\n\n✓ Session created: **claude-abc123**\n✓ Working directory: ~/work/tiflis/tiflis-code\n✓ Ready for commands\n\nYou can now switch to the session to start coding. The agent has full access to the project files and can help with implementation, debugging, and code review.",
+        "delay_ms": 30
+      }
+    },
+    "create_worktree": {
+      "triggers": ["worktree", "branch", "feature"],
+      "response": {
+        "text": "I'll create a new worktree for the feature branch.\n\n✓ Created worktree: feature/screenshot-automation\n✓ Location: ~/work/tiflis/tiflis-code--feature-screenshot-automation\n✓ Based on: main\n\nYou can now create a session in this worktree to work on the feature without affecting the main branch.",
+        "delay_ms": 30
+      }
+    },
+    "terminal": {
+      "triggers": ["terminal", "shell", "bash", "command line"],
+      "response": {
+        "text": "I'll open a terminal session for you.\n\n✓ Terminal session created: **term-xyz789**\n✓ Shell: /bin/zsh\n✓ Working directory: ~/work/tiflis/tiflis-code\n\nYou can run any shell commands, manage git, run builds, or monitor processes.",
+        "delay_ms": 25
+      }
+    },
+    "status": {
+      "triggers": ["status", "sessions", "active", "running"],
+      "response": {
+        "text": "Here's the current status:\n\n**Active Sessions:**\n• Supervisor (this chat)\n• Claude: tiflis-code (idle)\n• Terminal: tiflis-code (active)\n\n**Connection:**\n• Tunnel: Connected ✓\n• Workstation: Online ✓\n\nAll systems operational.",
+        "delay_ms": 25
+      }
+    }
+  },
+  "default_response": {
+    "text": "I understand you're asking about something. As the Supervisor, I can help you manage your development sessions, browse workspaces, and coordinate your coding workflow.\n\nTry asking me to:\n• List your workspaces\n• Create a new Claude/Cursor session\n• Open a terminal\n• Check active sessions\n\nWhat would you like to do?",
+    "delay_ms": 25
+  }
+}

@@ -1,0 +1,256 @@
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+#
+# GitHub Actions workflow for automated screenshot generation
+# Generates App Store and Play Store screenshots using mock test environment
+
+name: Generate Screenshots
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Platforms to generate screenshots for'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+
+  # Trigger on main branch pushes to mobile apps
+  push:
+    branches: [main]
+    paths:
+      - 'apps/TiflisCode/**'
+      - 'apps/TiflisCodeAndroid/**'
+      - 'packages/workstation/src/infrastructure/mock/**'
+
+# Only allow one screenshot generation at a time
+concurrency:
+  group: screenshots-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ─────────────────────────────────────────────────────────────
+  # Android Screenshots
+  # ─────────────────────────────────────────────────────────────
+  android-screenshots:
+    name: Android Screenshots
+    runs-on: ubuntu-latest
+    if: ${{ github.event.inputs.platforms != 'ios' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Node.js for TypeScript server
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build TypeScript packages
+        run: pnpm build
+
+      # Setup Java for Android
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      # Setup Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # Setup Ruby for Fastlane
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: apps/TiflisCodeAndroid
+
+      # Start test environment
+      - name: Setup test environment
+        run: ./scripts/screenshot-test-env.sh setup
+
+      - name: Start test environment
+        run: |
+          ./scripts/screenshot-test-env.sh start
+          source /tmp/tiflis-screenshot-session
+          echo "TEST_TUNNEL_URL=ws://localhost:${TEST_PORT}/ws" >> $GITHUB_ENV
+          echo "TEST_AUTH_KEY=test-auth-${TEST_SESSION_ID}" >> $GITHUB_ENV
+
+      # Create and start emulator
+      - name: Create AVD
+        run: |
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "system-images;android-35;google_apis;x86_64"
+          echo "no" | $ANDROID_HOME/cmdline-tools/latest/bin/avdmanager create avd -n test_avd -k "system-images;android-35;google_apis;x86_64" --force
+
+      - name: Start emulator
+        run: |
+          $ANDROID_HOME/emulator/emulator -avd test_avd -no-window -no-audio -no-snapshot -gpu swiftshader_indirect &
+          $ANDROID_HOME/platform-tools/adb wait-for-device
+          # Wait for boot completion
+          while [[ -z $(adb shell getprop sys.boot_completed 2>/dev/null) ]]; do sleep 2; done
+
+      # Run screenshot tests
+      - name: Run Android screenshot tests
+        working-directory: apps/TiflisCodeAndroid
+        run: bundle exec fastlane screenshots
+
+      # Stop test environment
+      - name: Stop test environment
+        if: always()
+        run: ./scripts/screenshot-test-env.sh stop
+
+      # Upload screenshots as artifact
+      - name: Upload Android screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-screenshots
+          path: apps/TiflisCodeAndroid/fastlane/metadata/android/**/images/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────
+  # iOS Screenshots
+  # ─────────────────────────────────────────────────────────────
+  ios-screenshots:
+    name: iOS Screenshots
+    runs-on: macos-14
+    if: ${{ github.event.inputs.platforms != 'android' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Setup Node.js for TypeScript server
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build TypeScript packages
+        run: pnpm build
+
+      # Setup Ruby for Fastlane
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+          bundler-cache: true
+          working-directory: apps/TiflisCode
+
+      # Setup Xcode
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.1.app
+
+      # Install XcodeGen for project generation
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # Generate Xcode project
+      - name: Generate Xcode project
+        working-directory: apps/TiflisCode
+        run: xcodegen generate
+
+      # Start test environment
+      - name: Setup test environment
+        run: ./scripts/screenshot-test-env.sh setup
+
+      - name: Start test environment
+        run: |
+          ./scripts/screenshot-test-env.sh start
+          source /tmp/tiflis-screenshot-session
+          echo "TEST_TUNNEL_URL=ws://localhost:${TEST_PORT}/ws" >> $GITHUB_ENV
+          echo "TEST_AUTH_KEY=test-auth-${TEST_SESSION_ID}" >> $GITHUB_ENV
+
+      # Boot simulators in parallel
+      - name: Boot iOS simulators
+        run: |
+          xcrun simctl boot "iPhone 16 Pro Max" || true
+          xcrun simctl boot "iPhone 16 Pro" || true
+          xcrun simctl boot "iPad Pro 13-inch (M4)" || true
+
+      # Run screenshot tests
+      - name: Run iOS screenshot tests
+        working-directory: apps/TiflisCode
+        run: bundle exec fastlane screenshots
+        env:
+          TEST_TUNNEL_URL: ${{ env.TEST_TUNNEL_URL }}
+          TEST_AUTH_KEY: ${{ env.TEST_AUTH_KEY }}
+
+      # Stop test environment
+      - name: Stop test environment
+        if: always()
+        run: ./scripts/screenshot-test-env.sh stop
+
+      # Upload screenshots as artifact
+      - name: Upload iOS screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-screenshots
+          path: apps/TiflisCode/screenshots/
+          if-no-files-found: warn
+
+  # ─────────────────────────────────────────────────────────────
+  # Combine Screenshots
+  # ─────────────────────────────────────────────────────────────
+  combine-screenshots:
+    name: Combine Screenshots
+    runs-on: ubuntu-latest
+    needs: [android-screenshots, ios-screenshots]
+    if: always() && (needs.android-screenshots.result == 'success' || needs.ios-screenshots.result == 'success')
+
+    steps:
+      - name: Download Android screenshots
+        if: needs.android-screenshots.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: android-screenshots
+          path: screenshots/android
+
+      - name: Download iOS screenshots
+        if: needs.ios-screenshots.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-screenshots
+          path: screenshots/ios
+
+      - name: List screenshots
+        run: |
+          echo "=== Android Screenshots ==="
+          find screenshots/android -type f -name "*.png" 2>/dev/null || echo "No Android screenshots"
+          echo ""
+          echo "=== iOS Screenshots ==="
+          find screenshots/ios -type f -name "*.png" 2>/dev/null || echo "No iOS screenshots"
+
+      - name: Upload combined screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: all-screenshots
+          path: screenshots/
+          if-no-files-found: warn

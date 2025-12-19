@@ -125,6 +125,17 @@ const EnvSchema = z.object({
 
   // Legacy (fallback for STT/TTS if specific keys not set)
   OPENAI_API_KEY: z.string().optional(),
+
+  // ─────────────────────────────────────────────────────────────
+  // Mock Mode Configuration (for screenshot automation)
+  // ─────────────────────────────────────────────────────────────
+  /** Enable mock mode for screenshot automation tests */
+  MOCK_MODE: z
+    .string()
+    .transform((val) => val?.toLowerCase() === "true")
+    .default("false"),
+  /** Path to mock fixtures directory (defaults to built-in fixtures) */
+  MOCK_FIXTURES_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

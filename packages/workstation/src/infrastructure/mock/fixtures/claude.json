@@ -1,0 +1,50 @@
+{
+  "scenarios": {
+    "greeting": {
+      "triggers": ["hello", "hi", "hey"],
+      "response": {
+        "text": "Hello! I'm Claude, ready to help you with the tiflis-code project. I have access to the full codebase and can assist with:\n\n• Writing and editing code\n• Debugging issues\n• Code review and refactoring\n• Documentation\n• Running tests and builds\n\nWhat would you like to work on?",
+        "delay_ms": 25
+      }
+    },
+    "implement": {
+      "triggers": ["implement", "add", "create", "build", "write"],
+      "response": {
+        "text": "I'll implement that for you. Let me analyze the codebase first.\n\n**Analysis:**\n• Found relevant files in `src/features/`\n• Identified existing patterns to follow\n• Located test files to update\n\n**Implementation Plan:**\n1. Create new component in `src/features/auth/`\n2. Add TypeScript types\n3. Write unit tests\n4. Update exports\n\nShall I proceed with the implementation?",
+        "delay_ms": 30
+      }
+    },
+    "fix": {
+      "triggers": ["fix", "bug", "error", "issue", "debug"],
+      "response": {
+        "text": "I'll investigate and fix that issue.\n\n**Root Cause:**\nThe error occurs because the async handler isn't properly awaited in `ConnectionService.ts:142`.\n\n**Fix Applied:**\n```typescript\n// Before\nhandleConnection(data)\n\n// After  \nawait handleConnection(data)\n```\n\n✓ Fixed in `src/services/ConnectionService.ts`\n✓ Updated related tests\n✓ All tests passing\n\nThe fix ensures proper error propagation in the async flow.",
+        "delay_ms": 30
+      }
+    },
+    "explain": {
+      "triggers": ["explain", "how", "what", "why", "understand"],
+      "response": {
+        "text": "Let me explain how that works.\n\nThe authentication flow in Tiflis Code follows these steps:\n\n1. **Client connects** via WebSocket to the tunnel server\n2. **Auth handshake** — client sends `auth_key` + `device_id`\n3. **Validation** — workstation verifies credentials\n4. **Session sync** — client receives active sessions list\n5. **Subscription** — client subscribes to specific sessions\n\nThe key insight is that the tunnel acts as a relay — it doesn't process messages, just routes them between clients and workstations.",
+        "delay_ms": 25
+      }
+    },
+    "test": {
+      "triggers": ["test", "tests", "testing", "coverage"],
+      "response": {
+        "text": "Running the test suite...\n\n```\n✓ ConnectionService (12 tests)\n✓ MessageRouter (8 tests)  \n✓ SessionManager (15 tests)\n✓ WebSocketClient (6 tests)\n\nTest Suites: 4 passed, 4 total\nTests:       41 passed, 41 total\nCoverage:    87.3%\n```\n\nAll tests passing! Coverage is above the 80% threshold.",
+        "delay_ms": 35
+      }
+    },
+    "refactor": {
+      "triggers": ["refactor", "clean", "improve", "optimize"],
+      "response": {
+        "text": "I'll refactor that code for better maintainability.\n\n**Changes Made:**\n\n1. **Extracted helper functions** — moved repeated logic to `utils/`\n2. **Simplified conditionals** — replaced nested ifs with early returns\n3. **Added types** — improved TypeScript strictness\n4. **Updated imports** — organized and deduplicated\n\n**Before:** 156 lines, complexity score 24\n**After:** 98 lines, complexity score 8\n\nThe refactored code is cleaner and easier to test.",
+        "delay_ms": 30
+      }
+    }
+  },
+  "default_response": {
+    "text": "I'm ready to help with the codebase. I can:\n\n• Read and analyze code\n• Write new features\n• Fix bugs and issues\n• Run commands and tests\n• Explain how things work\n\nJust describe what you need, and I'll get started.",
+    "delay_ms": 25
+  }
+}

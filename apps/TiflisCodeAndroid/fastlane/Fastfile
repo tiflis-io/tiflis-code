@@ -1,0 +1,110 @@
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+#
+# Fastfile for Tiflis Code Android App
+# Automated screenshot generation for Play Store submissions
+
+default_platform(:android)
+
+platform :android do
+  # ─────────────────────────────────────────────────────────────
+  # Screenshot Generation
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Generate screenshots for Play Store"
+  lane :screenshots do
+    # Ensure test environment is configured
+    ensure_test_environment
+
+    # Build debug APK and test APK
+    gradle(
+      task: "assembleDebug assembleAndroidTest"
+    )
+
+    # Capture screenshots using Screengrab
+    capture_android_screenshots(
+      locales: ["en-US"],
+      clear_previous_screenshots: true,
+      app_apk_path: "app/build/outputs/apk/debug/app-debug.apk",
+      tests_apk_path: "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      test_instrumentation_runner: "androidx.test.runner.AndroidJUnitRunner",
+      use_tests_in_classes: ["io.tiflis.code.ScreenshotTest"],
+      ending_locale: "en-US",
+      app_package_name: "io.tiflis.code",
+      use_timestamp_suffix: false,
+      exit_on_test_failure: false
+    )
+  end
+
+  desc "Generate screenshots for specific device"
+  lane :screenshots_device do |options|
+    device = options[:device] || "Pixel_7_Pro_API_35"
+
+    # Ensure test environment is configured
+    ensure_test_environment
+
+    # Build debug APK and test APK
+    gradle(
+      task: "assembleDebug assembleAndroidTest"
+    )
+
+    # Capture screenshots
+    capture_android_screenshots(
+      locales: ["en-US"],
+      clear_previous_screenshots: true,
+      app_apk_path: "app/build/outputs/apk/debug/app-debug.apk",
+      tests_apk_path: "app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk",
+      test_instrumentation_runner: "androidx.test.runner.AndroidJUnitRunner",
+      use_tests_in_classes: ["io.tiflis.code.ScreenshotTest"],
+      specific_device: device,
+      app_package_name: "io.tiflis.code",
+      use_timestamp_suffix: false
+    )
+  end
+
+  # ─────────────────────────────────────────────────────────────
+  # Build Lanes
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Build debug APK"
+  lane :build_debug do
+    gradle(
+      task: "assembleDebug"
+    )
+  end
+
+  desc "Build release APK"
+  lane :build_release do
+    gradle(
+      task: "assembleRelease"
+    )
+  end
+
+  desc "Run all tests"
+  lane :test do
+    gradle(
+      task: "test"
+    )
+  end
+
+  desc "Run connected (instrumentation) tests"
+  lane :connected_test do
+    gradle(
+      task: "connectedAndroidTest"
+    )
+  end
+
+  # ─────────────────────────────────────────────────────────────
+  # Helper Methods
+  # ─────────────────────────────────────────────────────────────
+
+  desc "Ensure test environment is running"
+  private_lane :ensure_test_environment do
+    # Check if test environment variables are set
+    unless ENV["TEST_TUNNEL_URL"]
+      UI.user_error!("TEST_TUNNEL_URL not set. Start the test environment first:\n  ./scripts/screenshot-test-env.sh setup && ./scripts/screenshot-test-env.sh start")
+    end
+
+    UI.message("Using test environment: #{ENV['TEST_TUNNEL_URL']}")
+  end
+end

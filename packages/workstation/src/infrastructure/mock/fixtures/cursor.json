@@ -1,0 +1,43 @@
+{
+  "scenarios": {
+    "greeting": {
+      "triggers": ["hello", "hi", "hey"],
+      "response": {
+        "text": "Hey! Cursor AI here, ready to help you code faster. I can:\n\n• Complete code as you type\n• Refactor existing code\n• Generate tests\n• Explain complex logic\n\nWhat are you working on?",
+        "delay_ms": 20
+      }
+    },
+    "implement": {
+      "triggers": ["implement", "add", "create", "build", "write", "generate"],
+      "response": {
+        "text": "On it! Let me generate that code for you.\n\n```typescript\nexport class AuthenticationService {\n  private readonly tokenManager: TokenManager;\n  \n  constructor(tokenManager: TokenManager) {\n    this.tokenManager = tokenManager;\n  }\n  \n  async authenticate(credentials: Credentials): Promise<AuthResult> {\n    const token = await this.tokenManager.generate(credentials);\n    return { success: true, token };\n  }\n}\n```\n\n✓ Created `AuthenticationService.ts`\n✓ Added proper typing\n✓ Follows existing patterns\n\nWant me to add tests for this?",
+        "delay_ms": 25
+      }
+    },
+    "fix": {
+      "triggers": ["fix", "bug", "error", "issue"],
+      "response": {
+        "text": "Found it! The issue is a race condition in the event handler.\n\n**Problem:** Multiple events firing before state updates\n**Solution:** Added debouncing and state lock\n\n```diff\n- this.handleEvent(event)\n+ await this.withLock(() => this.handleEvent(event))\n```\n\n✓ Applied fix\n✓ Added unit test for race condition\n✓ Verified with existing tests",
+        "delay_ms": 25
+      }
+    },
+    "complete": {
+      "triggers": ["complete", "finish", "continue", "autocomplete"],
+      "response": {
+        "text": "Here's the completion:\n\n```typescript\nasync function processQueue(items: QueueItem[]): Promise<void> {\n  const results = await Promise.all(\n    items.map(item => this.processItem(item))\n  );\n  \n  const failures = results.filter(r => !r.success);\n  if (failures.length > 0) {\n    this.logger.warn(`${failures.length} items failed`);\n    await this.retryFailures(failures);\n  }\n}\n```\n\nThis handles parallel processing with automatic retry for failures.",
+        "delay_ms": 20
+      }
+    },
+    "test": {
+      "triggers": ["test", "tests", "spec"],
+      "response": {
+        "text": "Generated tests for the module:\n\n```typescript\ndescribe('AuthenticationService', () => {\n  it('should authenticate valid credentials', async () => {\n    const result = await service.authenticate(validCreds);\n    expect(result.success).toBe(true);\n  });\n  \n  it('should reject invalid credentials', async () => {\n    await expect(service.authenticate(invalidCreds))\n      .rejects.toThrow('Invalid credentials');\n  });\n});\n```\n\n✓ 2 test cases generated\n✓ Covers happy path and error case",
+        "delay_ms": 25
+      }
+    }
+  },
+  "default_response": {
+    "text": "I'm Cursor, your AI pair programmer. I'm fast at:\n\n• Code completion and generation\n• Quick fixes and refactors\n• Test generation\n• Code explanation\n\nJust tell me what you need!",
+    "delay_ms": 20
+  }
+}
