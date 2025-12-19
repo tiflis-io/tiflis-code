@@ -350,12 +350,31 @@ export function getWorkstationVersion(): string {
   try {
     const __filename = fileURLToPath(import.meta.url);
     const __dirname = dirname(__filename);
-    const packageJsonPath = join(__dirname, "../../package.json");
-    const packageJsonContent = readFileSync(packageJsonPath, "utf-8");
-    const packageJson = JSON.parse(packageJsonContent) as { version?: string };
-    const version = packageJson.version;
-    if (typeof version === "string" && version.length > 0) {
-      return version;
+    // Try multiple possible locations for package.json
+    // - "../package.json" works when running from dist/ (compiled)
+    // - "../../package.json" works when running from src/config/ (development)
+    const possiblePaths = [
+      join(__dirname, "../package.json"),
+      join(__dirname, "../../package.json"),
+    ];
+    for (const packageJsonPath of possiblePaths) {
+      try {
+        const packageJsonContent = readFileSync(packageJsonPath, "utf-8");
+        const packageJson = JSON.parse(packageJsonContent) as {
+          version?: string;
+          name?: string;
+        };
+        // Verify it's the correct package.json by checking the name
+        if (
+          packageJson.name === "@tiflis-io/tiflis-code-workstation" &&
+          typeof packageJson.version === "string" &&
+          packageJson.version.length > 0
+        ) {
+          return packageJson.version;
+        }
+      } catch {
+        // Try next path
+      }
     }
     return "0.0.0";
   } catch {

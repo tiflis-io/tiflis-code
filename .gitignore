@@ -293,3 +293,5 @@ packages/*/pnpm-lock.yaml
 packages/*/package-lock.json
 packages/*/yarn.lock
 
+*.jks
+signing.properties
