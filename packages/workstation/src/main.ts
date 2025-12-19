@@ -350,6 +350,36 @@ async function bootstrap(): Promise<void> {
     logger,
   });
 
+  // Pre-create mock sessions for screenshot automation (after sessionManager is ready)
+  if (env.MOCK_MODE) {
+    const mockAgentManager = agentSessionManager as unknown as MockAgentSessionManager;
+
+    // Create one agent of each type with realistic names
+    // These sessions will appear in the sidebar when the app connects
+    mockAgentManager.createSession(
+      "claude",
+      `${env.WORKSPACES_ROOT}/tiflis/tiflis-code`,
+      "claude-tiflis-code",
+      "claude"
+    );
+
+    mockAgentManager.createSession(
+      "cursor",
+      `${env.WORKSPACES_ROOT}/personal/portfolio-site`,
+      "cursor-portfolio",
+      "cursor"
+    );
+
+    mockAgentManager.createSession(
+      "opencode",
+      `${env.WORKSPACES_ROOT}/tiflis/tiflis-api`,
+      "opencode-api",
+      "opencode"
+    );
+
+    logger.info("Pre-created 3 mock agent sessions for screenshots");
+  }
+
   // Create STT service for voice transcription
   const sttService = createSTTService(env, logger);
   if (sttService) {

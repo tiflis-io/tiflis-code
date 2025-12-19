@@ -20,7 +20,7 @@ import type {
 import { SupervisorSession } from '../../domain/entities/supervisor-session.js';
 import { AgentSession, isAgentType } from '../../domain/entities/agent-session.js';
 import type { AgentType } from '../../domain/entities/agent-session.js';
-import type { SessionId } from '../../domain/value-objects/session-id.js';
+import { SessionId } from '../../domain/value-objects/session-id.js';
 import type { WorkspacePath } from '../../domain/value-objects/workspace-path.js';
 import type { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SESSION_CONFIG } from '../../config/constants.js';
@@ -69,6 +69,24 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    * Sets up event listeners to sync agent session state.
    */
   private setupAgentSessionSync(): void {
+    // Handle session creation events (for mock mode pre-created sessions)
+    this.agentSessionManager.on('sessionCreated', (state: { sessionId: string; agentType: AgentType; agentName: string; workingDir: string }) => {
+      // Only register if not already in sessions (avoid duplicates from createAgentSession path)
+      if (!this.sessions.has(state.sessionId)) {
+        const session = new AgentSession({
+          id: new SessionId(state.sessionId),
+          agentType: state.agentType,
+          agentName: state.agentName,
+          workingDir: state.workingDir,
+        });
+        this.sessions.set(state.sessionId, session);
+        this.logger.debug(
+          { sessionId: state.sessionId, agentType: state.agentType },
+          'Agent session registered from external creation'
+        );
+      }
+    });
+
     this.agentSessionManager.on('sessionTerminated', (sessionId: string) => {
       const session = this.sessions.get(sessionId);
       if (session && isAgentType(session.type)) {

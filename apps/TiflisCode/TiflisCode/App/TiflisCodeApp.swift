@@ -160,21 +160,40 @@ final class AppState: ObservableObject {
 
     // Map request IDs to temporary session IDs for session creation
     private var pendingSessionCreations: [String: String] = [:]
-    
+
+    /// Check if running in screenshot testing mode
+    private static var isScreenshotTesting: Bool {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
+    }
+
+    /// Screenshot test tunnel URL (from launch environment)
+    private static var screenshotTestTunnelURL: String? {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TEST_TUNNEL_URL"]
+    }
+
+    /// Screenshot test auth key (from launch environment)
+    private static var screenshotTestAuthKey: String? {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TEST_AUTH_KEY"]
+    }
+
     var selectedSession: Session? {
         guard selectedSessionId != Self.settingsId else { return nil }
         return sessions.first { $0.id == selectedSessionId }
     }
-    
+
     var isShowingSettings: Bool {
         selectedSessionId == Self.settingsId
     }
-    
+
     /// Check if we have saved connection credentials
     var hasConnectionConfig: Bool {
-        !tunnelURL.isEmpty && !tunnelId.isEmpty
+        // In screenshot testing mode, check for test credentials
+        if Self.isScreenshotTesting, Self.screenshotTestTunnelURL != nil {
+            return true
+        }
+        return !tunnelURL.isEmpty && !tunnelId.isEmpty
     }
-    
+
     init(connectionService: ConnectionServicing? = nil) {
         // Create services with default implementations
         let keychainManager = KeychainManager()

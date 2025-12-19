@@ -167,12 +167,31 @@ final class ConnectionService: ConnectionServicing {
     
     private let userDefaults: UserDefaults
     
-    private var tunnelURL: String {
-        userDefaults.string(forKey: "tunnelURL") ?? ""
+    /// Check if running in screenshot testing mode
+    private var isScreenshotTesting: Bool {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
     }
-    
+
+    private var tunnelURL: String {
+        // In screenshot testing mode, use test tunnel URL
+        if isScreenshotTesting,
+           let testURL = ProcessInfo.processInfo.environment["SCREENSHOT_TEST_TUNNEL_URL"] {
+            return testURL
+        }
+        return userDefaults.string(forKey: "tunnelURL") ?? ""
+    }
+
     private var tunnelId: String {
-        userDefaults.string(forKey: "tunnelId") ?? ""
+        // In screenshot testing mode, generate a test tunnel ID from the URL
+        if isScreenshotTesting,
+           ProcessInfo.processInfo.environment["SCREENSHOT_TEST_TUNNEL_URL"] != nil {
+            return "screenshot-test-tunnel"
+        }
+        return userDefaults.string(forKey: "tunnelId") ?? ""
+    }
+
+    private var screenshotTestAuthKey: String? {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TEST_AUTH_KEY"]
     }
     
     // MARK: - Initialization
@@ -198,15 +217,21 @@ final class ConnectionService: ConnectionServicing {
         guard !tunnelURL.isEmpty, !tunnelId.isEmpty else {
             throw ConnectionError.missingCredentials
         }
-        
-        guard let authKey = keychainManager.getAuthKey() else {
+
+        // In screenshot testing mode, use test auth key; otherwise use keychain
+        let authKey: String
+        if isScreenshotTesting, let testAuthKey = screenshotTestAuthKey {
+            authKey = testAuthKey
+        } else if let keychainAuthKey = keychainManager.getAuthKey() {
+            authKey = keychainAuthKey
+        } else {
             throw ConnectionError.missingAuthKey
         }
-        
+
         let deviceId = deviceIDManager.deviceID
-        
+
         connectionState = .connecting
-        
+
         do {
             try await _webSocketClient.connect(
                 url: tunnelURL,
