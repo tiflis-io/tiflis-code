@@ -837,4 +837,326 @@ export class ChatHistoryService {
     );
     return agentSessions;
   }
+
+  // ============================================================================
+  // Mock Data Seeding (for Screenshot Automation)
+  // ============================================================================
+
+  /**
+   * Seeds mock chat history for screenshot automation.
+   * Creates realistic conversation history with voice messages, code blocks, etc.
+   *
+   * @param agentSessions - Object with agent session IDs and their working directories
+   */
+  seedMockData(agentSessions: {
+    claude?: { id: string; workingDir: string };
+    cursor?: { id: string; workingDir: string };
+    opencode?: { id: string; workingDir: string };
+  }): void {
+    this.logger.info("Seeding mock chat history for screenshots...");
+
+    // Seed Supervisor conversation with voice messages
+    this.seedSupervisorHistory();
+
+    // Seed Claude agent chat with code examples
+    if (agentSessions.claude) {
+      this.ensureAgentSession(agentSessions.claude.id, "claude", agentSessions.claude.workingDir);
+      this.seedClaudeAgentHistory(agentSessions.claude.id);
+    }
+
+    // Seed Cursor agent chat
+    if (agentSessions.cursor) {
+      this.ensureAgentSession(agentSessions.cursor.id, "cursor", agentSessions.cursor.workingDir);
+      this.seedCursorAgentHistory(agentSessions.cursor.id);
+    }
+
+    // Seed OpenCode agent chat
+    if (agentSessions.opencode) {
+      this.ensureAgentSession(agentSessions.opencode.id, "opencode", agentSessions.opencode.workingDir);
+      this.seedOpenCodeAgentHistory(agentSessions.opencode.id);
+    }
+
+    this.logger.info("Mock chat history seeded successfully");
+  }
+
+  /**
+   * Ensures an agent session exists in the database.
+   * Creates it if it doesn't exist.
+   */
+  private ensureAgentSession(sessionId: string, sessionType: string, workingDir: string): void {
+    try {
+      const existing = this.sessionRepo.getById(sessionId);
+      if (!existing) {
+        this.sessionRepo.create({
+          id: sessionId,
+          type: sessionType,
+          workingDir,
+        });
+        this.logger.debug({ sessionId, sessionType }, "Created agent session in database for seeding");
+      }
+    } catch {
+      // Session might already exist, ignore
+    }
+  }
+
+  /**
+   * Seeds Supervisor chat with a realistic voice conversation.
+   */
+  private seedSupervisorHistory(): void {
+    this.ensureSupervisorSession();
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+
+    // Clear existing history first
+    this.messageRepo.deleteBySession(sessionId);
+
+    // User voice message 1
+    const voiceInput1 = {
+      id: "vi-1",
+      block_type: "voice_input",
+      content: "Show me the available workspaces",
+      metadata: { duration: 2.1, has_audio: true }
+    };
+    this.messageRepo.create({
+      sessionId,
+      role: "user",
+      contentType: "transcription",
+      content: "Show me the available workspaces",
+      contentBlocks: JSON.stringify([voiceInput1]),
+      isComplete: true,
+    });
+
+    // Assistant response with voice output
+    const textBlock1 = {
+      id: "tb-1",
+      block_type: "text",
+      content: "I found 2 workspaces with several projects. The **tiflis** workspace contains tiflis-code and tiflis-api. The **personal** workspace has your portfolio-site project. Would you like to start an agent session in any of these?"
+    };
+    const voiceOutput1 = {
+      id: "vo-1",
+      block_type: "voice_output",
+      content: "I found 2 workspaces with several projects.",
+      metadata: { duration: 4.2, has_audio: true }
+    };
+    this.messageRepo.create({
+      sessionId,
+      role: "assistant",
+      contentType: "text",
+      content: "I found 2 workspaces with several projects. The tiflis workspace contains tiflis-code and tiflis-api. The personal workspace has your portfolio-site project. Would you like to start an agent session in any of these?",
+      contentBlocks: JSON.stringify([textBlock1, voiceOutput1]),
+      isComplete: true,
+    });
+
+    // User voice message 2
+    const voiceInput2 = {
+      id: "vi-2",
+      block_type: "voice_input",
+      content: "Start Claude on tiflis-code",
+      metadata: { duration: 1.8, has_audio: true }
+    };
+    this.messageRepo.create({
+      sessionId,
+      role: "user",
+      contentType: "transcription",
+      content: "Start Claude on tiflis-code",
+      contentBlocks: JSON.stringify([voiceInput2]),
+      isComplete: true,
+    });
+
+    // Assistant response confirming session creation
+    const textBlock2 = {
+      id: "tb-2",
+      block_type: "text",
+      content: "I've started a new Claude Code session in **tiflis/tiflis-code**. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!"
+    };
+    const voiceOutput2 = {
+      id: "vo-2",
+      block_type: "voice_output",
+      content: "I've started a new Claude Code session in tiflis/tiflis-code.",
+      metadata: { duration: 3.5, has_audio: true }
+    };
+    this.messageRepo.create({
+      sessionId,
+      role: "assistant",
+      contentType: "text",
+      content: "I've started a new Claude Code session in tiflis/tiflis-code. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!",
+      contentBlocks: JSON.stringify([textBlock2, voiceOutput2]),
+      isComplete: true,
+    });
+
+    this.logger.debug("Seeded Supervisor history with voice conversation");
+  }
+
+  /**
+   * Seeds Claude agent chat with code examples and tool use.
+   */
+  private seedClaudeAgentHistory(sessionId: string): void {
+    // Clear existing history
+    this.messageRepo.deleteBySession(sessionId);
+
+    // User message with voice input (like Supervisor chat)
+    const userVoiceBlock = {
+      id: "vi-claude-1",
+      block_type: "voice_input",
+      content: "Add a health check endpoint to the API",
+      metadata: {
+        duration: 2.3,
+        has_audio: true,
+      }
+    };
+
+    this.messageRepo.create({
+      sessionId,
+      role: "user",
+      contentType: "audio",
+      content: "Add a health check endpoint to the API",
+      contentBlocks: JSON.stringify([userVoiceBlock]),
+      isComplete: true,
+    });
+
+    // Assistant response with tool use and code
+    const thinkingBlock = {
+      id: "think-1",
+      block_type: "thinking",
+      content: "I'll add a simple health check endpoint that returns the server status and version information."
+    };
+    const toolBlock = {
+      id: "tool-1",
+      block_type: "tool",
+      content: "Edit",
+      metadata: {
+        tool_name: "Edit",
+        tool_status: "completed",
+        tool_input: JSON.stringify({ file: "src/routes/health.ts" }),
+      }
+    };
+    const codeBlock = {
+      id: "code-1",
+      block_type: "code",
+      content: `import { Router } from 'express';
+
+const router = Router();
+
+router.get('/health', (req, res) => {
+  res.json({
+    status: 'healthy',
+    version: process.env.npm_package_version,
+    uptime: process.uptime()
+  });
+});
+
+export default router;`,
+      metadata: { language: "typescript" }
+    };
+    const textBlock = {
+      id: "text-1",
+      block_type: "text",
+      content: "I've added a health check endpoint at `/health` that returns the server status, version, and uptime. You can test it with `curl http://localhost:3000/health`."
+    };
+
+    this.messageRepo.create({
+      sessionId,
+      role: "assistant",
+      contentType: "text",
+      content: "I've added a health check endpoint at /health that returns the server status, version, and uptime.",
+      contentBlocks: JSON.stringify([thinkingBlock, toolBlock, codeBlock, textBlock]),
+      isComplete: true,
+    });
+
+    this.logger.debug({ sessionId }, "Seeded Claude agent history with code example");
+  }
+
+  /**
+   * Seeds Cursor agent chat.
+   */
+  private seedCursorAgentHistory(sessionId: string): void {
+    // Clear existing history
+    this.messageRepo.deleteBySession(sessionId);
+
+    // User message
+    this.messageRepo.create({
+      sessionId,
+      role: "user",
+      contentType: "text",
+      content: "Explain the project structure",
+      isComplete: true,
+    });
+
+    // Assistant response
+    const textBlock = {
+      id: "text-cursor-1",
+      block_type: "text",
+      content: `This is a **Next.js portfolio site** with the following structure:
+
+- \`/app\` - App router pages and layouts
+- \`/components\` - Reusable React components
+- \`/lib\` - Utility functions and helpers
+- \`/public\` - Static assets (images, fonts)
+- \`/styles\` - Global CSS and Tailwind config
+
+The site uses **Tailwind CSS** for styling and **Framer Motion** for animations. Would you like me to explain any specific part in more detail?`
+    };
+
+    this.messageRepo.create({
+      sessionId,
+      role: "assistant",
+      contentType: "text",
+      content: "This is a Next.js portfolio site with app router, components, lib, public, and styles directories.",
+      contentBlocks: JSON.stringify([textBlock]),
+      isComplete: true,
+    });
+
+    this.logger.debug({ sessionId }, "Seeded Cursor agent history");
+  }
+
+  /**
+   * Seeds OpenCode agent chat.
+   */
+  private seedOpenCodeAgentHistory(sessionId: string): void {
+    // Clear existing history
+    this.messageRepo.deleteBySession(sessionId);
+
+    // User message
+    this.messageRepo.create({
+      sessionId,
+      role: "user",
+      contentType: "text",
+      content: "Run the tests",
+      isComplete: true,
+    });
+
+    // Assistant response with status
+    const statusBlock = {
+      id: "status-1",
+      block_type: "status",
+      content: "Running tests..."
+    };
+    const codeBlock = {
+      id: "code-oc-1",
+      block_type: "code",
+      content: `✓ auth.test.ts (3 tests) 120ms
+✓ api.test.ts (8 tests) 340ms
+✓ utils.test.ts (5 tests) 45ms
+
+Test Files  3 passed (3)
+     Tests  16 passed (16)
+      Time  0.51s`,
+      metadata: { language: "shell" }
+    };
+    const textBlock = {
+      id: "text-oc-1",
+      block_type: "text",
+      content: "All 16 tests passed across 3 test files. The test suite completed in 0.51 seconds."
+    };
+
+    this.messageRepo.create({
+      sessionId,
+      role: "assistant",
+      contentType: "text",
+      content: "All 16 tests passed across 3 test files.",
+      contentBlocks: JSON.stringify([statusBlock, codeBlock, textBlock]),
+      isComplete: true,
+    });
+
+    this.logger.debug({ sessionId }, "Seeded OpenCode agent history");
+  }
 }

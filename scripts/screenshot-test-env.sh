@@ -199,10 +199,16 @@ generate_connection_config() {
 # Test Environment Connection Config
 # Generated: $(date -Iseconds)
 
+# iOS Simulator / macOS (use localhost)
 TEST_TUNNEL_URL="ws://localhost:${TEST_PORT}/ws"
+
+# Android Emulator (use 10.0.2.2 which maps to host's localhost)
+ANDROID_TUNNEL_URL="ws://10.0.2.2:${TEST_PORT}/ws"
+
 TEST_API_KEY="${api_key}"
 TEST_AUTH_KEY="${auth_key}"
 TEST_TUNNEL_ID="test-tunnel-${TEST_SESSION_ID}"
+TEST_PORT="${TEST_PORT}"
 EOF
 
   # Create magic link data
@@ -299,6 +305,28 @@ start_workstation() {
   wait_for_port "$WORKSTATION_PORT"
 
   log "Workstation started in mock mode (PID: $WORKSTATION_PID)"
+
+  # Extract the actual tunnel ID from the workstation log
+  # The workstation logs: Registered with tunnel ... tunnelId: "..."
+  local max_attempts=30
+  local attempt=0
+  local actual_tunnel_id=""
+
+  while [ -z "$actual_tunnel_id" ] && [ $attempt -lt $max_attempts ]; do
+    sleep 0.5
+    attempt=$((attempt + 1))
+    # Look for the tunnel ID in the log
+    actual_tunnel_id=$(grep -o 'tunnelId[^"]*"[^"]*"' "${TEST_ROOT}/logs/workstation.log" 2>/dev/null | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
+  done
+
+  if [ -n "$actual_tunnel_id" ]; then
+    log "Extracted actual tunnel ID: $actual_tunnel_id"
+    # Update connection.env with the actual tunnel ID
+    sed -i.bak "s/TEST_TUNNEL_ID=.*/TEST_TUNNEL_ID=\"${actual_tunnel_id}\"/" "${TEST_ROOT}/connection.env"
+    rm -f "${TEST_ROOT}/connection.env.bak"
+  else
+    log "WARNING: Could not extract tunnel ID from workstation log"
+  fi
 }
 
 # ─────────────────────────────────────────────────────────────
@@ -426,6 +454,67 @@ cmd_logs() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# Android Instructions Command
+# ─────────────────────────────────────────────────────────────
+
+cmd_android_instructions() {
+  if ! load_session 2>/dev/null; then
+    log "No active session. Run 'setup' and 'start' first."
+    log ""
+  fi
+
+  echo ""
+  echo "╔══════════════════════════════════════════════════════════════╗"
+  echo "║           Android Screenshot Test Instructions               ║"
+  echo "╚══════════════════════════════════════════════════════════════╝"
+  echo ""
+  echo "1. Start the test environment:"
+  echo "   ./scripts/screenshot-test-env.sh setup"
+  echo "   ./scripts/screenshot-test-env.sh start"
+  echo ""
+  echo "2. Start Android emulator (ensure it's running)"
+  echo "   # The emulator should be API 30+ for screenshot support"
+  echo ""
+  echo "3. Run the screenshot tests:"
+  echo "   cd apps/TiflisCodeAndroid"
+
+  if [ -n "$TEST_PORT" ]; then
+    local auth_key="test-auth-${TEST_SESSION_ID}"
+    echo ""
+    echo "   # With current session (port ${TEST_PORT}):"
+    echo "   ./gradlew connectedAndroidTest \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.class=io.tiflis.code.ScreenshotTest \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.screenshotTest=true \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.tunnelUrl=ws://10.0.2.2:${TEST_PORT}/ws \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.authKey=${auth_key}"
+    echo ""
+  else
+    echo ""
+    echo "   # Default (uses port 3001):"
+    echo "   ./gradlew connectedAndroidTest \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.class=io.tiflis.code.ScreenshotTest \\"
+    echo "     -Pandroid.testInstrumentationRunnerArguments.screenshotTest=true"
+    echo ""
+  fi
+
+  echo "4. Pull screenshots from device:"
+  echo "   adb pull /sdcard/Pictures/screenshots ./screenshots"
+  echo ""
+  echo "5. Stop the test environment:"
+  echo "   ./scripts/screenshot-test-env.sh stop"
+  echo ""
+
+  if [ -n "$TEST_PORT" ]; then
+    echo "Current connection config:"
+    echo "  Port: ${TEST_PORT}"
+    echo "  Tunnel URL: ws://10.0.2.2:${TEST_PORT}/ws"
+    echo "  Auth Key: test-auth-${TEST_SESSION_ID}"
+    echo "  (10.0.2.2 maps to host localhost from Android emulator)"
+    echo ""
+  fi
+}
+
+# ─────────────────────────────────────────────────────────────
 # Main Entry Point
 # ─────────────────────────────────────────────────────────────
 
@@ -448,6 +537,9 @@ case "${1:-help}" in
   logs)
     cmd_logs "$2"
     ;;
+  android)
+    cmd_android_instructions
+    ;;
   help|--help|-h)
     echo "Usage: $0 <command>"
     echo ""
@@ -458,13 +550,16 @@ case "${1:-help}" in
     echo "  cleanup  Stop servers and remove test directory"
     echo "  status   Show current status"
     echo "  logs     Tail server logs (tunnel|workstation|all)"
+    echo "  android  Show Android test instructions"
     echo ""
-    echo "Example workflow:"
+    echo "Example workflow for iOS:"
     echo "  $0 setup    # Create environment"
     echo "  $0 start    # Start servers"
-    echo "  # Run your screenshot tests..."
+    echo "  # Run iOS screenshot tests in Xcode..."
     echo "  $0 stop     # Stop servers"
     echo "  $0 cleanup  # Clean up"
+    echo ""
+    echo "For Android, run: $0 android"
     ;;
   *)
     error "Unknown command: $1 (use --help for usage)"

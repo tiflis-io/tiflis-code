@@ -33,6 +33,7 @@ import io.tiflis.code.ui.common.ConnectionIndicator
 import io.tiflis.code.ui.state.AppState
 import io.tiflis.code.ui.theme.*
 import io.tiflis.code.util.DeepLinkParser
+import io.tiflis.code.util.ScreenshotTestConfig
 
 /**
  * Settings screen showing connection info and preferences.
@@ -176,17 +177,29 @@ fun SettingsScreen(
             if (tunnelInfo != null) {
                 SettingsSection(title = stringResource(R.string.settings_tunnel)) {
                     tunnelInfo?.url?.let { url ->
+                        // Mask URL in screenshot testing mode
+                        val displayUrl = if (ScreenshotTestConfig.isScreenshotTesting) {
+                            "wss://tunnel.tiflis.io/ws"
+                        } else {
+                            url
+                        }
                         ListItem(
                             headlineContent = { Text("URL") },
-                            supportingContent = { Text(url) }
+                            supportingContent = { Text(displayUrl) }
                         )
                     }
 
                     tunnelInfo?.id?.let { id ->
+                        // Mask Tunnel ID in screenshot testing mode
+                        val displayId = if (ScreenshotTestConfig.isScreenshotTesting) {
+                            "your-tunnel-id"
+                        } else {
+                            id
+                        }
                         HorizontalDivider()
                         ListItem(
                             headlineContent = { Text("Tunnel ID") },
-                            supportingContent = { Text(id) }
+                            supportingContent = { Text(displayId) }
                         )
                     }
 

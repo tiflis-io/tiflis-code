@@ -144,6 +144,12 @@ dependencies {
     // Screenshot Testing (Fastlane Screengrab)
     androidTestImplementation("tools.fastlane:screengrab:2.1.1")
 
+    // UIAutomator for device screenshots
+    androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+
+    // ActivityScenario for controlled activity launching
+    androidTestImplementation("androidx.test:core:1.6.1")
+
     // Hilt Testing
     androidTestImplementation("com.google.dagger:hilt-android-testing:2.51.1")
     kspAndroidTest("com.google.dagger:hilt-compiler:2.51.1")

@@ -354,6 +354,13 @@ async function bootstrap(): Promise<void> {
   if (env.MOCK_MODE) {
     const mockAgentManager = agentSessionManager as unknown as MockAgentSessionManager;
 
+    // Create supervisor session first (iOS expects this in sync.state)
+    await sessionManager.createSession({
+      sessionType: "supervisor",
+      workingDir: env.WORKSPACES_ROOT,
+    });
+    logger.info("Pre-created supervisor session for screenshots");
+
     // Create one agent of each type with realistic names
     // These sessions will appear in the sidebar when the app connects
     mockAgentManager.createSession(
@@ -378,6 +385,26 @@ async function bootstrap(): Promise<void> {
     );
 
     logger.info("Pre-created 3 mock agent sessions for screenshots");
+
+    // Note: Terminal session creation is deferred until after event handlers are set up
+    // to ensure the terminalSessionCreated event triggers the output buffer attachment.
+    // See "Create mock terminal session" section after event handlers.
+
+    // Seed mock chat history for all sessions
+    chatHistoryService.seedMockData({
+      claude: {
+        id: "claude-tiflis-code",
+        workingDir: `${env.WORKSPACES_ROOT}/tiflis/tiflis-code`,
+      },
+      cursor: {
+        id: "cursor-portfolio",
+        workingDir: `${env.WORKSPACES_ROOT}/personal/portfolio-site`,
+      },
+      opencode: {
+        id: "opencode-api",
+        workingDir: `${env.WORKSPACES_ROOT}/tiflis/tiflis-api`,
+      },
+    });
   }
 
   // Create STT service for voice transcription
@@ -1504,6 +1531,28 @@ async function bootstrap(): Promise<void> {
             subscribeMessage.device_id,
             JSON.stringify(result)
           );
+
+          // In mock mode, generate fresh terminal output when a client subscribes
+          // This ensures the content is sent AFTER the client is subscribed
+          if (env.MOCK_MODE) {
+            const session = sessionManager.getSession(new SessionId(sessionId));
+            if (session?.type === "terminal") {
+              // Small delay to ensure subscription is fully processed
+              setTimeout(() => {
+                // Clear screen and send a welcome banner using printf
+                // The escape sequences must be processed by the shell, not sent raw
+                const clearAndBanner = `clear && printf '\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\033[1;32m  Tiflis Code - Remote Development Workstation\\033[0m\\n\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n\\033[1;33m  System Information:\\033[0m\\n  ├─ OS:       macOS Sequoia 15.1\\n  ├─ Shell:    zsh 5.9\\n  ├─ Node:     v22.11.0\\n  └─ Uptime:   2 days, 14 hours\\n\\n\\033[1;33m  Active Sessions:\\033[0m\\n  ├─ Claude Code  ─  tiflis/tiflis-code\\n  ├─ Cursor       ─  personal/portfolio\\n  └─ OpenCode     ─  tiflis/tiflis-api\\n\\n\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n'\r`;
+                ptyManager.write(
+                  session as Parameters<typeof ptyManager.write>[0],
+                  clearAndBanner
+                );
+                logger.info(
+                  { sessionId },
+                  "Mock mode: Generated terminal banner on subscribe"
+                );
+              }, 100);
+            }
+          }
         }
       }
       return Promise.resolve();
@@ -2933,6 +2982,49 @@ async function bootstrap(): Promise<void> {
       );
     });
   });
+
+  // Create mock terminal session for screenshots (after event handlers are set up)
+  // This ensures the terminalSessionCreated event triggers output buffer attachment
+  if (env.MOCK_MODE) {
+    const terminalSession = await sessionManager.createSession({
+      sessionType: "terminal",
+      workingDir: env.WORKSPACES_ROOT,
+      terminalSize: { cols: 80, rows: 24 },
+    });
+    logger.info(
+      { sessionId: terminalSession.id.value },
+      "Pre-created terminal session for screenshots"
+    );
+
+    // Run commands in the terminal to show some content for screenshots
+    if (terminalSession.type === "terminal") {
+      // Use a longer delay to ensure the output handler is fully attached
+      setTimeout(() => {
+        try {
+          // Run printf to show the content - the output will display nicely with colors
+          const command = `printf $'\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\033[1;32m  Tiflis Code - Remote Development Workstation\\033[0m\\n\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n\\033[1;33m  System Information:\\033[0m\\n  ├─ OS:       macOS Sequoia 15.1\\n  ├─ Shell:    zsh 5.9\\n  ├─ Node:     v22.11.0\\n  └─ Uptime:   2 days, 14 hours\\n\\n\\033[1;33m  Active Sessions:\\033[0m\\n  ├─ Claude Code  ─  tiflis/tiflis-code\\n  ├─ Cursor       ─  personal/portfolio\\n  └─ OpenCode     ─  tiflis/tiflis-api\\n\\n\\033[1;36m━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\\033[0m\\n\\n'`;
+          ptyManager.write(terminalSession as TerminalSession, command + "\r");
+          logger.info("Ran terminal commands for screenshots");
+
+          // Check buffer status after a short delay
+          setTimeout(() => {
+            const ts = terminalSession as TerminalSession;
+            const history = ts.getOutputHistory();
+            logger.info(
+              {
+                sessionId: ts.id.value,
+                bufferSize: history.length,
+                currentSequence: ts.currentSequence,
+              },
+              "Terminal output buffer status after command"
+            );
+          }, 500);
+        } catch (error) {
+          logger.warn({ error }, "Failed to run terminal commands");
+        }
+      }, 100);
+    }
+  }
 
   // Create Fastify app
   const app = createApp({ env, logger });

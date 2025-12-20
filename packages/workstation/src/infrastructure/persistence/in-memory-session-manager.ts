@@ -75,7 +75,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
       if (!this.sessions.has(state.sessionId)) {
         const session = new AgentSession({
           id: new SessionId(state.sessionId),
-          agentType: state.agentType,
+          type: state.agentType,
           agentName: state.agentName,
           workingDir: state.workingDir,
         });

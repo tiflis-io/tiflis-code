@@ -5,6 +5,7 @@
 
 package io.tiflis.code.ui.terminal
 
+import android.app.Activity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -16,14 +17,18 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.view.WindowCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.tiflis.code.R
 import io.tiflis.code.ui.common.ConnectionIndicator
 import io.tiflis.code.ui.state.AppState
+import io.tiflis.code.util.ScreenshotTestConfig
 
 /**
  * Terminal state for the session.
@@ -60,6 +65,16 @@ fun TerminalScreen(
     var showMenu by remember { mutableStateOf(false) }
     var showTerminateDialog by remember { mutableStateOf(false) }
 
+    // Set status bar to light content (white icons) for dark terminal background
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as Activity).window
+            window.statusBarColor = Color(0xFF1E1E1E).toArgb()
+            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
+        }
+    }
+
     // Subscribe to terminal session on mount
     LaunchedEffect(sessionId) {
         viewModel.subscribe(sessionId, appState)
@@ -82,7 +97,7 @@ fun TerminalScreen(
                             Text(
                                 text = subtitle,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = Color.White.copy(alpha = 0.7f)
                             )
                         }
                     }
@@ -117,7 +132,10 @@ fun TerminalScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF1E1E1E)
+                    containerColor = Color(0xFF1E1E1E),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
         }
@@ -204,9 +222,12 @@ fun TerminalScreen(
                             )
 
                             // Loading overlay on top of terminal (doesn't hide it)
-                            if (state is TerminalState.Subscribing ||
+                            // Skip loading overlay in screenshot testing mode
+                            val showLoadingOverlay = !ScreenshotTestConfig.isScreenshotTesting &&
+                                (state is TerminalState.Subscribing ||
                                 state is TerminalState.Replaying ||
-                                state is TerminalState.Disconnected) {
+                                state is TerminalState.Disconnected)
+                            if (showLoadingOverlay) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()

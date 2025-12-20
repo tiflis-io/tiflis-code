@@ -33,6 +33,7 @@ import io.tiflis.code.ui.sidebar.SidebarScreen
 import io.tiflis.code.ui.splash.SplashScreen
 import io.tiflis.code.ui.state.AppState
 import io.tiflis.code.ui.terminal.TerminalScreen
+import io.tiflis.code.util.ScreenshotTestConfig
 import kotlinx.coroutines.launch
 
 /**
@@ -184,9 +185,16 @@ private fun NavigationContent(
     appState: AppState,
     onMenuClick: () -> Unit
 ) {
+    // Skip splash screen in screenshot testing mode for faster test execution
+    val startDestination = if (ScreenshotTestConfig.isScreenshotTesting) {
+        Screen.Supervisor.route
+    } else {
+        Screen.Splash.route
+    }
+
     NavHost(
         navController = navController,
-        startDestination = Screen.Splash.route,
+        startDestination = startDestination,
         modifier = Modifier.fillMaxSize()
     ) {
         // Splash screen
