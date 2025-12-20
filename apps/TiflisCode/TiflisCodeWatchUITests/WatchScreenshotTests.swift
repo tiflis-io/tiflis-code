@@ -171,24 +171,25 @@ final class WatchScreenshotTests: XCTestCase {
     func test03_AgentChat() throws {
         Thread.sleep(forTimeInterval: 1)
 
-        // First navigate back if needed, then to Claude
-        // On watchOS, swipe right to go back
-        app.swipeRight()
+        // Scroll down to see Claude Code session and tap it
+        // The session list shows: Supervisor, then Sessions header, then Claude Code
+        app.swipeUp() // Scroll to reveal Claude Code
         Thread.sleep(forTimeInterval: 0.5)
 
-        // Look for Claude Code in session list
-        let claudeButton = app.buttons["Claude Code"]
+        // Try different ways to find and tap Claude Code
+        let claudeButton = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Claude'")).firstMatch
         if claudeButton.waitForExistence(timeout: 3) {
             claudeButton.tap()
+            Thread.sleep(forTimeInterval: 1)
         } else {
-            // Try Claude text
-            let claudeText = app.staticTexts["Claude Code"]
-            if claudeText.waitForExistence(timeout: 3) {
-                claudeText.tap()
+            // Try tapping on any element containing "Claude"
+            let claudeElements = app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'Claude'"))
+            if claudeElements.count > 0 {
+                claudeElements.firstMatch.tap()
+                Thread.sleep(forTimeInterval: 1)
             }
         }
 
-        Thread.sleep(forTimeInterval: 1)
         takeScreenshot(name: "03_AgentChat")
     }
 
