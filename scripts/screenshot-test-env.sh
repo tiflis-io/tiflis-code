@@ -457,6 +457,71 @@ cmd_logs() {
 # Android Instructions Command
 # ─────────────────────────────────────────────────────────────
 
+# ─────────────────────────────────────────────────────────────
+# Collect Command - Copy screenshots to assets folder
+# ─────────────────────────────────────────────────────────────
+
+cmd_collect() {
+  local platform="${1:-all}"
+  local assets_dir="${PROJECT_ROOT}/assets/screenshots"
+
+  log "Collecting screenshots to ${assets_dir}..."
+
+  case "$platform" in
+    ios)
+      collect_ios_screenshots
+      ;;
+    android)
+      collect_android_screenshots
+      ;;
+    all)
+      collect_ios_screenshots
+      collect_android_screenshots
+      ;;
+    *)
+      error "Unknown platform: $platform (use: ios, android, all)"
+      ;;
+  esac
+
+  log "Screenshot collection complete!"
+}
+
+collect_ios_screenshots() {
+  local src="${PROJECT_ROOT}/apps/TiflisCode/screenshots/en-US"
+  local dest="${PROJECT_ROOT}/assets/screenshots/appstore/iphone-6.5"
+
+  if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
+    mkdir -p "$dest"
+    cp "$src"/*.png "$dest/" 2>/dev/null || true
+    log "iOS screenshots copied to appstore/iphone-6.5/"
+    ls -la "$dest"
+  else
+    log "No iOS screenshots found at $src"
+  fi
+}
+
+collect_android_screenshots() {
+  local dest="${PROJECT_ROOT}/assets/screenshots/playstore/phone"
+
+  # Try to pull from connected Android device/emulator
+  if command -v adb &> /dev/null && adb devices | grep -q "device$"; then
+    log "Pulling screenshots from Android device..."
+    mkdir -p "$dest"
+    adb pull /sdcard/Pictures/screenshots/ /tmp/android-screenshots/ 2>/dev/null || true
+
+    if [ -d "/tmp/android-screenshots" ] && [ "$(ls -A /tmp/android-screenshots 2>/dev/null)" ]; then
+      cp /tmp/android-screenshots/*.png "$dest/" 2>/dev/null || true
+      rm -rf /tmp/android-screenshots
+      log "Android screenshots copied to playstore/phone/"
+      ls -la "$dest"
+    else
+      log "No screenshots found on Android device"
+    fi
+  else
+    log "No Android device connected. Skipping Android screenshot collection."
+  fi
+}
+
 cmd_android_instructions() {
   if ! load_session 2>/dev/null; then
     log "No active session. Run 'setup' and 'start' first."
@@ -540,6 +605,9 @@ case "${1:-help}" in
   android)
     cmd_android_instructions
     ;;
+  collect)
+    cmd_collect "$2"
+    ;;
   help|--help|-h)
     echo "Usage: $0 <command>"
     echo ""
@@ -550,6 +618,7 @@ case "${1:-help}" in
     echo "  cleanup  Stop servers and remove test directory"
     echo "  status   Show current status"
     echo "  logs     Tail server logs (tunnel|workstation|all)"
+    echo "  collect  Copy screenshots to assets folder (ios|android|all)"
     echo "  android  Show Android test instructions"
     echo ""
     echo "Example workflow for iOS:"
