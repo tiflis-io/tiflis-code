@@ -14,6 +14,13 @@ import Combine
 /// Manages connection, sessions, and messages with memory constraints in mind
 @MainActor
 final class WatchAppState: ObservableObject {
+    // MARK: - Screenshot Testing Mode
+
+    /// Check if running in screenshot testing mode
+    static var isScreenshotTesting: Bool {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
+    }
+
     // MARK: - Constants
 
     /// Maximum number of messages to keep per session (memory constraint)
@@ -86,6 +93,16 @@ final class WatchAppState: ObservableObject {
     init(connectivityManager: WatchConnectivityManager = .shared) {
         self.connectivityManager = connectivityManager
 
+        // Screenshot testing mode: populate mock data immediately
+        if Self.isScreenshotTesting {
+            NSLog("⌚️ WatchAppState init: SCREENSHOT TESTING MODE - populating mock data")
+            self.hasCredentials = true
+            self.connectionState = .authenticated
+            self.workstationOnline = true
+            setupMockScreenshotData()
+            return
+        }
+
         // IMPORTANT: Set initial hasCredentials value SYNCHRONOUSLY before any view renders
         // This prevents the setup view from flashing when credentials are already stored locally
         let initialHasCredentials = connectivityManager.hasCredentials
@@ -110,6 +127,68 @@ final class WatchAppState: ObservableObject {
                 await self.connect()
             }
         }
+    }
+
+    /// Populates mock data for screenshot testing
+    private func setupMockScreenshotData() {
+        // Mock sessions - matching iOS mock data
+        sessions = [
+            Session(id: "claude-session-1", type: .claude, agentName: "Claude Code",
+                    workspace: "tiflis", project: "tiflis-code", worktree: "feature-auth"),
+            Session(id: "cursor-session-1", type: .cursor, agentName: nil,
+                    workspace: "tiflis", project: "tiflis-code", worktree: nil),
+            Session(id: "opencode-session-1", type: .opencode, agentName: nil,
+                    workspace: "tiflis", project: "api-server", worktree: nil)
+        ]
+
+        // Mock supervisor messages
+        supervisorMessages = [
+            Message(
+                id: "msg-1",
+                sessionId: "supervisor",
+                role: .user,
+                contentBlocks: [.voiceInput(id: "v1", audioURL: nil, transcription: "What workspaces do I have?", duration: 2.5)]
+            ),
+            Message(
+                id: "msg-2",
+                sessionId: "supervisor",
+                role: .assistant,
+                contentBlocks: [.text(id: "t1", text: "You have 2 workspaces available:\n\n**tiflis** - 3 projects\n**personal** - 5 projects\n\nWould you like me to create a new agent session?")]
+            ),
+            Message(
+                id: "msg-3",
+                sessionId: "supervisor",
+                role: .user,
+                contentBlocks: [.voiceInput(id: "v2", audioURL: nil, transcription: "Start Claude on tiflis-code", duration: 1.8)]
+            ),
+            Message(
+                id: "msg-4",
+                sessionId: "supervisor",
+                role: .assistant,
+                contentBlocks: [.text(id: "t2", text: "Starting Claude Code agent on tiflis/tiflis-code...")]
+            )
+        ]
+
+        // Mock agent messages for Claude session
+        agentMessages["claude-session-1"] = [
+            Message(
+                id: "agent-msg-1",
+                sessionId: "claude-session-1",
+                role: .user,
+                contentBlocks: [.text(id: "t3", text: "Add error handling to the API")]
+            ),
+            Message(
+                id: "agent-msg-2",
+                sessionId: "claude-session-1",
+                role: .assistant,
+                contentBlocks: [
+                    .text(id: "t4", text: "I'll add comprehensive error handling to the API endpoints."),
+                    .toolCall(id: "tool-1", toolUseId: "use-1", name: "Edit", input: "api/routes.ts", output: "Added try-catch blocks", status: .completed)
+                ]
+            )
+        ]
+
+        NSLog("⌚️ WatchAppState: Mock data populated - %d sessions, %d supervisor messages", sessions.count, supervisorMessages.count)
     }
 
     // MARK: - Public Methods

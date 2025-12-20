@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0204A87FF5A0BE204DFACFA2 /* WatchScreenshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29FC17194FE43A5058DCC060 /* WatchScreenshotTests.swift */; };
 		050EB3905081AF066F2EA70A /* ConnectionState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3E96900D8413F72E4B064E10 /* ConnectionState.swift */; };
 		07B747C219E03769286FCADA /* CommandSending.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAC46AC5C7CF41A0321EEC3A /* CommandSending.swift */; };
 		08E1CCC679862E9ABCDF6A8C /* CancelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B805F2C22BC3492A11AE6942 /* CancelView.swift */; };
@@ -106,6 +107,13 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
+		29BBC2DA5009E8A00342ACF9 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CA542FD336ED9AFE20E6AA41;
+			remoteInfo = TiflisCodeWatch;
+		};
 		2DDF79AA52FD3E783A28DB2F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = F1B1ADC20A6B884D7EFE3F61 /* Project object */;
@@ -149,6 +157,7 @@
 		0C734ED3376BD4F3D6E4488D /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerView.swift; sourceTree = "<group>"; };
 		1CB6962E81B0F1878D3B27AB /* TerminalViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TerminalViewModel.swift; sourceTree = "<group>"; };
 		1EB369A0324105A5DCC91A1C /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
+		29FC17194FE43A5058DCC060 /* WatchScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchScreenshotTests.swift; sourceTree = "<group>"; };
 		2D35A999999055053D03394B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		2FD23EFAA7CD1C122DF89A3E /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
 		308C9D6BE0BF345A41C8A1E5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -176,6 +185,7 @@
 		723A2D053CB58A252A985D76 /* TiflisCode.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = TiflisCode.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		79E143932AFF8ABAA6E142C2 /* ThinkingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThinkingView.swift; sourceTree = "<group>"; };
 		7BB38052CBBCAFD79DEF6958 /* View+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "View+Extensions.swift"; sourceTree = "<group>"; };
+		7BC2D7E0B10369F633CE9A10 /* TiflisCodeWatchUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = TiflisCodeWatchUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		7CA73AD70C740907E24776F1 /* CodeBlockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodeBlockView.swift; sourceTree = "<group>"; };
 		7D0ABDF96A4EF1D938D78162 /* WatchAudioCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchAudioCache.swift; sourceTree = "<group>"; };
 		861C8E9521B9F35E6255C252 /* PromptInputBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PromptInputBar.swift; sourceTree = "<group>"; };
@@ -398,6 +408,7 @@
 				EB48C4EBD180106BCCDACEB6 /* TiflisCodeTests.xctest */,
 				B511196FA7420A2D86C3D302 /* TiflisCodeUITests.xctest */,
 				96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */,
+				7BC2D7E0B10369F633CE9A10 /* TiflisCodeWatchUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -418,6 +429,7 @@
 				1A11001E956B7CC797118BBE /* TiflisCodeTests */,
 				9D7A977FFD15DB517D77DB48 /* TiflisCodeUITests */,
 				794C2AD8320CE76B7FA9C40F /* TiflisCodeWatch */,
+				B45087C0B3DB87C00068D9AA /* TiflisCodeWatchUITests */,
 				646CCDD1563EEEC96ACC3776 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -525,6 +537,14 @@
 				662E4751826225CE9F94787D /* WatchVoiceButton.swift */,
 			);
 			path = Views;
+			sourceTree = "<group>";
+		};
+		B45087C0B3DB87C00068D9AA /* TiflisCodeWatchUITests */ = {
+			isa = PBXGroup;
+			children = (
+				29FC17194FE43A5058DCC060 /* WatchScreenshotTests.swift */,
+			);
+			path = TiflisCodeWatchUITests;
 			sourceTree = "<group>";
 		};
 		B81897029C3100B7B359C0C3 /* Agent */ = {
@@ -681,6 +701,24 @@
 			productReference = 96BDC92482CBE5D5BFCEC3D5 /* TiflisCodeWatch.app */;
 			productType = "com.apple.product-type.application";
 		};
+		D3AE014AE95282E880F9726D /* TiflisCodeWatchUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C01CD792395C311D018DFAD4 /* Build configuration list for PBXNativeTarget "TiflisCodeWatchUITests" */;
+			buildPhases = (
+				CFA3F594C7405CE2A913769B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BA41B13DA9315CB701264842 /* PBXTargetDependency */,
+			);
+			name = TiflisCodeWatchUITests;
+			packageProductDependencies = (
+			);
+			productName = TiflisCodeWatchUITests;
+			productReference = 7BC2D7E0B10369F633CE9A10 /* TiflisCodeWatchUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -702,6 +740,10 @@
 					};
 					CA542FD336ED9AFE20E6AA41 = {
 						DevelopmentTeam = "";
+					};
+					D3AE014AE95282E880F9726D = {
+						DevelopmentTeam = "";
+						TestTargetID = CA542FD336ED9AFE20E6AA41;
 					};
 				};
 			};
@@ -726,6 +768,7 @@
 				44349C86ACAAA7C5BEDB2B6A /* TiflisCodeTests */,
 				4293F37DA3BD351CBB50BF55 /* TiflisCodeUITests */,
 				CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */,
+				D3AE014AE95282E880F9726D /* TiflisCodeWatchUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -861,6 +904,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		CFA3F594C7405CE2A913769B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0204A87FF5A0BE204DFACFA2 /* WatchScreenshotTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EB6C1627EB99020271D32A44 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -882,6 +933,11 @@
 			isa = PBXTargetDependency;
 			target = 53E2D679081C5CF973E01199 /* TiflisCode */;
 			targetProxy = 2DDF79AA52FD3E783A28DB2F /* PBXContainerItemProxy */;
+		};
+		BA41B13DA9315CB701264842 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = CA542FD336ED9AFE20E6AA41 /* TiflisCodeWatch */;
+			targetProxy = 29BBC2DA5009E8A00342ACF9 /* PBXContainerItemProxy */;
 		};
 		E1F1D55DBEB14C59EC50B3CE /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -952,6 +1008,25 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 6.0;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Debug;
+		};
+		04001822458C0245BB676507 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCodeWatchUITests;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = TiflisCodeWatch;
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Debug;
@@ -1061,6 +1136,25 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 6.0;
+				WATCHOS_DEPLOYMENT_TARGET = 11.0;
+			};
+			name = Release;
+		};
+		4B641DD99D3C0636BACF4368 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = io.tiflis.TiflisCodeWatchUITests;
+				SDKROOT = watchos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 4;
+				TEST_TARGET_NAME = TiflisCodeWatch;
 				WATCHOS_DEPLOYMENT_TARGET = 11.0;
 			};
 			name = Release;
@@ -1187,6 +1281,15 @@
 			buildConfigurations = (
 				09528ABFAA4191422807726E /* Debug */,
 				6A01AEE7DD6FACDBA1E1F37A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C01CD792395C311D018DFAD4 /* Build configuration list for PBXNativeTarget "TiflisCodeWatchUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				04001822458C0245BB676507 /* Debug */,
+				4B641DD99D3C0636BACF4368 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

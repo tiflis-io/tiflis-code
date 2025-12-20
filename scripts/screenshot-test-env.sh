@@ -474,12 +474,16 @@ cmd_collect() {
     android)
       collect_android_screenshots
       ;;
+    watch)
+      collect_watch_screenshots
+      ;;
     all)
       collect_ios_screenshots
       collect_android_screenshots
+      collect_watch_screenshots
       ;;
     *)
-      error "Unknown platform: $platform (use: ios, android, all)"
+      error "Unknown platform: $platform (use: ios, android, watch, all)"
       ;;
   esac
 
@@ -519,6 +523,23 @@ collect_android_screenshots() {
     fi
   else
     log "No Android device connected. Skipping Android screenshot collection."
+  fi
+}
+
+collect_watch_screenshots() {
+  local src="${PROJECT_ROOT}/apps/TiflisCode/screenshots/watch"
+  local dest_45="${PROJECT_ROOT}/assets/screenshots/appstore/watch-45mm"
+  local dest_41="${PROJECT_ROOT}/assets/screenshots/appstore/watch-41mm"
+
+  if [ -d "$src" ] && [ "$(ls -A "$src" 2>/dev/null)" ]; then
+    # For now, copy to both sizes (can be refined based on simulator used)
+    mkdir -p "$dest_45" "$dest_41"
+    cp "$src"/*.png "$dest_45/" 2>/dev/null || true
+    log "Watch screenshots copied to appstore/watch-45mm/"
+    ls -la "$dest_45"
+  else
+    log "No Watch screenshots found at $src"
+    log "Run Watch UI tests with TiflisCodeWatch scheme in Xcode first."
   fi
 }
 
@@ -618,7 +639,7 @@ case "${1:-help}" in
     echo "  cleanup  Stop servers and remove test directory"
     echo "  status   Show current status"
     echo "  logs     Tail server logs (tunnel|workstation|all)"
-    echo "  collect  Copy screenshots to assets folder (ios|android|all)"
+    echo "  collect  Copy screenshots to assets folder (ios|android|watch|all)"
     echo "  android  Show Android test instructions"
     echo ""
     echo "Example workflow for iOS:"

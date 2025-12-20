@@ -124,6 +124,19 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_TARGET_NAME: TiflisCode
 
+  TiflisCodeWatchUITests:
+    type: bundle.ui-testing
+    platform: watchOS
+    sources:
+      - path: TiflisCodeWatchUITests
+    dependencies:
+      - target: TiflisCodeWatch
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: TiflisCodeWatch
+        WATCHOS_DEPLOYMENT_TARGET: "11.0"
+
 schemes:
   TiflisCode:
     build:
@@ -151,7 +164,12 @@ schemes:
     build:
       targets:
         TiflisCodeWatch: all
+        TiflisCodeWatchUITests: [test]
     run:
       config: Debug
       executable: TiflisCodeWatch
+    test:
+      config: Debug
+      targets:
+        - TiflisCodeWatchUITests
 

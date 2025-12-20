@@ -21,6 +21,20 @@
                ReferencedContainer = "container:TiflisCode.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "NO"
+            buildForProfiling = "NO"
+            buildForArchiving = "NO"
+            buildForAnalyzing = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D3AE014AE95282E880F9726D"
+               BuildableName = "TiflisCodeWatchUITests.xctest"
+               BlueprintName = "TiflisCodeWatchUITests"
+               ReferencedContainer = "container:TiflisCode.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
       </BuildActionEntries>
    </BuildAction>
    <TestAction
@@ -39,7 +53,20 @@
          </BuildableReference>
       </MacroExpansion>
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "D3AE014AE95282E880F9726D"
+               BuildableName = "TiflisCodeWatchUITests.xctest"
+               BlueprintName = "TiflisCodeWatchUITests"
+               ReferencedContainer = "container:TiflisCode.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
+      <CommandLineArguments>
+      </CommandLineArguments>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"
