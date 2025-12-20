@@ -52,14 +52,46 @@ final class ScreenshotTests: XCTestCase {
         app = XCUIApplication()
 
         // Configure app for screenshot testing
-        app.launchArguments = ["-UITesting"]
+        // Force English locale and keyboard for consistent screenshots
+        app.launchArguments = [
+            "-UITesting",
+            "-AppleLanguages", "(en)",
+            "-AppleLocale", "en_US"
+        ]
 
-        // Pass test environment configuration
-        if let tunnelURL = ProcessInfo.processInfo.environment["TEST_TUNNEL_URL"] {
-            app.launchEnvironment["SCREENSHOT_TEST_TUNNEL_URL"] = tunnelURL
+        // Try to load test config from the session file
+        // The screenshot-test-env.sh script writes config to /tmp/tiflis-screenshot-session
+        var tunnelURL: String?
+        var tunnelId: String?
+        var authKey: String?
+
+        // First try environment variables (for Fastlane)
+        tunnelURL = ProcessInfo.processInfo.environment["TEST_TUNNEL_URL"]
+        tunnelId = ProcessInfo.processInfo.environment["TEST_TUNNEL_ID"]
+        authKey = ProcessInfo.processInfo.environment["TEST_AUTH_KEY"]
+
+        // If not set, try reading from session file
+        if tunnelURL == nil || tunnelId == nil || authKey == nil {
+            if let sessionPath = readSessionPath(),
+               let config = loadConnectionConfig(from: sessionPath) {
+                tunnelURL = tunnelURL ?? config.tunnelURL
+                tunnelId = tunnelId ?? config.tunnelId
+                authKey = authKey ?? config.authKey
+            }
         }
-        if let authKey = ProcessInfo.processInfo.environment["TEST_AUTH_KEY"] {
-            app.launchEnvironment["SCREENSHOT_TEST_AUTH_KEY"] = authKey
+
+        // Pass test environment configuration to the app
+        if let url = tunnelURL {
+            app.launchEnvironment["SCREENSHOT_TEST_TUNNEL_URL"] = url
+            print("📍 Setting SCREENSHOT_TEST_TUNNEL_URL: \(url)")
+        }
+        if let id = tunnelId {
+            app.launchEnvironment["SCREENSHOT_TEST_TUNNEL_ID"] = id
+            print("📍 Setting SCREENSHOT_TEST_TUNNEL_ID: \(id)")
+        }
+        if let key = authKey {
+            app.launchEnvironment["SCREENSHOT_TEST_AUTH_KEY"] = key
+            print("📍 Setting SCREENSHOT_TEST_AUTH_KEY: \(key.prefix(10))...")
         }
 
         // Enable screenshot testing mode
@@ -68,14 +100,78 @@ final class ScreenshotTests: XCTestCase {
         setupSnapshot(app)
         app.launch()
 
-        // Wait for app to be ready
+        // Wait for app to be ready and connection to establish
         _ = app.wait(for: .runningForeground, timeout: 10)
+
+        // Give extra time for WebSocket connection to establish
+        Thread.sleep(forTimeInterval: 3)
 
         // Create screenshot directory if needed
         try? FileManager.default.createDirectory(
             at: Self.screenshotDir,
             withIntermediateDirectories: true
         )
+    }
+
+    /// Reads the session file path from /tmp/tiflis-screenshot-session
+    private func readSessionPath() -> String? {
+        let sessionFile = "/tmp/tiflis-screenshot-session"
+        guard let content = try? String(contentsOfFile: sessionFile, encoding: .utf8) else {
+            print("⚠️ Could not read session file at \(sessionFile)")
+            return nil
+        }
+
+        // Parse: export TEST_ROOT="/tmp/tiflis-test-xxx"
+        for line in content.components(separatedBy: "\n") {
+            if line.contains("TEST_ROOT=") {
+                let parts = line.components(separatedBy: "=")
+                if parts.count >= 2 {
+                    let path = parts[1].trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
+                    print("📂 Found TEST_ROOT: \(path)")
+                    return path
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Loads connection config from the test root's connection.env file
+    private func loadConnectionConfig(from testRoot: String) -> (tunnelURL: String, tunnelId: String, authKey: String)? {
+        let configPath = "\(testRoot)/connection.env"
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else {
+            print("⚠️ Could not read connection config at \(configPath)")
+            return nil
+        }
+
+        var tunnelURL: String?
+        var tunnelId: String?
+        var authKey: String?
+
+        for line in content.components(separatedBy: "\n") {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("TEST_TUNNEL_URL=") {
+                tunnelURL = extractValue(from: trimmed)
+            } else if trimmed.hasPrefix("TEST_TUNNEL_ID=") {
+                tunnelId = extractValue(from: trimmed)
+            } else if trimmed.hasPrefix("TEST_AUTH_KEY=") {
+                authKey = extractValue(from: trimmed)
+            }
+        }
+
+        if let url = tunnelURL, let id = tunnelId, let key = authKey {
+            print("✅ Loaded config: URL=\(url), ID=\(id), Key=\(key.prefix(10))...")
+            return (url, id, key)
+        }
+
+        print("⚠️ Incomplete config in \(configPath)")
+        return nil
+    }
+
+    /// Extracts value from a KEY="value" or KEY=value line
+    private func extractValue(from line: String) -> String? {
+        guard let equalIndex = line.firstIndex(of: "=") else { return nil }
+        let value = String(line[line.index(after: equalIndex)...])
+        return value.trimmingCharacters(in: CharacterSet(charactersIn: "\"' "))
     }
 
     override func tearDownWithError() throws {
@@ -115,21 +211,37 @@ final class ScreenshotTests: XCTestCase {
         snapshot("02_SupervisorChat")
     }
 
-    /// Screenshot 3: Chat with input focus
-    func test03_ChatInput() throws {
+    /// Screenshot 3: Agent chat with code example (Claude)
+    func test03_AgentChat() throws {
         Thread.sleep(forTimeInterval: 2)
 
-        // Find and tap any text field
-        let textFields = app.textFields.allElementsBoundByIndex
-        if !textFields.isEmpty {
-            textFields[0].tap()
-            Thread.sleep(forTimeInterval: 0.5)
+        // Open drawer to navigate to Claude agent
+        openDrawer()
+        Thread.sleep(forTimeInterval: 0.5)
+
+        // Look for Claude Code in the drawer
+        // Try different possible identifiers
+        let claudeButton = app.buttons["Claude Code"]
+        let claudeStaticText = app.staticTexts["Claude Code"]
+
+        if claudeButton.exists {
+            claudeButton.tap()
+        } else if claudeStaticText.exists {
+            claudeStaticText.tap()
+        } else {
+            // Try tapping by position - agent sessions are below Supervisor
+            let agentCells = app.cells.allElementsBoundByIndex
+            if agentCells.count > 1 {
+                agentCells[1].tap() // First agent after Supervisor
+            }
         }
+
+        Thread.sleep(forTimeInterval: 1)
 
         snapshot("03_ChatInput")
     }
 
-    /// Screenshot 4: Terminal navigation
+    /// Screenshot 4: Terminal with htop running
     func test04_Terminal() throws {
         Thread.sleep(forTimeInterval: 2)
 
@@ -137,12 +249,54 @@ final class ScreenshotTests: XCTestCase {
         openDrawer()
         Thread.sleep(forTimeInterval: 0.5)
 
-        // Look for Terminal in the drawer
+        // Look for Terminal in the drawer - it should be pre-created with htop running
         let terminalButton = app.buttons["Terminal"]
+        let terminalStaticText = app.staticTexts["Terminal"]
+
         if terminalButton.exists {
             terminalButton.tap()
-            Thread.sleep(forTimeInterval: 2)
+        } else if terminalStaticText.exists {
+            terminalStaticText.tap()
+        } else {
+            // Try scrolling down to find Terminal
+            let drawer = app.scrollViews.firstMatch
+            if drawer.exists {
+                drawer.swipeUp()
+                Thread.sleep(forTimeInterval: 0.3)
+            }
+            // Try again after scroll
+            if app.buttons["Terminal"].exists {
+                app.buttons["Terminal"].tap()
+            } else if app.staticTexts["Terminal"].exists {
+                app.staticTexts["Terminal"].tap()
+            }
         }
+
+        // Give terminal time to subscribe, request replay, and render content
+        // Terminal needs extra time because:
+        // 1. Subscribe to terminal session
+        // 2. Request replay of buffered output
+        // 3. Receive and render the replay data
+        Thread.sleep(forTimeInterval: 5)
+
+        // Switch keyboard to English by tapping the globe button until English keyboard appears
+        let keyboard = app.keyboards.firstMatch
+        if keyboard.exists {
+            // Look for globe button to switch keyboard language
+            let globeButton = keyboard.buttons["Next keyboard"]
+            if globeButton.exists {
+                // Tap globe to cycle through keyboards - tap a few times to get to English
+                for _ in 0..<3 {
+                    globeButton.tap()
+                    Thread.sleep(forTimeInterval: 0.3)
+                    // Check if we have English keyboard (space bar says "space" not "Пробел")
+                    if keyboard.buttons["space"].exists {
+                        break
+                    }
+                }
+            }
+        }
+        Thread.sleep(forTimeInterval: 0.5)
 
         snapshot("04_Terminal")
     }

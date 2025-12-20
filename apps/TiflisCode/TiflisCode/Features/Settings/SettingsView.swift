@@ -46,6 +46,27 @@ struct SettingsView: View {
         }
         return "\(version) (\(protocolVersion))"
     }
+
+    /// Check if running in screenshot testing mode
+    private var isScreenshotTesting: Bool {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
+    }
+
+    /// Masks sensitive URLs for screenshots (e.g., "wss://example.com/ws" -> "wss://your-tunnel.example.com/ws")
+    private func maskTunnelURL(_ url: String) -> String {
+        if isScreenshotTesting {
+            return "wss://your-tunnel.example.com/ws"
+        }
+        return url
+    }
+
+    /// Masks tunnel ID for screenshots
+    private func maskTunnelId(_ id: String) -> String {
+        if isScreenshotTesting {
+            return "your-tunnel-id"
+        }
+        return id.isEmpty ? "—" : id
+    }
     
     /// Computed color based on both tunnel connection and workstation status
     private var connectionIndicatorColor: Color {
@@ -99,16 +120,16 @@ struct SettingsView: View {
                     HStack {
                         Text("Tunnel")
                         Spacer()
-                        Text(tunnelURL)
+                        Text(maskTunnelURL(tunnelURL))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                     }
-                    
+
                     // 4. Tunnel ID
                     HStack {
                         Text("Tunnel ID")
                         Spacer()
-                        Text(tunnelId.isEmpty ? "—" : tunnelId)
+                        Text(maskTunnelId(tunnelId))
                             .foregroundStyle(.secondary)
                             .font(.system(.body, design: .monospaced))
                     }

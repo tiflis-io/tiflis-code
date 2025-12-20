@@ -182,10 +182,10 @@ final class ConnectionService: ConnectionServicing {
     }
 
     private var tunnelId: String {
-        // In screenshot testing mode, generate a test tunnel ID from the URL
+        // In screenshot testing mode, use the tunnel ID from environment
         if isScreenshotTesting,
-           ProcessInfo.processInfo.environment["SCREENSHOT_TEST_TUNNEL_URL"] != nil {
-            return "screenshot-test-tunnel"
+           let testTunnelId = ProcessInfo.processInfo.environment["SCREENSHOT_TEST_TUNNEL_ID"] {
+            return testTunnelId
         }
         return userDefaults.string(forKey: "tunnelId") ?? ""
     }
