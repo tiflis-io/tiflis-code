@@ -19,7 +19,7 @@
 //  Run via Xcode with the TiflisCodeWatch scheme on Apple Watch simulator.
 //
 
-import XCTest
+@preconcurrency import XCTest
 
 /// Screenshot tests for watchOS App Store submission.
 ///
@@ -29,15 +29,36 @@ final class WatchScreenshotTests: XCTestCase {
 
     var app: XCUIApplication!
 
-    /// Output directory for screenshots
-    static let screenshotDir: URL = {
+    /// Project root directory
+    static let projectRoot: URL = {
         if let projectRoot = ProcessInfo.processInfo.environment["PROJECT_ROOT"] {
             return URL(fileURLWithPath: projectRoot)
-                .appendingPathComponent("apps/TiflisCode/screenshots/watch")
         }
-        // Fallback path
-        return URL(fileURLWithPath: "/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-automated-screenshots/apps/TiflisCode/screenshots/watch")
+        return URL(fileURLWithPath: "/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-automated-screenshots")
     }()
+
+    /// Determines the watch folder based on screen size
+    /// Uses app window frame since XCUIScreen.main.bounds is not available on watchOS
+    static func deviceFolder(for app: XCUIApplication) -> String {
+        let screenSize = app.windows.firstMatch.frame.size
+        let maxDimension = max(screenSize.width, screenSize.height)
+
+        // Watch sizes based on screen height in points
+        // 45mm/46mm watches: ~251pt height -> watch-45mm
+        // 41mm/42mm watches: ~224pt height -> watch-41mm
+        if maxDimension >= 240 {
+            return "watch-45mm"
+        } else {
+            return "watch-41mm"
+        }
+    }
+
+    /// Output directory for screenshots - saves to assets/screenshots/appstore/<device>/
+    static func screenshotDir(for app: XCUIApplication) -> URL {
+        projectRoot
+            .appendingPathComponent("assets/screenshots/appstore")
+            .appendingPathComponent(deviceFolder(for: app))
+    }
 
     // MARK: - Setup
 
@@ -74,7 +95,7 @@ final class WatchScreenshotTests: XCTestCase {
 
         // Create screenshot directory if needed
         try? FileManager.default.createDirectory(
-            at: Self.screenshotDir,
+            at: Self.screenshotDir(for: app),
             withIntermediateDirectories: true
         )
     }
@@ -217,10 +238,11 @@ final class WatchScreenshotTests: XCTestCase {
     private func takeScreenshot(name: String) {
         Thread.sleep(forTimeInterval: 0.5) // Let UI settle
 
-        let screenshot = XCUIScreen.main.screenshot()
+        // Use app.screenshot() for watchOS compatibility (XCUIScreen.main is not available)
+        let screenshot = app.screenshot()
 
         // Save to file
-        let fileURL = Self.screenshotDir.appendingPathComponent("\(name).png")
+        let fileURL = Self.screenshotDir(for: app).appendingPathComponent("\(name).png")
         do {
             try screenshot.pngRepresentation.write(to: fileURL)
             print("📸 Watch screenshot saved: \(fileURL.path)")

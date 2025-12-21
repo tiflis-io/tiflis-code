@@ -182,6 +182,7 @@ struct ChatView: View {
                     } label: {
                         Image(systemName: "sidebar.leading")
                     }
+                    .accessibilityIdentifier("SidebarButton")
                 }
             }
             
