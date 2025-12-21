@@ -16,6 +16,7 @@ import {
   type AgentCommandConfig,
 } from "../../config/constants.js";
 import type { AgentType } from "../../domain/entities/agent-session.js";
+import { getShellEnv } from "../shell/shell-env.js";
 
 /**
  * Events emitted by HeadlessAgentExecutor.
@@ -99,12 +100,15 @@ export class HeadlessAgentExecutor extends EventEmitter {
     // Get alias environment variables (if any)
     const aliasEnvVars = this.getAliasEnvVars();
 
+    // Get environment from interactive login shell to include PATH from .zshrc/.bashrc
+    const shellEnv = getShellEnv();
+
     // Spawn subprocess in its own process group (detached)
     // This allows killing the entire process tree with process.kill(-pid)
     this.subprocess = spawn(command, args, {
       cwd: this.workingDir,
       env: {
-        ...process.env,
+        ...shellEnv,
         // Apply alias env vars (e.g., CLAUDE_CONFIG_DIR)
         ...aliasEnvVars,
         // Ensure proper terminal environment

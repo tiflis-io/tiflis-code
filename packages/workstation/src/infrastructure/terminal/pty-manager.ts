@@ -11,6 +11,7 @@ import type { TerminalManager } from '../../domain/ports/session-manager.js';
 import { TerminalSession, type ResizeResult } from '../../domain/entities/terminal-session.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
 import { getEnv } from '../../config/env.js';
+import { getShellEnv } from '../shell/shell-env.js';
 
 /**
  * Default shell to use for terminal sessions.
@@ -49,13 +50,16 @@ export class PtyManager implements TerminalManager {
       'Creating terminal session'
     );
 
+    // Get environment from interactive login shell to include PATH from .zshrc/.bashrc
+    const shellEnv = getShellEnv();
+
     const ptyProcess = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols,
       rows,
       cwd: workingDir,
       env: {
-        ...process.env,
+        ...shellEnv,
         TERM: 'xterm-256color',
         // Disable zsh partial line marker (inverse % sign on startup)
         PROMPT_EOL_MARK: '',
