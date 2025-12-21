@@ -258,7 +258,7 @@ export class MockAgentSessionManager extends EventEmitter {
   cancelCommand(sessionId: string): void {
     const state = this.sessions.get(sessionId);
 
-    if (!state || !state.isExecuting) {
+    if (!state?.isExecuting) {
       return;
     }
 
