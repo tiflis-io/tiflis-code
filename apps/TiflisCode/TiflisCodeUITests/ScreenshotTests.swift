@@ -9,7 +9,7 @@
 //  These tests capture screenshots of key app screens connected to a mock test environment.
 //
 
-import XCTest
+@preconcurrency import XCTest
 
 /// Screenshot tests for App Store submission.
 ///
@@ -33,16 +33,58 @@ final class ScreenshotTests: XCTestCase {
 
     var app: XCUIApplication!
 
-    /// Output directory for screenshots - saves to project folder
-    static let screenshotDir: URL = {
-        // Try to get project root from environment or use a known path
+    /// Project root directory
+    static let projectRoot: URL = {
         if let projectRoot = ProcessInfo.processInfo.environment["PROJECT_ROOT"] {
             return URL(fileURLWithPath: projectRoot)
-                .appendingPathComponent("apps/TiflisCode/screenshots/en-US")
         }
-        // Fallback: go up from the derived data to find the project
-        return URL(fileURLWithPath: "/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-automated-screenshots/apps/TiflisCode/screenshots/en-US")
+        return URL(fileURLWithPath: "/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-automated-screenshots")
     }()
+
+    /// Cached device folder, determined on first screenshot
+    nonisolated(unsafe) static var cachedDeviceFolder: String?
+
+    /// Determines the device folder based on app window size
+    static func getDeviceFolder(for app: XCUIApplication) -> String {
+        if let cached = cachedDeviceFolder {
+            return cached
+        }
+
+        // Wait for window to exist before querying frame
+        let window = app.windows.firstMatch
+        _ = window.waitForExistence(timeout: 5)
+
+        let appFrame = window.frame
+        let maxDimension = max(appFrame.width, appFrame.height)
+
+        let folder: String
+        // iPad detection - iPads have much larger frames
+        if maxDimension >= 1000 {
+            folder = "ipad-12.9"
+        } else if maxDimension >= 950 {
+            // iPhone 16 Pro Max: 956pt height -> 6.9"
+            folder = "iphone-6.9"
+        } else if maxDimension >= 920 {
+            // iPhone 16 Plus / 15 Pro Max: 932pt height -> 6.7"
+            folder = "iphone-6.7"
+        } else if maxDimension >= 890 {
+            // iPhone 11 Pro Max / XS Max: 896pt height -> 6.5"
+            folder = "iphone-6.5"
+        } else {
+            folder = "iphone-6.1"
+        }
+
+        cachedDeviceFolder = folder
+        print("📱 Detected device folder: \(folder) (frame: \(appFrame.width)x\(appFrame.height))")
+        return folder
+    }
+
+    /// Output directory for screenshots - determined dynamically based on app
+    static func screenshotDir(for app: XCUIApplication) -> URL {
+        projectRoot
+            .appendingPathComponent("assets/screenshots/appstore")
+            .appendingPathComponent(getDeviceFolder(for: app))
+    }
 
     // MARK: - Setup
 
@@ -103,14 +145,11 @@ final class ScreenshotTests: XCTestCase {
         // Wait for app to be ready and connection to establish
         _ = app.wait(for: .runningForeground, timeout: 10)
 
+        // Cache device folder early before any gestures that might cause timing issues
+        _ = Self.getDeviceFolder(for: app)
+
         // Give extra time for WebSocket connection to establish
         Thread.sleep(forTimeInterval: 3)
-
-        // Create screenshot directory if needed
-        try? FileManager.default.createDirectory(
-            at: Self.screenshotDir,
-            withIntermediateDirectories: true
-        )
     }
 
     /// Reads the session file path from /tmp/tiflis-screenshot-session
@@ -182,141 +221,127 @@ final class ScreenshotTests: XCTestCase {
 
     /// Opens the navigation drawer by swiping from left edge
     private func openDrawer() {
-        let leftEdge = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5))
-        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.6, dy: 0.5))
-        leftEdge.press(forDuration: 0.1, thenDragTo: center)
-        Thread.sleep(forTimeInterval: 0.5)
+        print("👆 Opening drawer with swipe gesture...")
+        // Swipe from near the left edge to the right side of the screen
+        let leftEdge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.02, dy: 0.5))
+        let rightSide = app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+        leftEdge.press(forDuration: 0.05, thenDragTo: rightSide, withVelocity: .fast, thenHoldForDuration: 0.1)
+        // Wait for drawer animation to complete
+        Thread.sleep(forTimeInterval: 1.5)
+        print("✅ Drawer should be open now")
+    }
+
+    /// Closes the navigation drawer by swiping from right to left
+    private func closeDrawer() {
+        print("👆 Closing drawer with swipe gesture...")
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let leftEdge = app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+        center.press(forDuration: 0.05, thenDragTo: leftEdge, withVelocity: .fast, thenHoldForDuration: 0.1)
+        // Wait for drawer animation to complete
+        Thread.sleep(forTimeInterval: 1.0)
+        print("✅ Drawer should be closed now")
+    }
+
+    /// Taps the sidebar button to open drawer (fallback method)
+    private func tapSidebarButton() {
+        let sidebarButton = app.buttons["SidebarButton"]
+        if sidebarButton.waitForExistence(timeout: 3) {
+            sidebarButton.tap()
+            Thread.sleep(forTimeInterval: 1.5)
+        }
     }
 
     // MARK: - Screenshot Tests
 
-    /// Screenshot 1: Navigation drawer (sidebar) open
-    func test01_NavigationDrawer() throws {
-        // Wait for initial load
-        Thread.sleep(forTimeInterval: 2)
+    /// Screenshot 1: Main chat view (Supervisor) with conversation
+    func test01_SupervisorChat() throws {
+        // Wait for app to load and render mock data
+        Thread.sleep(forTimeInterval: 3)
 
-        // On iPhone, swipe from left edge to open drawer
-        openDrawer()
-
-        // Take screenshot
-        snapshot("01_Navigation")
+        // Capture the Supervisor chat with mock conversation
+        snapshot("01_SupervisorChat", app: app)
     }
 
-    /// Screenshot 2: Main chat view (Supervisor)
-    func test02_SupervisorChat() throws {
-        // Wait for initial load - the app should show Supervisor by default
+    /// Screenshot 2: Navigation drawer (sidebar) open
+    func test02_NavigationDrawer() throws {
+        // Relaunch app with drawer pre-opened
+        app.terminate()
+        app.launchEnvironment["SCREENSHOT_DRAWER_OPEN"] = "1"
+        app.launch()
+
+        // Wait for app to be ready
+        _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 2)
 
-        // Just capture the current state (Supervisor chat)
-        snapshot("02_SupervisorChat")
+        // Capture the navigation drawer
+        snapshot("02_Navigation", app: app)
     }
 
-    /// Screenshot 3: Agent chat with code example (Claude)
-    func test03_AgentChat() throws {
+    /// Screenshot 2b: Create Session sheet showing available agents
+    func test02b_CreateSession() throws {
+        // Relaunch app with drawer pre-opened
+        app.terminate()
+        app.launchEnvironment["SCREENSHOT_DRAWER_OPEN"] = "1"
+        app.launch()
+
+        // Wait for app to be ready
+        _ = app.wait(for: .runningForeground, timeout: 10)
         Thread.sleep(forTimeInterval: 2)
 
-        // Open drawer to navigate to Claude agent
-        openDrawer()
-        Thread.sleep(forTimeInterval: 0.5)
-
-        // Look for Claude Code in the drawer
-        // Try different possible identifiers
-        let claudeButton = app.buttons["Claude Code"]
-        let claudeStaticText = app.staticTexts["Claude Code"]
-
-        if claudeButton.exists {
-            claudeButton.tap()
-        } else if claudeStaticText.exists {
-            claudeStaticText.tap()
-        } else {
-            // Try tapping by position - agent sessions are below Supervisor
-            let agentCells = app.cells.allElementsBoundByIndex
-            if agentCells.count > 1 {
-                agentCells[1].tap() // First agent after Supervisor
-            }
-        }
-
-        Thread.sleep(forTimeInterval: 1)
-
-        snapshot("03_ChatInput")
-    }
-
-    /// Screenshot 4: Terminal with htop running
-    func test04_Terminal() throws {
-        Thread.sleep(forTimeInterval: 2)
-
-        // Open drawer
-        openDrawer()
-        Thread.sleep(forTimeInterval: 0.5)
-
-        // Look for Terminal in the drawer - it should be pre-created with htop running
-        let terminalButton = app.buttons["Terminal"]
-        let terminalStaticText = app.staticTexts["Terminal"]
-
-        if terminalButton.exists {
-            terminalButton.tap()
-        } else if terminalStaticText.exists {
-            terminalStaticText.tap()
-        } else {
-            // Try scrolling down to find Terminal
-            let drawer = app.scrollViews.firstMatch
-            if drawer.exists {
-                drawer.swipeUp()
-                Thread.sleep(forTimeInterval: 0.3)
-            }
-            // Try again after scroll
-            if app.buttons["Terminal"].exists {
-                app.buttons["Terminal"].tap()
-            } else if app.staticTexts["Terminal"].exists {
-                app.staticTexts["Terminal"].tap()
-            }
-        }
-
-        // Give terminal time to subscribe, request replay, and render content
-        // Terminal needs extra time because:
-        // 1. Subscribe to terminal session
-        // 2. Request replay of buffered output
-        // 3. Receive and render the replay data
-        Thread.sleep(forTimeInterval: 5)
-
-        // Switch keyboard to English by tapping the globe button until English keyboard appears
-        let keyboard = app.keyboards.firstMatch
-        if keyboard.exists {
-            // Look for globe button to switch keyboard language
-            let globeButton = keyboard.buttons["Next keyboard"]
-            if globeButton.exists {
-                // Tap globe to cycle through keyboards - tap a few times to get to English
-                for _ in 0..<3 {
-                    globeButton.tap()
-                    Thread.sleep(forTimeInterval: 0.3)
-                    // Check if we have English keyboard (space bar says "space" not "Пробел")
-                    if keyboard.buttons["space"].exists {
-                        break
-                    }
-                }
-            }
-        }
-        Thread.sleep(forTimeInterval: 0.5)
-
-        snapshot("04_Terminal")
-    }
-
-    /// Screenshot 5: Settings navigation
-    func test05_Settings() throws {
-        Thread.sleep(forTimeInterval: 2)
-
-        // Open drawer
-        openDrawer()
-        Thread.sleep(forTimeInterval: 0.5)
-
-        // Look for Settings in the drawer
-        let settingsButton = app.buttons["Settings"]
-        if settingsButton.exists {
-            settingsButton.tap()
+        // Tap New Session button
+        let newSessionButton = app.buttons["New Session"]
+        if newSessionButton.waitForExistence(timeout: 5) {
+            newSessionButton.tap()
             Thread.sleep(forTimeInterval: 1)
         }
 
-        snapshot("05_Settings")
+        // Capture the create session sheet
+        snapshot("04_CreateSession", app: app)
+    }
+
+    /// Screenshot 3: Claude agent session with code response
+    func test03_AgentChat() throws {
+        // Relaunch app with Claude session pre-selected
+        app.terminate()
+        app.launchEnvironment["SCREENSHOT_SESSION"] = "claude"
+        app.launch()
+
+        // Wait for app to be ready
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 2)
+
+        // Capture the agent chat with code example
+        snapshot("03_AgentChat", app: app)
+    }
+
+    /// Screenshot 4: Terminal session
+    func test04_Terminal() throws {
+        // Relaunch app with Terminal session pre-selected
+        app.terminate()
+        app.launchEnvironment["SCREENSHOT_SESSION"] = "terminal"
+        app.launch()
+
+        // Wait for app to be ready
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 2)
+
+        // Capture the terminal view
+        snapshot("05_Terminal", app: app)
+    }
+
+    /// Screenshot 5: Settings view
+    func test05_Settings() throws {
+        // Relaunch app with Settings pre-selected
+        app.terminate()
+        app.launchEnvironment["SCREENSHOT_SESSION"] = "settings"
+        app.launch()
+
+        // Wait for app to be ready
+        _ = app.wait(for: .runningForeground, timeout: 10)
+        Thread.sleep(forTimeInterval: 2)
+
+        // Capture the settings view
+        snapshot("06_Settings", app: app)
     }
 
     // MARK: - iPad-specific Screenshots
@@ -330,7 +355,7 @@ final class ScreenshotTests: XCTestCase {
         Thread.sleep(forTimeInterval: 2)
 
         // iPad should show split view by default
-        snapshot("06_iPadSplitView")
+        snapshot("06_iPadSplitView", app: app)
     }
 }
 
@@ -345,8 +370,8 @@ func setupSnapshot(_ app: XCUIApplication) {
 
 /// Takes a snapshot with the given name.
 /// When running through Fastlane, this saves the screenshot.
-/// When running directly, saves to temp directory and adds as test attachment.
-func snapshot(_ name: String, waitForLoadingIndicator: Bool = true) {
+/// When running directly, saves to device-specific directory and adds as test attachment.
+func snapshot(_ name: String, app: XCUIApplication, waitForLoadingIndicator: Bool = true) {
     // Give UI time to settle
     if waitForLoadingIndicator {
         Thread.sleep(forTimeInterval: 0.5)
@@ -355,8 +380,13 @@ func snapshot(_ name: String, waitForLoadingIndicator: Bool = true) {
     // Take screenshot
     let screenshot = XCUIScreen.main.screenshot()
 
+    // Get device-specific directory and create if needed
+    let screenshotDir = ScreenshotTests.screenshotDir(for: app)
+    try? FileManager.default.createDirectory(at: screenshotDir, withIntermediateDirectories: true)
+
     // Save to file
-    let fileURL = ScreenshotTests.screenshotDir.appendingPathComponent("\(name).png")
+    let fileURL = screenshotDir.appendingPathComponent("\(name).png")
+
     do {
         try screenshot.pngRepresentation.write(to: fileURL)
         print("📸 Screenshot saved: \(fileURL.path)")

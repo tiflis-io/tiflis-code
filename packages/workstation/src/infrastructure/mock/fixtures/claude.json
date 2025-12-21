@@ -3,7 +3,7 @@
     "greeting": {
       "triggers": ["hello", "hi", "hey"],
       "response": {
-        "text": "Hello! I'm Claude, ready to help you with the tiflis-code project. I have access to the full codebase and can assist with:\n\n• Writing and editing code\n• Debugging issues\n• Code review and refactoring\n• Documentation\n• Running tests and builds\n\nWhat would you like to work on?",
+        "text": "Hello! I'm Claude, ready to help you with your project. I have access to the full codebase and can assist with:\n\n• Writing and editing code\n• Debugging issues\n• Code review and refactoring\n• Documentation\n• Running tests and builds\n\nWhat would you like to work on?",
         "delay_ms": 25
       }
     },

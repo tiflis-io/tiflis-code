@@ -361,25 +361,25 @@ async function bootstrap(): Promise<void> {
     });
     logger.info("Pre-created supervisor session for screenshots");
 
-    // Create one agent of each type with realistic names
+    // Create one agent of each type with generic demo names for screenshots
     // These sessions will appear in the sidebar when the app connects
     mockAgentManager.createSession(
       "claude",
-      `${env.WORKSPACES_ROOT}/tiflis/tiflis-code`,
-      "claude-tiflis-code",
+      `${env.WORKSPACES_ROOT}/work/my-app`,
+      "claude-my-app",
       "claude"
     );
 
     mockAgentManager.createSession(
       "cursor",
-      `${env.WORKSPACES_ROOT}/personal/portfolio-site`,
-      "cursor-portfolio",
+      `${env.WORKSPACES_ROOT}/personal/blog`,
+      "cursor-blog",
       "cursor"
     );
 
     mockAgentManager.createSession(
       "opencode",
-      `${env.WORKSPACES_ROOT}/tiflis/tiflis-api`,
+      `${env.WORKSPACES_ROOT}/work/api-service`,
       "opencode-api",
       "opencode"
     );
@@ -393,16 +393,16 @@ async function bootstrap(): Promise<void> {
     // Seed mock chat history for all sessions
     chatHistoryService.seedMockData({
       claude: {
-        id: "claude-tiflis-code",
-        workingDir: `${env.WORKSPACES_ROOT}/tiflis/tiflis-code`,
+        id: "claude-my-app",
+        workingDir: `${env.WORKSPACES_ROOT}/work/my-app`,
       },
       cursor: {
-        id: "cursor-portfolio",
-        workingDir: `${env.WORKSPACES_ROOT}/personal/portfolio-site`,
+        id: "cursor-blog",
+        workingDir: `${env.WORKSPACES_ROOT}/personal/blog`,
       },
       opencode: {
         id: "opencode-api",
-        workingDir: `${env.WORKSPACES_ROOT}/tiflis/tiflis-api`,
+        workingDir: `${env.WORKSPACES_ROOT}/work/api-service`,
       },
     });
   }

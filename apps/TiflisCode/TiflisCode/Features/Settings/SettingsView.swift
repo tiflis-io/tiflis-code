@@ -73,7 +73,8 @@ struct SettingsView: View {
         guard appState.connectionState.isConnected else {
             return appState.connectionState.indicatorColor
         }
-        return appState.workstationOnline ? .green : .orange
+        // Use proper green (not lime/salad) when workstation is online
+        return appState.workstationOnline ? Color(red: 0.2, green: 0.7, blue: 0.3) : .orange
     }
     
     /// Status text that includes workstation status

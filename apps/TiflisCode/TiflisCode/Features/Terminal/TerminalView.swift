@@ -42,11 +42,19 @@ struct TerminalView: View {
         )
     }
     
+    /// Check if running in screenshot testing mode
+    private var isScreenshotTesting: Bool {
+        ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
+    }
+
     var body: some View {
         ZStack {
             // Main terminal content
             VStack(spacing: 0) {
-                if viewModel.isConnected && viewModel.terminalState != .sessionLost {
+                if isScreenshotTesting {
+                    // Mock terminal view for App Store screenshots
+                    MockTerminalView()
+                } else if viewModel.isConnected && viewModel.terminalState != .sessionLost {
                     TerminalContentView(
                         viewModel: viewModel
                     )
@@ -79,13 +87,16 @@ struct TerminalView: View {
                 }
             }
 
-            // State overlays
-            if viewModel.terminalState == .replaying || viewModel.terminalState == .buffering {
+            // State overlays (not shown in screenshot testing mode)
+            if !isScreenshotTesting && (viewModel.terminalState == .replaying || viewModel.terminalState == .buffering) {
                 TerminalLoadingOverlay(text: viewModel.terminalState == .replaying ? "Loading history..." : "Syncing...")
             }
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(true)
+        .toolbarBackground(isScreenshotTesting ? Color.black : Color(uiColor: .systemBackground), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbarColorScheme(isScreenshotTesting ? .dark : nil, for: .navigationBar)
         .toolbar {
             // Show sidebar toggle only on compact width (iPhone, iPad portrait)
             if horizontalSizeClass == .compact {
@@ -208,6 +219,70 @@ struct TerminalView: View {
 
         // Create a new terminal session
         appState.createSession(type: .terminal, workspace: session.workspace, project: session.project)
+    }
+}
+
+// MARK: - Mock Terminal View for Screenshots
+
+/// Mock terminal view for App Store screenshots
+private struct MockTerminalView: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            // Dark header bar to match terminal theme
+            HStack {
+                Spacer()
+            }
+            .frame(height: 1)
+            .background(Color(white: 0.15))
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    terminalLine("developer@macbook tiflis-code % ", command: "git status")
+                    terminalOutput("On branch feature-auth")
+                    terminalOutput("Your branch is up to date with 'origin/feature-auth'.")
+                    terminalOutput("")
+                    terminalOutput("Changes not staged for commit:")
+                    terminalOutput("  (use \"git add <file>...\" to update)")
+                    terminalOutput("")
+                    terminalOutput("  modified:   src/auth/login.swift")
+                    terminalOutput("  modified:   src/auth/session.swift")
+                    terminalOutput("")
+                    terminalLine("developer@macbook tiflis-code % ", command: "npm run test")
+                    terminalOutput("")
+                    terminalOutput("  PASS  src/auth/login.test.ts")
+                    terminalOutput("  PASS  src/auth/session.test.ts")
+                    terminalOutput("  PASS  src/utils/crypto.test.ts")
+                    terminalOutput("")
+                    terminalOutput("Test Suites: 3 passed, 3 total")
+                    terminalOutput("Tests:       12 passed, 12 total")
+                    terminalOutput("Time:        2.847s")
+                    terminalOutput("")
+                    terminalLine("developer@macbook tiflis-code % ", command: "")
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 12)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+    }
+
+    private func terminalLine(_ prompt: String, command: String) -> some View {
+        HStack(spacing: 0) {
+            Text(prompt)
+                .foregroundStyle(Color(red: 0.4, green: 0.8, blue: 0.4))
+            Text(command)
+                .foregroundStyle(.white)
+            Spacer()
+        }
+        .font(.system(size: 13, weight: .regular, design: .monospaced))
+    }
+
+    private func terminalOutput(_ text: String) -> some View {
+        Text(text.isEmpty ? " " : text)
+            .foregroundStyle(.white)
+            .font(.system(size: 13, weight: .regular, design: .monospaced))
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

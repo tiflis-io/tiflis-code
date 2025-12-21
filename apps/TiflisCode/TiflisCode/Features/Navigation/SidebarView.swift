@@ -38,6 +38,7 @@ struct SidebarView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("SupervisorSession")
                 }
             }
             
@@ -52,6 +53,7 @@ struct SidebarView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("AgentSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 appState.terminateSession(session, silent: true)
@@ -74,6 +76,7 @@ struct SidebarView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("TerminalSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
                                 appState.terminateSession(session, silent: true)
@@ -103,9 +106,12 @@ struct SidebarView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityIdentifier("SettingsButton")
             }
         }
-        .listStyle(.sidebar)
+        .accessibilityIdentifier("SidebarList")
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.visible)
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 if let onDismiss = onDismiss {

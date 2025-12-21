@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="500" viewBox="0 0 1024 500">
+  <defs>
+    <!-- Brand gradient -->
+    <linearGradient id="brandGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#3b82f6"/>
+      <stop offset="100%" stop-color="#9333ea"/>
+    </linearGradient>
+    <!-- Background gradient with subtle glow -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a0a0a"/>
+      <stop offset="50%" stop-color="#0f0f1a"/>
+      <stop offset="100%" stop-color="#1a0a1a"/>
+    </linearGradient>
+    <!-- Subtle radial glow behind logo -->
+    <radialGradient id="glowGradient" cx="30%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity="0.15"/>
+      <stop offset="100%" stop-color="#0a0a0a" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  
+  <!-- Full-bleed background -->
+  <rect width="1024" height="500" fill="url(#bgGradient)"/>
+  
+  <!-- Subtle glow effect -->
+  <rect width="1024" height="500" fill="url(#glowGradient)"/>
+  
+  <!-- Logo - vertically centered, left positioned like Obsidian -->
+  <g transform="translate(115, 170)">
+    <!-- Logo background -->
+    <rect width="160" height="160" rx="32" fill="#1a1a1a"/>
+    
+    <!-- Left bracket -->
+    <path d="M 35 50 L 25 66 L 25 106 L 35 120" fill="none" stroke="#3b82f6" stroke-width="6" stroke-linecap="round"/>
+    
+    <!-- Right bracket -->
+    <path d="M 125 50 L 135 66 L 135 106 L 125 120" fill="none" stroke="#9333ea" stroke-width="6" stroke-linecap="round"/>
+    
+    <!-- Prompt symbol -->
+    <text x="35" y="115" font-family="monospace" font-size="58" fill="url(#brandGradient)">›</text>
+    
+    <!-- T letter -->
+    <text x="80" y="120" text-anchor="middle" font-family="system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="118" font-weight="500" fill="#ffffff">t</text>
+  </g>
+  
+  <!-- App name - vertically centered with logo, right of logo -->
+  <text x="330" y="235" font-family="system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="64" font-weight="600" fill="#ffffff">Tiflis Code</text>
+  
+  <!-- Tagline - below title, same alignment -->
+  <text x="330" y="290" font-family="system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif" font-size="26" font-weight="400" fill="#9ca3af">Voice-Controlled AI Agents</text>
+</svg>

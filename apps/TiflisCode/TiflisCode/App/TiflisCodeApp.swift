@@ -162,7 +162,7 @@ final class AppState: ObservableObject {
     private var pendingSessionCreations: [String: String] = [:]
 
     /// Check if running in screenshot testing mode
-    private static var isScreenshotTesting: Bool {
+    static var isScreenshotTesting: Bool {
         ProcessInfo.processInfo.environment["SCREENSHOT_TESTING"] == "1"
     }
 
@@ -199,7 +199,7 @@ final class AppState: ObservableObject {
         let keychainManager = KeychainManager()
         let deviceIDManager = DeviceIDManager()
         let webSocketClient = WebSocketClient()
-        
+
         // Inject or create connection service
         self.connectionService = connectionService ?? ConnectionService(
             webSocketClient: webSocketClient,
@@ -210,16 +210,233 @@ final class AppState: ObservableObject {
         // Set up AudioPlayerService with connection service for audio requests
         AudioPlayerService.shared.connectionService = self.connectionService
 
-        // Observe connection state from service
-        observeConnectionState()
-        
-        // Observe WebSocket messages for session management
-        observeWebSocketMessages()
-        
-        // Auto-connect on launch if we have saved credentials
-        if hasConnectionConfig {
-            connect()
+        // In screenshot testing mode, populate mock data for App Store screenshots
+        // Skip observers and real connections - use mock data only
+        if Self.isScreenshotTesting {
+            setupScreenshotTestingData()
+        } else {
+            // Observe connection state from service
+            observeConnectionState()
+
+            // Observe WebSocket messages for session management
+            observeWebSocketMessages()
+
+            // Auto-connect on launch if we have saved credentials
+            if hasConnectionConfig {
+                connect()
+            }
         }
+    }
+
+    // MARK: - Screenshot Testing Mode
+
+    /// Sets up mock data for App Store screenshot generation
+    private func setupScreenshotTestingData() {
+        // Set mock connection state (verified = proper green indicator)
+        connectionState = .verified
+        workstationOnline = true
+        workstationName = "MacBook Pro"
+        workstationVersion = "0.3.5"
+        workstationProtocolVersion = "1.0.0"
+        tunnelVersion = "0.3.4"
+        tunnelProtocolVersion = "1.0.0"
+        workspacesRoot = "/Users/developer/work"
+
+        // Create mock sessions - show all agent types
+        let supervisorSession = Session(id: "supervisor", type: .supervisor)
+        let claudeSession = Session(
+            id: "claude-screenshot",
+            type: .claude,
+            workspace: "tiflis",
+            project: "tiflis-code",
+            worktree: "feature-auth"
+        )
+        let cursorSession = Session(
+            id: "cursor-screenshot",
+            type: .cursor,
+            workspace: "tiflis",
+            project: "tiflis-web",
+            worktree: "main"
+        )
+        let opencodeSession = Session(
+            id: "opencode-screenshot",
+            type: .opencode,
+            workspace: "personal",
+            project: "api-server",
+            worktree: "main"
+        )
+        let terminalSession = Session(
+            id: "terminal-screenshot",
+            type: .terminal,
+            workingDir: "tiflis/tiflis-code"
+        )
+
+        sessions = [supervisorSession, claudeSession, cursorSession, opencodeSession, terminalSession]
+
+        // Allow test to specify which session to show via environment variable
+        let screenshotSession = ProcessInfo.processInfo.environment["SCREENSHOT_SESSION"] ?? "supervisor"
+        switch screenshotSession {
+        case "claude":
+            selectedSessionId = "claude-screenshot"
+        case "terminal":
+            selectedSessionId = "terminal-screenshot"
+        case "settings":
+            selectedSessionId = AppState.settingsId
+        default:
+            selectedSessionId = "supervisor"
+        }
+
+        // Create mock supervisor messages with voice interaction
+        // Voice user input with transcription
+        let voiceUserBlocks: [MessageContentBlock] = [
+            .voiceInput(id: "vi1", audioURL: nil, transcription: "Show me my available workspaces", duration: 2.5)
+        ]
+
+        // Voice assistant response: text content + audio player at bottom
+        let workspacesText = "Here are your workspaces:\n\n📁 **tiflis** — tiflis-code, tiflis-web\n📁 **personal** — api-server, dotfiles"
+        let voiceAssistantBlocks: [MessageContentBlock] = [
+            .text(id: "vo1-text", text: workspacesText),
+            .voiceOutput(id: "vo1", audioURL: nil, text: "audio-msg-001", duration: 5.2)
+        ]
+
+        // First assistant message with voice at bottom
+        let welcomeBlocks: [MessageContentBlock] = [
+            .text(id: "vo0-text", text: "Hello! I'm your Supervisor. I can help you manage sessions and navigate your workspace."),
+            .voiceOutput(id: "vo0", audioURL: nil, text: "audio-msg-000", duration: 3.5)
+        ]
+
+        supervisorMessages = [
+            Message(
+                sessionId: "supervisor",
+                role: .assistant,
+                contentBlocks: welcomeBlocks
+            ),
+            Message(
+                sessionId: "supervisor",
+                role: .user,
+                contentBlocks: voiceUserBlocks
+            ),
+            Message(
+                sessionId: "supervisor",
+                role: .assistant,
+                contentBlocks: voiceAssistantBlocks
+            )
+        ]
+
+        // Create mock Claude session messages with voice + code
+        let claudeUserBlocks: [MessageContentBlock] = [
+            .voiceInput(id: "claude-vi1", audioURL: nil, transcription: "Create a login view", duration: 2.1)
+        ]
+
+        let claudeAssistantBlocks: [MessageContentBlock] = [
+            .text(id: "cb1", text: "Here's a SwiftUI login view:"),
+            .code(
+                id: "cb2",
+                language: "swift",
+                code: """
+                struct LoginView: View {
+                    @State private var email = ""
+                    @State private var password = ""
+
+                    var body: some View {
+                        VStack(spacing: 16) {
+                            TextField("Email", text: $email)
+                            SecureField("Password", text: $password)
+                            Button("Sign In") { login() }
+                        }
+                    }
+                }
+                """
+            ),
+            .voiceOutput(id: "claude-vo1", audioURL: nil, text: "audio-msg-002", duration: 6.3)
+        ]
+
+        agentMessages["claude-screenshot"] = [
+            Message(
+                sessionId: "claude-screenshot",
+                role: .user,
+                contentBlocks: claudeUserBlocks
+            ),
+            Message(
+                sessionId: "claude-screenshot",
+                role: .assistant,
+                contentBlocks: claudeAssistantBlocks
+            )
+        ]
+
+        // Create mock Cursor session messages
+        let cursorBlocks: [MessageContentBlock] = [
+            .text(id: "cur1", text: "I've analyzed your React components and found some optimization opportunities."),
+            .toolCall(
+                id: "cur2",
+                toolUseId: "tool_001",
+                name: "Edit",
+                input: "src/components/Dashboard.tsx",
+                output: "Applied useMemo optimization",
+                status: .completed
+            ),
+            .text(id: "cur3", text: "I've optimized the Dashboard component with useMemo to prevent unnecessary re-renders.")
+        ]
+
+        agentMessages["cursor-screenshot"] = [
+            Message(
+                sessionId: "cursor-screenshot",
+                role: .user,
+                content: "Optimize my React components for performance"
+            ),
+            Message(
+                sessionId: "cursor-screenshot",
+                role: .assistant,
+                contentBlocks: cursorBlocks
+            )
+        ]
+
+        // Create mock OpenCode session messages
+        let opencodeBlocks: [MessageContentBlock] = [
+            .text(id: "oc1", text: "I'll set up the REST API endpoints for your user service."),
+            .toolCall(
+                id: "oc2",
+                toolUseId: "tool_002",
+                name: "Write",
+                input: "src/routes/users.ts",
+                output: "Created user routes with CRUD operations",
+                status: .completed
+            ),
+            .text(id: "oc3", text: "Created the user routes with GET, POST, PUT, and DELETE endpoints.")
+        ]
+
+        agentMessages["opencode-screenshot"] = [
+            Message(
+                sessionId: "opencode-screenshot",
+                role: .user,
+                content: "Create REST API endpoints for user management"
+            ),
+            Message(
+                sessionId: "opencode-screenshot",
+                role: .assistant,
+                contentBlocks: opencodeBlocks
+            )
+        ]
+
+        // Set mock available agents with Cerebras alias
+        availableAgents = [
+            AgentConfig(name: "claude", baseType: "claude", description: "Claude Code Agent", isAlias: false),
+            AgentConfig(name: "cursor", baseType: "cursor", description: "Cursor Agent", isAlias: false),
+            AgentConfig(name: "opencode", baseType: "opencode", description: "OpenCode Agent", isAlias: false),
+            AgentConfig(name: "cerebras", baseType: "opencode", description: "Cerebras (OpenCode)", isAlias: true)
+        ]
+
+        // Set mock workspaces
+        workspaces = [
+            WorkspaceConfig(name: "tiflis", projects: [
+                ProjectConfig(name: "tiflis-code", isGitRepo: true, defaultBranch: "main"),
+                ProjectConfig(name: "tiflis-web", isGitRepo: true, defaultBranch: "main")
+            ]),
+            WorkspaceConfig(name: "personal", projects: [
+                ProjectConfig(name: "api-server", isGitRepo: true, defaultBranch: "main"),
+                ProjectConfig(name: "dotfiles", isGitRepo: true, defaultBranch: "main")
+            ])
+        ]
     }
     
     // MARK: - Private Methods

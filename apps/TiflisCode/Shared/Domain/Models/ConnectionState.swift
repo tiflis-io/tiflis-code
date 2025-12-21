@@ -51,7 +51,8 @@ enum ConnectionState: Equatable {
     var indicatorColor: Color {
         switch self {
         case .verified:
-            return .green
+            // Proper green (not lime/salad green)
+            return Color(red: 0.2, green: 0.7, blue: 0.3)
         case .authenticated:
             // Yellow-green: tunnel auth ok, awaiting heartbeat verification
             return Color(red: 0.6, green: 0.8, blue: 0.2)

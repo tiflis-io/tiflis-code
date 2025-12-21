@@ -10,35 +10,35 @@
     "list_workspaces": {
       "triggers": ["workspace", "workspaces", "project", "projects", "list", "show"],
       "response": {
-        "text": "Here are your available workspaces:\n\n📁 **tiflis**\n   └── tiflis-code (main, feature/auth, feature/ui)\n   └── tiflis-api (main)\n\n📁 **personal**\n   └── portfolio-site (main)\n   └── dotfiles (main)\n\nWould you like to create a session in one of these projects?",
+        "text": "Here are your available workspaces:\n\n📁 **work**\n   └── my-app (main, feature/auth, feature/ui)\n   └── api-service (main)\n\n📁 **personal**\n   └── blog (main)\n   └── dotfiles (main)\n\nWould you like to create a session in one of these projects?",
         "delay_ms": 25
       }
     },
     "create_session": {
       "triggers": ["create", "start", "new session", "open claude", "open cursor"],
       "response": {
-        "text": "I'll create a new Claude session for you in tiflis-code.\n\n✓ Session created: **claude-abc123**\n✓ Working directory: ~/work/tiflis/tiflis-code\n✓ Ready for commands\n\nYou can now switch to the session to start coding. The agent has full access to the project files and can help with implementation, debugging, and code review.",
+        "text": "I'll create a new Claude session for you in my-app.\n\n✓ Session created: **claude-abc123**\n✓ Working directory: ~/work/work/my-app\n✓ Ready for commands\n\nYou can now switch to the session to start coding. The agent has full access to the project files and can help with implementation, debugging, and code review.",
         "delay_ms": 30
       }
     },
     "create_worktree": {
       "triggers": ["worktree", "branch", "feature"],
       "response": {
-        "text": "I'll create a new worktree for the feature branch.\n\n✓ Created worktree: feature/screenshot-automation\n✓ Location: ~/work/tiflis/tiflis-code--feature-screenshot-automation\n✓ Based on: main\n\nYou can now create a session in this worktree to work on the feature without affecting the main branch.",
+        "text": "I'll create a new worktree for the feature branch.\n\n✓ Created worktree: feature/new-feature\n✓ Location: ~/work/work/my-app--feature-new-feature\n✓ Based on: main\n\nYou can now create a session in this worktree to work on the feature without affecting the main branch.",
         "delay_ms": 30
       }
     },
     "terminal": {
       "triggers": ["terminal", "shell", "bash", "command line"],
       "response": {
-        "text": "I'll open a terminal session for you.\n\n✓ Terminal session created: **term-xyz789**\n✓ Shell: /bin/zsh\n✓ Working directory: ~/work/tiflis/tiflis-code\n\nYou can run any shell commands, manage git, run builds, or monitor processes.",
+        "text": "I'll open a terminal session for you.\n\n✓ Terminal session created: **term-xyz789**\n✓ Shell: /bin/zsh\n✓ Working directory: ~/work/work/my-app\n\nYou can run any shell commands, manage git, run builds, or monitor processes.",
         "delay_ms": 25
       }
     },
     "status": {
       "triggers": ["status", "sessions", "active", "running"],
       "response": {
-        "text": "Here's the current status:\n\n**Active Sessions:**\n• Supervisor (this chat)\n• Claude: tiflis-code (idle)\n• Terminal: tiflis-code (active)\n\n**Connection:**\n• Tunnel: Connected ✓\n• Workstation: Online ✓\n\nAll systems operational.",
+        "text": "Here's the current status:\n\n**Active Sessions:**\n• Supervisor (this chat)\n• Claude: my-app (idle)\n• Terminal: my-app (active)\n\n**Connection:**\n• Tunnel: Connected ✓\n• Workstation: Online ✓\n\nAll systems operational.",
         "delay_ms": 25
       }
     }

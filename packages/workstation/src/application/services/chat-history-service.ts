@@ -929,7 +929,7 @@ export class ChatHistoryService {
     const textBlock1 = {
       id: "tb-1",
       block_type: "text",
-      content: "I found 2 workspaces with several projects. The **tiflis** workspace contains tiflis-code and tiflis-api. The **personal** workspace has your portfolio-site project. Would you like to start an agent session in any of these?"
+      content: "I found 2 workspaces with several projects. The **work** workspace contains my-app and api-service. The **personal** workspace has your blog project. Would you like to start an agent session in any of these?"
     };
     const voiceOutput1 = {
       id: "vo-1",
@@ -941,7 +941,7 @@ export class ChatHistoryService {
       sessionId,
       role: "assistant",
       contentType: "text",
-      content: "I found 2 workspaces with several projects. The tiflis workspace contains tiflis-code and tiflis-api. The personal workspace has your portfolio-site project. Would you like to start an agent session in any of these?",
+      content: "I found 2 workspaces with several projects. The work workspace contains my-app and api-service. The personal workspace has your blog project. Would you like to start an agent session in any of these?",
       contentBlocks: JSON.stringify([textBlock1, voiceOutput1]),
       isComplete: true,
     });
@@ -950,14 +950,14 @@ export class ChatHistoryService {
     const voiceInput2 = {
       id: "vi-2",
       block_type: "voice_input",
-      content: "Start Claude on tiflis-code",
+      content: "Start Claude on my-app",
       metadata: { duration: 1.8, has_audio: true }
     };
     this.messageRepo.create({
       sessionId,
       role: "user",
       contentType: "transcription",
-      content: "Start Claude on tiflis-code",
+      content: "Start Claude on my-app",
       contentBlocks: JSON.stringify([voiceInput2]),
       isComplete: true,
     });
@@ -966,19 +966,19 @@ export class ChatHistoryService {
     const textBlock2 = {
       id: "tb-2",
       block_type: "text",
-      content: "I've started a new Claude Code session in **tiflis/tiflis-code**. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!"
+      content: "I've started a new Claude Code session in **work/my-app**. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!"
     };
     const voiceOutput2 = {
       id: "vo-2",
       block_type: "voice_output",
-      content: "I've started a new Claude Code session in tiflis/tiflis-code.",
+      content: "I've started a new Claude Code session in work/my-app.",
       metadata: { duration: 3.5, has_audio: true }
     };
     this.messageRepo.create({
       sessionId,
       role: "assistant",
       contentType: "text",
-      content: "I've started a new Claude Code session in tiflis/tiflis-code. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!",
+      content: "I've started a new Claude Code session in work/my-app. You can find it in the sidebar under Agent Sessions. The session is ready for your commands!",
       contentBlocks: JSON.stringify([textBlock2, voiceOutput2]),
       isComplete: true,
     });
