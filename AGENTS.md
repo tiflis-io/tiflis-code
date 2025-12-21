@@ -322,6 +322,57 @@ func startHeartbeat() {
 
 ---
 
+## Build & Test Commands
+
+### Root (Monorepo)
+- `pnpm build` - Build all packages
+- `pnpm dev` - Run tunnel + workstation in parallel
+- `pnpm test` - Run all tests across packages
+- `pnpm lint` - Lint all packages
+- `pnpm typecheck` - Type check all TypeScript packages
+
+### Individual Package Commands
+- TypeScript (tunnel/workstation): `pnpm dev`, `pnpm build`, `pnpm test:watch`, `pnpm lint:fix`, `pnpm typecheck`
+- iOS: Use Xcode or `xcodegen generate` then build in Xcode
+- Android: `cd apps/TiflisCodeAndroid && ./gradlew assembleDebug`, `testDebugUnitTest`
+
+## Code Style Guidelines
+
+### TypeScript
+- Strict mode enabled, Zod schemas for validation
+- Files: kebab-case, Classes: PascalCase, functions/variables: camelCase, Constants: SCREAMING_SNAKE_CASE
+- Clean Architecture: domain/, application/, infrastructure/, protocol/, config/
+- Domain errors with typed error classes, no external dependencies in domain layer
+
+### Swift
+- Swift 6.0, SwiftUI + concurrency patterns (CRITICAL: Use Task.sleep not Timer)
+- Access MainActor via `await MainActor.run { }`, track/cancel all tasks in cleanup
+- Files: PascalCase, functions: camelCase, prevent concurrent ops with `isConnecting` flags
+- License header required: `// Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>`
+
+### Kotlin
+- Coroutines: use viewModelScope/lifecycleScope (NEVER GlobalScope), Flow collection with collectAsStateWithLifecycle()
+- Compose: remember { mutableStateOf() }, LaunchedEffect for coroutines, DisposableEffect for cleanup
+- Files: PascalCase (classes), constants: SCREAMING_SNAKE_CASE, packages: lowercase
+
+## Error Handling
+- TypeScript: Domain-specific error classes, typed responses
+- Swift: do/catch for async, structured cancellation, MainActor isolation
+- Kotlin: Result type, always rethrow CancellationException
+
+## Testing
+- TypeScript: Vitest, run single test with `vitest run filename.test.ts`
+- iOS: XCTest, use scheme selector in Xcode
+- Android: JUnit5, `./gradlew testDebugUnitTest --tests="ClassName"`
+
+## Rules
+- English only for all content
+- Use git conventional commits: feat/scope, fix/scope, docs, etc.
+- Never create new .md files unless explicitly requested
+- Batch independent tool calls, use glob/grep for discovery, task for exploration
+
+---
+
 ## Agent Competency Requirements
 
 When working on this project, the AI agent must operate at an **expert senior developer level** for all technology stacks.
