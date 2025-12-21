@@ -1640,7 +1640,9 @@ final class AppState: ObservableObject {
 
     /// Set loading state for an agent session
     func setAgentIsLoading(_ isLoading: Bool, for sessionId: String) {
-        agentIsLoading[sessionId] = isLoading
+        Task { @MainActor [weak self] in
+            self?.agentIsLoading[sessionId] = isLoading
+        }
     }
 
     /// Get streaming message ID for an agent session

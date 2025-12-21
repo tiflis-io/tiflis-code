@@ -406,24 +406,29 @@ final class ChatViewModel: ObservableObject {
             content: text
         )
 
-        // Append message via AppState
-        if session.type == .supervisor {
-            appState?.supervisorMessages.append(userMessage)
-            appState?.supervisorScrollTrigger += 1
-        } else {
-            appState?.appendAgentMessage(userMessage, for: session.id)
-            appState?.agentScrollTriggers[session.id, default: 0] += 1
-        }
-
-        inputText = ""
-        isLoading = true
-        error = nil
-
         // Send via WebSocket
         if session.type == .supervisor {
             sendSupervisorCommand(text)
         } else {
             sendSessionExecute(text)
+        }
+
+        // Update state on next run loop cycle to avoid publishing during view updates
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            
+            // Append message via AppState
+            if self.session.type == .supervisor {
+                self.appState?.supervisorMessages.append(userMessage)
+                self.appState?.supervisorScrollTrigger += 1
+            } else {
+                self.appState?.appendAgentMessage(userMessage, for: self.session.id)
+                self.appState?.agentScrollTriggers[self.session.id, default: 0] += 1
+            }
+
+            self.inputText = ""
+            self.isLoading = true
+            self.error = nil
         }
     }
 

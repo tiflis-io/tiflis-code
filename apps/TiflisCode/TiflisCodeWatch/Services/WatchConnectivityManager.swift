@@ -794,4 +794,14 @@ extension WatchConnectivityManager: WCSessionDelegate {
             self.handleApplicationContext(contextCopy)
         }
     }
+    
+    #if os(iOS)
+    nonisolated func sessionDidBecomeInactive(_ session: WCSession) {
+        // Only available on iOS
+    }
+    
+    nonisolated func sessionDidDeactivate(_ session: WCSession) {
+        // Only available on iOS
+    }
+    #endif
 }
