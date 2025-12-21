@@ -335,6 +335,138 @@ export class AgentSessionManager extends EventEmitter {
   }
 
   /**
+   * Terminates sessions that are running in a specific worktree.
+   * Returns the list of terminated session IDs.
+   */
+  terminateWorktreeSessions(workspace: string, project: string, branch: string): string[] {
+    const worktreePath = `/${workspace}/${project}--${branch}`;
+    const terminatedSessions: string[] = [];
+
+    for (const [sessionId, state] of this.sessions) {
+      // Check if session is related to this worktree
+      const isInWorktree = state.workingDir.includes(worktreePath) || 
+                          state.cliSessionId?.includes(`${project}--${branch}`) ||
+                          state.workingDir.endsWith(`${project}--${branch}`);
+
+      if (isInWorktree) {
+        try {
+          // Cancel any executing command first
+          if (state.isExecuting) {
+            this.cancelCommand(sessionId);
+          }
+          
+          // Terminate the session
+          this.terminateSession(sessionId);
+          terminatedSessions.push(sessionId);
+          
+          this.logger.info({ sessionId, workspace, project, branch }, 'Terminated worktree session');
+        } catch (error) {
+          this.logger.error({ sessionId, error }, 'Failed to terminate worktree session');
+        }
+      }
+    }
+
+    return terminatedSessions;
+  }
+
+  /**
+   * Gets session summary for a specific worktree.
+   */
+  getWorktreeSessionSummary(workspace: string, project: string, branch: string): {
+    activeSessions: AgentSessionState[];
+    sessionCount: number;
+    sessionTypes: string[];
+    executingCount: number;
+  } {
+    const worktreePath = `/${workspace}/${project}--${branch}`;
+    
+    const activeSessions = Array.from(this.sessions.values()).filter(session => 
+      session.workingDir.includes(worktreePath) || 
+      session.cliSessionId?.includes(`${project}--${branch}`) ||
+      session.workingDir.endsWith(`${project}--${branch}`)
+    );
+
+    const sessionTypes = [...new Set(activeSessions.map(s => s.agentType))];
+    const executingCount = activeSessions.filter(s => s.isExecuting).length;
+
+    return {
+      activeSessions,
+      sessionCount: activeSessions.length,
+      sessionTypes,
+      executingCount,
+    };
+  }
+
+  /**
+   * Lists all sessions with their worktree information.
+   */
+  listSessionsWithWorktreeInfo(): {
+    sessionId: string;
+    agentType: string;
+    agentName: string;
+    workingDir: string;
+    isExecuting: boolean;
+    worktreeInfo?: {
+      workspace?: string;
+      project?: string;
+      branch?: string;
+      isWorktree: boolean;
+    };
+  }[] {
+    return Array.from(this.sessions.values()).map(session => {
+      // Parse worktree information from working directory
+      const worktreeInfo = this.parseWorktreeInfo(session.workingDir);
+      
+      return {
+        sessionId: session.sessionId,
+        agentType: session.agentType,
+        agentName: session.agentName,
+        workingDir: session.workingDir,
+        isExecuting: session.isExecuting,
+        worktreeInfo,
+      };
+    });
+  }
+
+  /**
+   * Parse worktree information from a working directory path.
+   */
+  private parseWorktreeInfo(workingDir: string): {
+    workspace?: string;
+    project?: string;
+    branch?: string;
+    isWorktree: boolean;
+  } {
+    // Pattern: /workspaces/workspace/project--branch or /workspaces/workspace/project
+    const parts = workingDir.split('/');
+    
+    if (parts.length < 3) {
+      return { isWorktree: false };
+    }
+
+    // Find the workspaces root and parse from there
+    const workspacesIndex = parts.findIndex(part => part === 'workspaces' || part.includes('workspace'));
+    if (workspacesIndex === -1 || workspacesIndex + 2 >= parts.length) {
+      return { isWorktree: false };
+    }
+
+    const workspace = parts[workspacesIndex + 1];
+    const projectPart = parts[workspacesIndex + 2];
+    
+    if (!projectPart) {
+      return { isWorktree: false };
+    }
+
+    // Check if it's a worktree (contains --) or main project
+    if (projectPart.includes('--')) {
+      const [project, branch] = projectPart.split('--');
+      return { workspace, project, branch, isWorktree: true };
+    } else {
+      return { workspace, project: projectPart, isWorktree: false };
+    }
+  }
+
+  /**
    * Setup event handlers for an executor.
    */
   private setupExecutorHandlers(

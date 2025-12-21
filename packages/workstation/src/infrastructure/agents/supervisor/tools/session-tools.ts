@@ -426,5 +426,119 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
     }
   );
 
-  return [listSessions, listAvailableAgents, createAgentSession, createTerminalSession, terminateSession, terminateAllSessions, getSessionInfo];
+  /**
+   * Lists sessions with worktree information.
+   */
+  const listSessionsWithWorktrees = tool(
+    () => {
+      try {
+        const sessions = agentSessionManager.listSessionsWithWorktreeInfo();
+        
+        if (sessions.length === 0) {
+          return 'No active sessions.';
+        }
+
+        const sessionLines = sessions.map(s => {
+          const worktreeInfo = s.worktreeInfo 
+            ? s.worktreeInfo.isWorktree 
+              ? ` (worktree: ${s.worktreeInfo.workspace}/${s.worktreeInfo.project}--${s.worktreeInfo.branch})`
+              : ` (main: ${s.worktreeInfo.workspace}/${s.worktreeInfo.project})`
+            : '';
+          
+          const executing = s.isExecuting ? ' [executing]' : '';
+          return `- [${s.agentType}] ${s.sessionId}${executing}${worktreeInfo}\n  Working dir: ${s.workingDir}`;
+        });
+
+        return `Active sessions:\n${sessionLines.join('\n')}`;
+      } catch (error) {
+        return `Error listing sessions: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'list_sessions_with_worktrees',
+      description: 'Lists all active sessions with worktree information for branch management',
+      schema: z.object({}),
+    }
+  );
+
+  /**
+   * Gets session summary for a specific worktree.
+   */
+  const getWorktreeSessionSummary = tool(
+    ({ workspace, project, branch }: {
+      workspace: string;
+      project: string;
+      branch: string;
+    }) => {
+      try {
+        const summary = agentSessionManager.getWorktreeSessionSummary(workspace, project, branch);
+        
+        if (summary.sessionCount === 0) {
+          return `No active sessions in worktree "${workspace}/${project}--${branch}".`;
+        }
+
+        const sessionDetails = summary.activeSessions.map(s => 
+          `- [${s.agentType}] ${s.sessionId} (${s.isExecuting ? 'executing' : 'idle'})\n  Created: ${new Date(s.createdAt).toISOString()}`
+        ).join('\n');
+
+        return `Worktree "${workspace}/${project}--${branch}" has ${summary.sessionCount} active session(s):\n${sessionDetails}\n\nSession types: ${summary.sessionTypes.join(', ')}\nExecuting: ${summary.executingCount}`;
+      } catch (error) {
+        return `Error getting worktree session summary: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'get_worktree_session_summary',
+      description: 'Gets detailed session information for a specific worktree',
+      schema: z.object({
+        workspace: z.string().describe('Workspace name'),
+        project: z.string().describe('Project name'),
+        branch: z.string().describe('Branch/worktree name'),
+      }),
+    }
+  );
+
+  /**
+   * Terminates sessions in a specific worktree.
+   */
+  const terminateWorktreeSessions = tool(
+    ({ workspace, project, branch }: {
+      workspace: string;
+      project: string;
+      branch: string;
+    }) => {
+      try {
+        const terminatedSessions = agentSessionManager.terminateWorktreeSessions(workspace, project, branch);
+        
+        if (terminatedSessions.length === 0) {
+          return `No active sessions to terminate in worktree "${workspace}/${project}--${branch}".`;
+        }
+
+        return `Terminated ${terminatedSessions.length} session(s) in worktree "${workspace}/${project}--${branch}":\n${terminatedSessions.map(id => `  - ${id}`).join('\n')}`;
+      } catch (error) {
+        return `Error terminating worktree sessions: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'terminate_worktree_sessions',
+      description: 'Terminates all active sessions in a specific worktree',
+      schema: z.object({
+        workspace: z.string().describe('Workspace name'),
+        project: z.string().describe('Project name'),
+        branch: z.string().describe('Branch/worktree name'),
+      }),
+    }
+  );
+
+  return [
+    listSessions, 
+    listAvailableAgents, 
+    createAgentSession, 
+    createTerminalSession, 
+    terminateSession, 
+    terminateAllSessions, 
+    getSessionInfo,
+    listSessionsWithWorktrees,
+    getWorktreeSessionSummary,
+    terminateWorktreeSessions,
+  ];
 }

@@ -340,7 +340,7 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
   /**
    * Validates that a name is in lower-kebab-case format.
    */
-  private isValidKebabCase(name: string): boolean {
+  isValidKebabCase(name: string): boolean {
     return /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name);
   }
 
@@ -413,5 +413,265 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
       defaultBranch: initGit ? "main" : undefined,
       worktrees: [],
     };
+  }
+
+  /**
+   * Gets current branch and uncommitted changes status for a project.
+   */
+  async getBranchStatus(workspace: string, project: string): Promise<{
+    currentBranch: string;
+    uncommittedChanges: string[];
+    aheadCommits: number;
+    isClean: boolean;
+  }> {
+    const projectPath = join(this.workspacesRoot, workspace, project);
+
+    if (!(await this.isGitRepository(projectPath))) {
+      throw new Error(`Project "${project}" is not a git repository`);
+    }
+
+    try {
+      // Current branch
+      const currentBranch = execSync('git rev-parse --abbrev-ref HEAD', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      }).trim();
+
+      // Uncommitted changes
+      const statusOutput = execSync('git status --porcelain', {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      });
+      const uncommittedChanges = statusOutput.trim().split('\n').filter(line => line.length > 0);
+
+      // Commits ahead of main/master (try both branch names)
+      let aheadCommits = 0;
+      const mainBranches = ['main', 'master'];
+      for (const mainBranch of mainBranches) {
+        try {
+          aheadCommits = parseInt(execSync(`git rev-list --count ${mainBranch}..${currentBranch}`, {
+            cwd: projectPath,
+            encoding: 'utf-8',
+          }).trim(), 10);
+          break;
+        } catch {
+          // Branch doesn't exist, continue trying
+          continue;
+        }
+      }
+
+      return {
+        currentBranch,
+        uncommittedChanges,
+        aheadCommits,
+        isClean: uncommittedChanges.length === 0,
+      };
+    } catch {
+      throw new Error('Failed to get branch status');
+    }
+  }
+
+  /**
+   * Merges source branch into target branch with safety checks.
+   */
+  async mergeBranch(
+    workspace: string, 
+    project: string, 
+    sourceBranch: string, 
+    targetBranch = 'main',
+    options: {
+      pushAfter?: boolean;
+      skipPreCheck?: boolean;
+    } = {}
+  ): Promise<{
+    success: boolean;
+    message: string;
+    conflicts?: string[];
+  }> {
+    const projectPath = join(this.workspacesRoot, workspace, project);
+
+    if (!(await this.isGitRepository(projectPath))) {
+      throw new Error(`Project "${project}" is not a git repository`);
+    }
+
+    try {
+      // Pre-merge safety checks
+      if (!options.skipPreCheck) {
+        const status = await this.getBranchStatus(workspace, project);
+        if (!status.isClean) {
+          return {
+            success: false,
+            message: `Cannot merge: uncommitted changes exist in ${status.currentBranch}`,
+          };
+        }
+      }
+
+      // Switch to target branch
+      execSync(`git checkout "${targetBranch}"`, { cwd: projectPath });
+
+      // Pull latest changes
+      try {
+        execSync(`git pull origin "${targetBranch}"`, { cwd: projectPath });
+      } catch {
+        // Remote pull failed, continue with local merge
+        console.warn(`Failed to pull ${targetBranch} from remote, continuing with local merge`);
+      }
+
+      // Merge source branch
+      try {
+        execSync(`git merge "${sourceBranch}"`, { cwd: projectPath });
+      } catch (error) {
+        // Handle merge conflicts
+        const conflicts = execSync('git diff --name-only --diff-filter=U', {
+          cwd: projectPath,
+          encoding: 'utf-8',
+        }).trim().split('\n').filter(f => f.length > 0);
+
+        return {
+          success: false,
+          message: `Merge conflicts in files: ${conflicts.join(', ')}`,
+          conflicts,
+        };
+      }
+
+      // Push if requested
+      if (options.pushAfter) {
+        try {
+          execSync(`git push origin "${targetBranch}"`, { cwd: projectPath });
+        } catch {
+          console.warn(`Failed to push ${targetBranch} to remote`);
+        }
+      }
+
+      return {
+        success: true,
+        message: `Successfully merged "${sourceBranch}" into "${targetBranch}"`,
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        message: `Merge failed: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  /**
+   * Checks if branch is merged into target branch.
+   */
+  async isBranchMerged(workspace: string, project: string, branch: string, targetBranch: string): Promise<boolean> {
+    const projectPath = join(this.workspacesRoot, workspace, project);
+
+    if (!(await this.isGitRepository(projectPath))) {
+      return false;
+    }
+
+    try {
+      const mergeBase = execSync(`git merge-base "${targetBranch}" "${branch}"`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      }).trim();
+
+      const branchHead = execSync(`git rev-parse "${branch}"`, {
+        cwd: projectPath,
+        encoding: 'utf-8',
+      }).trim();
+
+      return mergeBase === branchHead;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Cleans up worktree and safely deletes the branch if merged.
+   */
+  async cleanupWorktreeAndBranch(
+    workspace: string,
+    project: string, 
+    branch: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    branchDeleted: boolean;
+  }> {
+    const projectPath = join(this.workspacesRoot, workspace, project);
+
+    try {
+      let branchDeleted = false;
+
+      // Remove worktree
+      await this.removeWorktree(workspace, project, branch);
+
+      // Check if branch is merged into main/master and delete if safe
+      const mainBranches = ['main', 'master'];
+      for (const mainBranch of mainBranches) {
+        try {
+          const isMerged = await this.isBranchMerged(workspace, project, branch, mainBranch);
+          if (isMerged) {
+            execSync(`git branch -d "${branch}"`, { cwd: projectPath });
+            branchDeleted = true;
+            break;
+          }
+        } catch {
+          // Branch deletion failed, continue
+          continue;
+        }
+      }
+
+      return {
+        success: true,
+        message: `Cleaned up worktree for "${branch}"${branchDeleted ? ' and deleted merged branch' : ''}`,
+        branchDeleted,
+      };
+
+    } catch (error) {
+      return {
+        success: false,
+        message: `Cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
+        branchDeleted: false,
+      };
+    }
+  }
+
+  /**
+   * Lists mergeable branches with their status.
+   */
+  async listMergeableBranches(workspace: string, project: string): Promise<{
+    branch: string;
+    path: string;
+    isMerged: boolean;
+    hasUncommittedChanges: boolean;
+    canCleanup: boolean;
+    aheadCommits: number;
+  }[]> {
+    const worktrees = await this.listWorktrees(workspace, project);
+    const mergeableBranches = [];
+
+    for (const worktree of worktrees) {
+      if (worktree.branch === 'main' || worktree.branch === 'master') continue;
+
+      try {
+        const [isMerged, hasChanges, aheadCommits] = await Promise.all([
+          this.isBranchMerged(workspace, project, worktree.branch, 'main'),
+          this.getBranchStatus(workspace, project).then(status => !status.isClean),
+          this.getBranchStatus(workspace, project).then(status => status.aheadCommits),
+        ]);
+
+        mergeableBranches.push({
+          branch: worktree.branch,
+          path: worktree.path,
+          isMerged: await this.isBranchMerged(workspace, project, worktree.branch, 'main'),
+          hasUncommittedChanges: hasChanges,
+          canCleanup: isMerged && !hasChanges,
+          aheadCommits,
+        });
+      } catch {
+        // Skip branches on error
+        continue;
+      }
+    }
+
+    return mergeableBranches;
   }
 }

@@ -102,5 +102,63 @@ export interface WorkspaceDiscovery {
     name: string,
     initGit?: boolean
   ): Promise<ProjectInfo>;
+
+  /**
+   * Gets current branch and uncommitted changes status for a project.
+   */
+  getBranchStatus(workspace: string, project: string): Promise<{
+    currentBranch: string;
+    uncommittedChanges: string[];
+    aheadCommits: number;
+    isClean: boolean;
+  }>;
+
+  /**
+   * Merges source branch into target branch with safety checks.
+   */
+  mergeBranch(
+    workspace: string, 
+    project: string, 
+    sourceBranch: string, 
+    targetBranch: string,
+    options?: {
+      pushAfter?: boolean;
+      skipPreCheck?: boolean;
+    }
+  ): Promise<{
+    success: boolean;
+    message: string;
+    conflicts?: string[];
+  }>;
+
+  /**
+   * Checks if branch is merged into target branch.
+   */
+  isBranchMerged(workspace: string, project: string, branch: string, targetBranch: string): Promise<boolean>;
+
+  /**
+   * Cleans up worktree and safely deletes the branch if merged.
+   */
+  cleanupWorktreeAndBranch(
+    workspace: string,
+    project: string, 
+    branch: string
+  ): Promise<{
+    success: boolean;
+    message: string;
+    branchDeleted: boolean;
+  }>;
+
+  /**
+   * Lists mergeable branches with their status.
+   */
+  listMergeableBranches(workspace: string, project: string): Promise<{
+    branch: string;
+    path: string;
+    isMerged: boolean;
+    hasUncommittedChanges: boolean;
+    canCleanup: boolean;
+    aheadCommits: number;
+  }[]>;
 }
 

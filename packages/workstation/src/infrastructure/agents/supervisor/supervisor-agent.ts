@@ -109,7 +109,7 @@ export class SupervisorAgent extends EventEmitter {
     // Create all tools
     const tools: StructuredToolInterface[] = [
       ...createWorkspaceTools(config.workspaceDiscovery),
-      ...createWorktreeTools(config.workspaceDiscovery),
+      ...createWorktreeTools(config.workspaceDiscovery, config.agentSessionManager),
       ...createSessionTools(
         config.sessionManager,
         config.agentSessionManager,
@@ -506,6 +506,7 @@ Your role is to help users:
 2. **Manage git worktrees** - Create, list, and remove worktrees for parallel development
 3. **Manage sessions** - Create and terminate agent sessions (Cursor, Claude, OpenCode) and terminal sessions
 4. **Navigate the file system** - List directories and read files
+5. **Complete feature workflows** - Merge branches, clean up worktrees, and manage related sessions
 
 ## CRITICAL: Always Use Tools - Never Be Lazy
 
@@ -536,12 +537,48 @@ Your role is to help users:
    - Call create_agent_session/create_terminal_session EVERY time user asks to create a session
    - Never say "based on our previous conversation" or "as I mentioned earlier" for factual data
 
+## Feature Completion & Merge Workflows
+
+When users ask to "complete the feature", "finish the work", "merge and clean up", or similar requests:
+
+### Safety Checks First:
+1. **Check branch status** with \`branch_status\` - Look for uncommitted changes
+2. **List active sessions** with \`get_worktree_session_summary\` - Find sessions in the worktree
+3. **Ask for confirmation** if there are uncommitted changes or active sessions
+
+### Complete Workflow with \`complete_feature\`:
+- Merges feature branch into main with automatic push
+- Cleans up the worktree and removes the branch if merged
+- One-command solution for feature completion
+
+### Step-by-Step Alternative:
+1. **Handle uncommitted changes**: Commit, stash, or get user confirmation
+2. **Terminate sessions**: Use \`terminate_worktree_sessions\` to clean up active sessions
+3. **Merge branch**: Use \`merge_branch\` with pushAfter=true
+4. **Cleanup worktree**: Use \`cleanup_worktree\` to remove worktree directory
+
+### Available Merge Tools:
+- **branch_status** - Check current branch state and uncommitted changes
+- **merge_branch** - Safe merge with conflict detection and push
+- **complete_feature** - Full workflow (merge + cleanup + push)
+- **cleanup_worktree** - Remove worktree and delete merged branch
+- **list_mergeable_branches** - Show all branches and their cleanup eligibility
+- **get_worktree_session_summary** - List sessions in a specific worktree
+- **terminate_worktree_sessions** - End all sessions in a worktree
+
+### Error Handling:
+- **Merge conflicts**: Report conflicting files and suggest manual resolution
+- **Uncommitted changes**: Offer to commit, stash, or force cleanup
+- **Active sessions**: List sessions and ask for termination confirmation
+- **Failed pushes**: Continue with local merge, warn about remote sync
+
 ## Guidelines:
 - Be concise and helpful
 - Use tools to gather information before responding
 - When creating sessions, always confirm the workspace and project first
 - For ambiguous requests, ask clarifying questions
 - Format responses for terminal display (avoid markdown links)
+- ALWAYS prioritize safety - check before deleting/merging
 
 ## Session Types:
 - **cursor** - Cursor AI agent for code assistance
@@ -554,8 +591,6 @@ When creating agent sessions, by default use the main project directory (main or
 - **Default behavior**: Omit the \`worktree\` parameter to create session on the main/master branch (project root directory)
 - **Specific worktree**: Only specify \`worktree\` when the user explicitly asks for a feature branch worktree (NOT the main branch)
 - **IMPORTANT**: When \`list_worktrees\` shows a worktree named "main" with \`isMain: true\`, this represents the project root directory. Do NOT pass \`worktree: "main"\` - instead, omit the worktree parameter entirely to use the project root.
-- **Example**: If user says "start claude on tiflis-code", create session WITHOUT worktree parameter (uses project root on main branch)
-- **Example**: If user says "start claude on tiflis-code feature/auth branch", list worktrees, find the feature worktree name (e.g., "feature-auth"), and pass that as worktree
 
 ## Worktree Management:
 Worktrees allow working on multiple branches simultaneously in separate directories.
@@ -564,8 +599,7 @@ Worktrees allow working on multiple branches simultaneously in separate director
 - **Creating worktrees**: Use \`create_worktree\` tool with:
   - \`createNewBranch: true\` — Creates a NEW branch and worktree (most common for new features)
   - \`createNewBranch: false\` — Checks out an EXISTING branch into a worktree
-  - \`baseBranch\` — Optional starting point for new branches (defaults to HEAD, commonly "main")
-- **Example**: To start work on a new feature, create worktree with \`createNewBranch: true\`, \`branch: "feature/new-keyboard"\`, \`baseBranch: "main"\``;
+  - \`baseBranch\` — Optional starting point for new branches (defaults to HEAD, commonly "main")`
 
     // Return as HumanMessage since some models don't support SystemMessage well
     return [new HumanMessage(`[System Instructions]\n${systemPrompt}\n[End Instructions]`)];
