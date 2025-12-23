@@ -355,21 +355,97 @@ prompt_reverse_proxy() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# Docker Installation
+# ─────────────────────────────────────────────────────────────
+install_docker() {
+    local os
+    os="$(detect_os)"
+
+    print_step "Installing Docker..."
+    echo "" >&2
+    print_info "This will install Docker using the official convenience script."
+    print_info "See https://get.docker.com for details."
+
+    if ! confirm "Continue with Docker installation?" "n"; then
+        print_warning "Docker installation cancelled"
+        return 1
+    fi
+
+    echo "" >&2
+
+    if [ "$DRY_RUN" = "true" ]; then
+        print_info "DRY RUN: Would install Docker with: curl -fsSL https://get.docker.com | sh"
+        return 0
+    fi
+
+    # Download and run the Docker installation script
+    if curl -fsSL https://get.docker.com -o /tmp/get-docker.sh; then
+        sh /tmp/get-docker.sh
+        rm -f /tmp/get-docker.sh
+
+        echo "" >&2
+        print_step "Adding user to docker group..."
+        sudo usermod -aG docker "$USER" 2>/dev/null || true
+
+        echo "" >&2
+        print_success "Docker installed successfully!"
+        print_info "Please log out and log back in for group changes to take effect."
+        print_info "Or run: newgrp docker"
+        echo "" >&2
+
+        # Wait a moment for Docker to start
+        sleep 3
+
+        # Check if Docker is now available
+        if command -v docker &>/dev/null; then
+            print_success "Docker $(docker --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1) detected"
+            return 0
+        else
+            print_error "Docker installation may have failed. Please try installing manually."
+            return 1
+        fi
+    else
+        print_error "Failed to download Docker installation script"
+        print_info "Please install Docker manually: https://docs.docker.com/engine/install/"
+        return 1
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
 # Docker Mode Installation
 # ─────────────────────────────────────────────────────────────
 install_docker_mode() {
     print_step "Checking Docker..."
 
     if ! check_docker; then
-        print_error "Docker is not installed or not running"
+        # Check if docker command exists but daemon is not running
+        if command -v docker &>/dev/null; then
+            print_error "Docker is installed but not running"
+            echo "" >&2
+            print_info "Start Docker with:"
+            if [ "$(detect_os)" = "darwin" ]; then
+                echo "  open /Applications/Docker.app" >&2
+            else
+                echo "  sudo systemctl start docker" >&2
+                echo "  sudo service docker start" >&2
+            fi
+            echo "" >&2
+            exit 1
+        fi
+
+        # Docker is not installed at all
+        print_error "Docker is not installed"
         echo "" >&2
-        print_info "Install Docker with:"
-        echo "  curl -fsSL https://get.docker.com | sh" >&2
-        echo "" >&2
-        print_info "Then add your user to docker group:"
-        echo "  sudo usermod -aG docker \$USER" >&2
-        echo "  newgrp docker" >&2
-        exit 1
+
+        if confirm "Would you like to install Docker now?" "y"; then
+            if ! install_docker; then
+                exit 1
+            fi
+        else
+            print_info "Install Docker manually: https://docs.docker.com/engine/install/"
+            print_info "Or use --native flag for Node.js installation"
+            exit 1
+        fi
     fi
 
     local compose_cmd
@@ -441,37 +517,57 @@ install_docker_mode() {
         reverse_proxy="$(prompt_reverse_proxy)"
 
         if [ "$reverse_proxy" != "none" ]; then
-            # Confirm or enter public IP
+            # Confirm or enter public IP (loop until valid)
             echo ""
-            if [ -n "$public_ip" ]; then
-                local confirmed_ip
-                confirmed_ip="$(prompt_value "Server public IP address" "$public_ip")"
-                public_ip="$confirmed_ip"
-            else
-                public_ip="$(prompt_value "Server public IP address")"
-            fi
+            while [ -z "$public_ip" ]; do
+                if [ -n "$public_ip" ]; then
+                    local confirmed_ip
+                    confirmed_ip="$(prompt_value "Server public IP address" "$public_ip")"
+                    public_ip="$confirmed_ip"
+                else
+                    public_ip="$(prompt_value "Server public IP address")"
+                fi
 
-            if [ -z "$public_ip" ]; then
-                print_error "Public IP is required for reverse proxy setup"
-                exit 1
-            fi
+                if [ -z "$public_ip" ]; then
+                    print_error "Public IP is required for reverse proxy setup"
+                    echo "" >&2
+                    if ! confirm "Try again?" "y"; then
+                        print_info "Exiting..."
+                        exit 0
+                    fi
+                fi
+            done
 
-            # Get domain name
-            domain_name="$(prompt_value "Domain name (e.g., tunnel.example.com)")"
-            if [ -z "$domain_name" ]; then
-                print_error "Domain name is required for reverse proxy setup"
-                exit 1
-            fi
+            # Get domain name (loop until valid)
+            while [ -z "$domain_name" ]; do
+                domain_name="$(prompt_value "Domain name (e.g., tunnel.example.com)")"
+
+                if [ -z "$domain_name" ]; then
+                    print_error "Domain name is required for reverse proxy setup"
+                    echo "" >&2
+                    if ! confirm "Try again?" "y"; then
+                        print_info "Exiting..."
+                        exit 0
+                    fi
+                fi
+            done
 
             # Wait for DNS verification
             wait_for_dns "$domain_name" "$public_ip"
 
-            # Get email for Let's Encrypt (both traefik and nginx use it)
-            acme_email="$(prompt_value "Email for Let's Encrypt SSL certificates")"
-            if [ -z "$acme_email" ]; then
-                print_error "Email is required for Let's Encrypt"
-                exit 1
-            fi
+            # Get email for Let's Encrypt (loop until valid)
+            while [ -z "$acme_email" ]; do
+                acme_email="$(prompt_value "Email for Let's Encrypt SSL certificates")"
+
+                if [ -z "$acme_email" ]; then
+                    print_error "Email is required for Let's Encrypt"
+                    echo "" >&2
+                    if ! confirm "Try again?" "y"; then
+                        print_info "Exiting..."
+                        exit 0
+                    fi
+                fi
+            done
         fi
     fi
 
