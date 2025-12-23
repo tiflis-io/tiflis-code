@@ -488,21 +488,28 @@ install_docker_mode() {
     local api_key="" reverse_proxy="none" domain_name="" acme_email="" public_ip=""
 
     if [ "$skip_config" = "false" ]; then
-        # Get or generate API key
+        # Get or generate API key (loop until valid)
         api_key="${TUNNEL_REGISTRATION_API_KEY:-}"
-        if [ -z "$api_key" ]; then
-            if confirm "Generate a random API key?"; then
-                api_key="$(generate_key 32)"
-                print_success "Generated API key: ${api_key:0:8}..."
-            else
-                api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+        while [ ${#api_key} -lt 32 ]; do
+            if [ -z "$api_key" ]; then
+                if confirm "Generate a random API key?" "y"; then
+                    api_key="$(generate_key 32)"
+                    print_success "Generated API key: ${api_key:0:8}..."
+                else
+                    api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+                fi
             fi
-        fi
 
-        if [ ${#api_key} -lt 32 ]; then
-            print_error "API key must be at least 32 characters"
-            exit 1
-        fi
+            if [ ${#api_key} -lt 32 ]; then
+                print_error "API key must be at least 32 characters (got ${#api_key} chars)"
+                echo "" >&2
+                if ! confirm "Try again?" "y"; then
+                    print_info "Exiting..."
+                    exit 0
+                fi
+                api_key=""  # Reset to trigger prompt again
+            fi
+        done
 
         # Detect public IP
         print_step "Detecting public IP address..."
@@ -1051,21 +1058,28 @@ install_native_mode() {
         mkdir -p "${TUNNEL_DIR}/logs"
     fi
 
-    # Get or generate API key
+    # Get or generate API key (loop until valid)
     local api_key="${TUNNEL_REGISTRATION_API_KEY:-}"
-    if [ -z "$api_key" ]; then
-        if confirm "Generate a random API key?"; then
-            api_key="$(generate_key 32)"
-            print_success "Generated API key: ${api_key:0:8}..."
-        else
-            api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+    while [ ${#api_key} -lt 32 ]; do
+        if [ -z "$api_key" ]; then
+            if confirm "Generate a random API key?" "y"; then
+                api_key="$(generate_key 32)"
+                print_success "Generated API key: ${api_key:0:8}..."
+            else
+                api_key="$(prompt_secret "Enter TUNNEL_REGISTRATION_API_KEY (min 32 chars)")"
+            fi
         fi
-    fi
 
-    if [ ${#api_key} -lt 32 ]; then
-        print_error "API key must be at least 32 characters"
-        exit 1
-    fi
+        if [ ${#api_key} -lt 32 ]; then
+            print_error "API key must be at least 32 characters (got ${#api_key} chars)"
+            echo "" >&2
+            if ! confirm "Try again?" "y"; then
+                print_info "Exiting..."
+                exit 0
+            fi
+            api_key=""  # Reset to trigger prompt again
+        fi
+    done
 
     # Create .env file
     print_step "Creating .env file..."
