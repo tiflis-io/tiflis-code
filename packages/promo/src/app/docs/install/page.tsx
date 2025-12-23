@@ -3,33 +3,13 @@
 
 import { Metadata } from "next";
 import Link from "next/link";
+import { CodeBlock } from "@/app/components/code-block";
 
 export const metadata: Metadata = {
   title: "Installation - Tiflis Code",
   description:
     "Install Tiflis Code tunnel and workstation servers with one-liner scripts.",
 };
-
-function CodeBlock({
-  children,
-  title,
-}: {
-  children: string;
-  title?: string;
-}) {
-  return (
-    <div className="my-4">
-      {title && (
-        <div className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-mono">
-          {title}
-        </div>
-      )}
-      <pre className="bg-gray-900 text-gray-100 rounded-lg p-4 overflow-x-auto text-sm font-mono">
-        <code>{children}</code>
-      </pre>
-    </div>
-  );
-}
 
 function Section({
   title,
