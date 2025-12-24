@@ -2822,7 +2822,7 @@ async function bootstrap(): Promise<void> {
       blocks: ContentBlock[],
       isComplete: boolean,
       finalOutput?: string,
-      allBlocks?: ContentBlock[]
+      _allBlocks?: ContentBlock[]  // Not used - we use our own accumulator
     ) => {
       // CRITICAL: Check if supervisor was cancelled - don't broadcast late-arriving blocks
       const wasCancelled = supervisorAgent.wasCancelled();
@@ -2880,11 +2880,12 @@ async function bootstrap(): Promise<void> {
 
       // Save assistant response to persistent history when streaming completes (global)
       if (isComplete && finalOutput && finalOutput.length > 0) {
-        // Save with all accumulated content blocks for history restoration
+        // Save with merged content blocks for history restoration
+        // Use mergedBlocks (already computed above) for consistency
         chatHistoryService.saveSupervisorMessage(
           "assistant",
           finalOutput,
-          allBlocks
+          mergedBlocks
         );
 
         // Check if this was a voice command that needs TTS response

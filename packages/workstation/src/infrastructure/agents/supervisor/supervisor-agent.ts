@@ -26,8 +26,11 @@ import type { ContentBlock } from '../../../domain/value-objects/content-block.j
 import {
   createTextBlock,
   createToolBlock,
-  createErrorBlock,
   createStatusBlock,
+  createErrorBlock,
+  accumulateBlocks,
+  mergeToolBlocks,
+  type ContentBlock,
 } from '../../../domain/value-objects/content-block.js';
 
 /**
@@ -293,13 +296,8 @@ export class SupervisorAgent extends EventEmitter {
             if (this.isExecuting && !this.isCancelled) {
               const textBlock = createTextBlock(content);
               this.emit('blocks', deviceId, [textBlock], false);
-              // Replace last text block (LangGraph sends full state each time)
-              const lastTextIndex = allBlocks.findLastIndex((b) => b.block_type === 'text');
-              if (lastTextIndex >= 0) {
-                allBlocks[lastTextIndex] = textBlock;
-              } else {
-                allBlocks.push(textBlock);
-              }
+              // Use accumulateBlocks which handles text block replacement
+              accumulateBlocks(allBlocks, [textBlock]);
             }
           } else if (Array.isArray(content)) {
             // Handle structured content (tool calls, etc.)
@@ -309,7 +307,8 @@ export class SupervisorAgent extends EventEmitter {
                 const block = this.parseContentItem(item as Record<string, unknown>);
                 if (block) {
                   this.emit('blocks', deviceId, [block], false);
-                  allBlocks.push(block);
+                  // Use accumulateBlocks to merge tool blocks in-place
+                  accumulateBlocks(allBlocks, [block]);
                 }
               }
             }
@@ -331,7 +330,8 @@ export class SupervisorAgent extends EventEmitter {
             toolCallId
           );
           this.emit('blocks', deviceId, [toolBlock], false);
-          allBlocks.push(toolBlock);
+          // Use accumulateBlocks to merge with existing tool_use block
+          accumulateBlocks(allBlocks, [toolBlock]);
         }
       }
 
@@ -342,9 +342,12 @@ export class SupervisorAgent extends EventEmitter {
         this.addToHistory('user', command);
         this.addToHistory('assistant', finalOutput);
 
+        // Merge tool blocks before sending completion
+        const finalBlocks = mergeToolBlocks(allBlocks);
+
         // Emit completion with final output and all blocks for persistence
         const completionBlock = createStatusBlock('Complete');
-        this.emit('blocks', deviceId, [completionBlock], true, finalOutput, allBlocks);
+        this.emit('blocks', deviceId, [completionBlock], true, finalOutput, finalBlocks);
 
         this.logger.debug({ output: finalOutput.slice(0, 200) }, 'Supervisor streaming completed');
       } else {
