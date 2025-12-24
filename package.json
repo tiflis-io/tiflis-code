@@ -20,7 +20,10 @@
     "version:tunnel:major": "cd packages/tunnel && npm version major --no-git-tag-version",
     "version:workstation:patch": "cd packages/workstation && npm version patch --no-git-tag-version",
     "version:workstation:minor": "cd packages/workstation && npm version minor --no-git-tag-version",
-    "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version"
+    "version:workstation:major": "cd packages/workstation && npm version major --no-git-tag-version",
+    "dev:stt": "cd services/stt && uv run python -m src.main",
+    "dev:tts": "cd services/tts && uv run python -m src.main",
+    "dev:speech": "pnpm run dev:stt & pnpm run dev:tts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0"

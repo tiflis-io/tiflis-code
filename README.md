@@ -171,6 +171,8 @@ Built with **SwiftUI** (iOS/watchOS) and **Jetpack Compose** (Android). Supports
 | **Android App**        | Android client               | Kotlin, Jetpack Compose  |
 | **Tunnel Server**      | Secure relay (deploy on VPS) | TypeScript, Node.js      |
 | **Workstation Server** | Runs on your machine         | TypeScript, Node.js      |
+| **STT Service**        | Local speech-to-text         | Python, MLX/CUDA Whisper |
+| **TTS Service**        | Local text-to-speech         | Python, Kokoro           |
 
 ### How It Works
 
@@ -309,11 +311,15 @@ All running in parallel. All monitored from one app.
 ```
 tiflis-code/
 ├── apps/
-│   └── TiflisCode/              # iOS & watchOS app (Xcode)
+│   ├── TiflisCode/              # iOS & watchOS app (Xcode)
+│   └── TiflisCodeAndroid/       # Android app (Gradle)
 ├── packages/
 │   ├── tunnel/                  # Tunnel Server
 │   ├── workstation/             # Workstation Server
-│   └── protocol/                # Shared protocol types
+│   └── promo/                   # Marketing landing page
+├── services/
+│   ├── stt/                     # Speech-to-Text (MLX/CUDA Whisper)
+│   └── tts/                     # Text-to-Speech (Kokoro)
 ├── assets/
 │   └── branding/                # Logos and icons
 ├── CLAUDE.md                    # Complete project guide
@@ -336,7 +342,10 @@ tiflis-code/
 ### Commands
 
 ```bash
-pnpm dev          # Start all servers in dev mode
+pnpm dev          # Start tunnel + workstation in dev mode
+pnpm dev:stt      # Start local STT service (MLX Whisper)
+pnpm dev:tts      # Start local TTS service (Kokoro)
+pnpm dev:speech   # Start both STT and TTS services
 pnpm build        # Build all packages
 pnpm test         # Run tests
 pnpm lint         # Lint code
@@ -348,7 +357,9 @@ pnpm typecheck    # TypeScript type checking
 | Layer        | Technology                            |
 | ------------ | ------------------------------------- |
 | **Mobile**   | Swift 5.x, SwiftUI, Swift Concurrency |
+| **Android**  | Kotlin 2.x, Jetpack Compose           |
 | **Server**   | TypeScript 5.x, Node.js 22, Fastify   |
+| **Speech**   | Python, FastAPI, MLX Whisper, Kokoro  |
 | **Protocol** | WebSocket, Zod validation             |
 | **Database** | SQLite (workstation only)             |
 | **Build**    | Turborepo, pnpm, tsup                 |

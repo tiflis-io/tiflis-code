@@ -1,0 +1,22 @@
+{
+  "name": "@tiflis-io/tiflis-code-tts",
+  "version": "1.0.0",
+  "private": true,
+  "description": "OpenAI-compatible Text-to-Speech API using Kokoro",
+  "scripts": {
+    "dev": "uvicorn src.main:app --reload --port 8101",
+    "start": "uvicorn src.main:app --host 0.0.0.0 --port 8101",
+    "build": "echo 'Python package - no build step required'",
+    "lint": "command -v ruff >/dev/null 2>&1 && ruff check src/ || echo 'ruff not installed, skipping lint'",
+    "lint:fix": "command -v ruff >/dev/null 2>&1 && ruff check --fix src/ || echo 'ruff not installed, skipping lint:fix'",
+    "typecheck": "command -v pyright >/dev/null 2>&1 && pyright src/ || echo 'pyright not installed, skipping typecheck'",
+    "test": "command -v pytest >/dev/null 2>&1 && pytest tests/ || echo 'pytest not installed, skipping tests'"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/tiflis-io/tiflis-code.git",
+    "directory": "services/tts"
+  },
+  "author": "Roman Barinov <rbarinov@gmail.com>",
+  "license": "FSL-1.1-NC"
+}

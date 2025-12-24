@@ -29,6 +29,8 @@
 | Android App   | `TiflisCodeAndroid`                  | Android        | Kotlin, Jetpack Compose      | ✅ Production |
 | Tunnel Server | `@tiflis-io/tiflis-code-tunnel`      | Remote Server  | TypeScript, Node.js          | ✅ Production |
 | Workstation   | `@tiflis-io/tiflis-code-workstation` | User's Machine | TypeScript, Node.js          | ✅ Production |
+| STT Service   | `@tiflis-io/tiflis-code-stt`         | User's Machine | Python, FastAPI, MLX/CUDA    | ✅ Production |
+| TTS Service   | `@tiflis-io/tiflis-code-tts`         | User's Machine | Python, FastAPI, Kokoro      | ✅ Production |
 | Promo Page    | `promo`                              | Static Site    | Next.js, TailwindCSS         | ✅ Production |
 
 > **Note:** All mobile apps are now in production.
@@ -169,6 +171,9 @@ tiflis-code/
 │   ├── tunnel/               # @tiflis-io/tiflis-code-tunnel
 │   ├── workstation/          # @tiflis-io/tiflis-code-workstation
 │   └── promo/                # Marketing landing page (Next.js)
+├── services/
+│   ├── stt/                  # @tiflis-io/tiflis-code-stt (Python, MLX/CUDA Whisper)
+│   └── tts/                  # @tiflis-io/tiflis-code-tts (Python, Kokoro TTS)
 ├── docs/                     # Detailed documentation
 └── assets/branding/          # Logos, ASCII art
 ```

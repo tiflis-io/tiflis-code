@@ -297,6 +297,578 @@ install_build_tools() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# GPU Detection
+# ─────────────────────────────────────────────────────────────
+detect_gpu() {
+    local os="$(detect_os)"
+    
+    # Check for Apple Silicon
+    if [ "$os" = "darwin" ]; then
+        local chip="$(sysctl -n machdep.cpu.brand_string 2>/dev/null || echo "")"
+        if echo "$chip" | grep -qi "apple"; then
+            echo "apple-silicon"
+            return
+        fi
+    fi
+    
+    # Check for NVIDIA GPU
+    if command -v nvidia-smi &>/dev/null; then
+        if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | grep -qi "nvidia\|geforce\|rtx\|gtx\|quadro\|tesla"; then
+            echo "nvidia"
+            return
+        fi
+    fi
+    
+    # Check for AMD GPU (ROCm)
+    if command -v rocm-smi &>/dev/null; then
+        echo "amd"
+        return
+    fi
+    
+    echo "cpu"
+}
+
+get_gpu_name() {
+    local gpu_type="$1"
+    case "$gpu_type" in
+        apple-silicon)
+            sysctl -n machdep.cpu.brand_string 2>/dev/null | grep -o "Apple M[0-9].*" || echo "Apple Silicon"
+            ;;
+        nvidia)
+            nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "NVIDIA GPU"
+            ;;
+        amd)
+            rocm-smi --showproductname 2>/dev/null | head -1 || echo "AMD GPU"
+            ;;
+        *)
+            echo "CPU only"
+            ;;
+    esac
+}
+
+# ─────────────────────────────────────────────────────────────
+# Local STT Configuration
+# ─────────────────────────────────────────────────────────────
+configure_local_stt() {
+    local gpu_type="$1"
+    
+    echo "" >&2
+    print_info "Local STT Configuration"
+    echo "" >&2
+    
+    # Model selection
+    echo "  Available Whisper models:" >&2
+    echo "    1) large-v3 (best quality, ~3GB, recommended)" >&2
+    echo "    2) large-v3-turbo (faster, slightly lower quality)" >&2
+    echo "    3) medium (balanced, ~1.5GB)" >&2
+    echo "    4) small (fast, ~500MB)" >&2
+    echo "    5) base (fastest, ~150MB)" >&2
+    echo "" >&2
+    
+    local model_choice
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select STT model [1-5, default: 1]: " >&2
+    read -r model_choice < "$TTY_INPUT"
+    
+    case "$model_choice" in
+        2) STT_MODEL="large-v3-turbo" ;;
+        3) STT_MODEL="medium" ;;
+        4) STT_MODEL="small" ;;
+        5) STT_MODEL="base" ;;
+        *) STT_MODEL="large-v3" ;;
+    esac
+    
+    STT_PROVIDER="local"
+    STT_BASE_URL="http://localhost:8100"
+    STT_API_KEY=""  # Not needed for local
+    LOCAL_STT_GPU="$gpu_type"
+    LOCAL_STT_MODEL="$STT_MODEL"
+    
+    print_success "Local STT configured: ${STT_MODEL} on ${gpu_type}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Local TTS Configuration
+# ─────────────────────────────────────────────────────────────
+configure_local_tts() {
+    local gpu_type="$1"
+    
+    echo "" >&2
+    print_info "Local TTS Configuration (Kokoro)"
+    echo "" >&2
+    
+    # Voice selection
+    echo "  Available voices:" >&2
+    echo "    American English:" >&2
+    echo "      1) af_heart (female, warm)" >&2
+    echo "      2) af_bella (female, expressive)" >&2
+    echo "      3) af_nicole (female, professional)" >&2
+    echo "      4) af_sky (female, bright)" >&2
+    echo "      5) am_adam (male, neutral)" >&2
+    echo "      6) am_michael (male, deep)" >&2
+    echo "    British English:" >&2
+    echo "      7) bf_emma (female, British)" >&2
+    echo "      8) bm_george (male, British)" >&2
+    echo "" >&2
+    
+    local voice_choice
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select TTS voice [1-8, default: 1]: " >&2
+    read -r voice_choice < "$TTY_INPUT"
+    
+    case "$voice_choice" in
+        2) TTS_VOICE="af_bella" ;;
+        3) TTS_VOICE="af_nicole" ;;
+        4) TTS_VOICE="af_sky" ;;
+        5) TTS_VOICE="am_adam" ;;
+        6) TTS_VOICE="am_michael" ;;
+        7) TTS_VOICE="bf_emma" ;;
+        8) TTS_VOICE="bm_george" ;;
+        *) TTS_VOICE="af_heart" ;;
+    esac
+    
+    TTS_PROVIDER="local"
+    TTS_BASE_URL="http://localhost:8101"
+    TTS_API_KEY=""  # Not needed for local
+    TTS_MODEL="kokoro"
+    LOCAL_TTS_GPU="$gpu_type"
+    LOCAL_TTS_VOICE="$TTS_VOICE"
+    
+    print_success "Local TTS configured: ${TTS_VOICE} on ${gpu_type}"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Generate Docker Compose for Local Services
+# ─────────────────────────────────────────────────────────────
+generate_speech_docker_compose() {
+    local stt_gpu="$1"
+    local tts_gpu="$2"
+    local stt_model="$3"
+    local tts_voice="$4"
+    local compose_file="${WORKSTATION_DIR}/docker-compose.speech.yml"
+    
+    print_step "Generating Docker Compose for speech services..."
+    
+    # Determine image tags
+    local stt_tag="cpu"
+    local tts_tag="cpu"
+    local stt_runtime=""
+    local tts_runtime=""
+    
+    if [ "$stt_gpu" = "nvidia" ]; then
+        stt_tag="cuda"
+        stt_runtime="runtime: nvidia"
+    fi
+    
+    if [ "$tts_gpu" = "nvidia" ]; then
+        tts_tag="cuda"
+        tts_runtime="runtime: nvidia"
+    fi
+    
+    cat > "$compose_file" << EOF
+# Tiflis Code Speech Services
+# Generated by install script on $(date -Iseconds)
+# 
+# Usage:
+#   docker compose -f docker-compose.speech.yml up -d
+#   docker compose -f docker-compose.speech.yml logs -f
+
+services:
+EOF
+
+    # Add STT service if configured
+    if [ -n "$stt_model" ]; then
+        cat >> "$compose_file" << EOF
+  stt:
+    image: ghcr.io/tiflis-io/tiflis-code-stt:${stt_tag}
+    container_name: tiflis-stt
+    ports:
+      - "8100:8100"
+    environment:
+      - STT_MODEL=${stt_model}
+      - STT_HOST=0.0.0.0
+      - STT_PORT=8100
+    volumes:
+      - stt-models:/app/models
+      - stt-cache:/root/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+EOF
+        if [ -n "$stt_runtime" ]; then
+            echo "    $stt_runtime" >> "$compose_file"
+        fi
+        echo "" >> "$compose_file"
+    fi
+    
+    # Add TTS service if configured
+    if [ -n "$tts_voice" ]; then
+        cat >> "$compose_file" << EOF
+  tts:
+    image: ghcr.io/tiflis-io/tiflis-code-tts:${tts_tag}
+    container_name: tiflis-tts
+    ports:
+      - "8101:8101"
+    environment:
+      - TTS_DEFAULT_VOICE=${tts_voice}
+      - TTS_HOST=0.0.0.0
+      - TTS_PORT=8101
+    volumes:
+      - tts-models:/app/models
+      - tts-cache:/root/.cache
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8101/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+EOF
+        if [ -n "$tts_runtime" ]; then
+            echo "    $tts_runtime" >> "$compose_file"
+        fi
+        echo "" >> "$compose_file"
+    fi
+    
+    # Add volumes section
+    cat >> "$compose_file" << EOF
+
+volumes:
+EOF
+    if [ -n "$stt_model" ]; then
+        echo "  stt-models:" >> "$compose_file"
+        echo "  stt-cache:" >> "$compose_file"
+    fi
+    if [ -n "$tts_voice" ]; then
+        echo "  tts-models:" >> "$compose_file"
+        echo "  tts-cache:" >> "$compose_file"
+    fi
+    
+    print_success "Docker Compose file created: $compose_file"
+}
+
+# ─────────────────────────────────────────────────────────────
+# Setup Native Services for Apple Silicon (MLX)
+# ─────────────────────────────────────────────────────────────
+setup_native_stt() {
+    local model="$1"
+    print_step "Setting up native STT service for Apple Silicon..."
+    
+    local stt_dir="${TIFLIS_INSTALL_DIR}/stt"
+    mkdir -p "$stt_dir"
+    
+    # Create virtual environment and install
+    print_info "Installing STT dependencies (this may take a few minutes)..."
+    if [ "$DRY_RUN" = "false" ]; then
+        cd "$stt_dir"
+        
+        # Check if uv is installed
+        if ! command -v uv &>/dev/null; then
+            print_step "Installing uv package manager..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+        
+        # Create project structure
+        cat > "$stt_dir/pyproject.toml" << 'EOF'
+[project]
+name = "tiflis-stt-local"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "mlx-whisper>=0.4.0",
+    "python-multipart>=0.0.9",
+]
+EOF
+        
+        # Create minimal server script
+        cat > "$stt_dir/server.py" << 'PYEOF'
+#!/usr/bin/env python3
+"""Minimal STT server for Apple Silicon using MLX Whisper."""
+import os
+import tempfile
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+import uvicorn
+
+app = FastAPI(title="Tiflis STT", version="0.1.0")
+
+# Lazy load model
+_model = None
+_model_name = os.environ.get("STT_MODEL", "large-v3")
+
+def get_model():
+    global _model
+    if _model is None:
+        import mlx_whisper
+        _model = mlx_whisper
+    return _model
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "model": _model_name}
+
+@app.post("/v1/audio/transcriptions")
+async def transcribe(file: UploadFile = File(...)):
+    whisper = get_model()
+    
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+    
+    try:
+        result = whisper.transcribe(tmp_path, path_or_hf_repo=f"mlx-community/whisper-{_model_name}-mlx")
+        return JSONResponse({"text": result.get("text", "")})
+    finally:
+        os.unlink(tmp_path)
+
+if __name__ == "__main__":
+    port = int(os.environ.get("STT_PORT", "8100"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+PYEOF
+        
+        # Sync dependencies
+        uv sync 2>/dev/null || uv pip install -e .
+        
+        print_success "STT dependencies installed"
+    fi
+    
+    # Create launchd plist
+    local plist_path="$HOME/Library/LaunchAgents/io.tiflis.stt.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    
+    cat > "$plist_path" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.tiflis.stt</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${HOME}/.local/bin/uv</string>
+        <string>run</string>
+        <string>python</string>
+        <string>server.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${stt_dir}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>STT_MODEL</key>
+        <string>${model}</string>
+        <key>STT_PORT</key>
+        <string>8100</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.local/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${TIFLIS_INSTALL_DIR}/logs/stt-output.log</string>
+    <key>StandardErrorPath</key>
+    <string>${TIFLIS_INSTALL_DIR}/logs/stt-error.log</string>
+</dict>
+</plist>
+EOF
+    
+    # Load service
+    if [ "$DRY_RUN" = "false" ]; then
+        launchctl bootout "gui/$(id -u)/io.tiflis.stt" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$plist_path"
+        print_success "STT service started (MLX Whisper ${model})"
+    fi
+}
+
+setup_native_tts() {
+    local voice="$1"
+    print_step "Setting up native TTS service for Apple Silicon..."
+    
+    local tts_dir="${TIFLIS_INSTALL_DIR}/tts"
+    mkdir -p "$tts_dir"
+    
+    # Create virtual environment and install
+    print_info "Installing TTS dependencies (this may take a few minutes)..."
+    if [ "$DRY_RUN" = "false" ]; then
+        cd "$tts_dir"
+        
+        # Check if uv is installed
+        if ! command -v uv &>/dev/null; then
+            print_step "Installing uv package manager..."
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            export PATH="$HOME/.local/bin:$PATH"
+        fi
+        
+        # Create project structure
+        cat > "$tts_dir/pyproject.toml" << 'EOF'
+[project]
+name = "tiflis-tts-local"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.32.0",
+    "kokoro>=0.3.0",
+    "soundfile>=0.12.1",
+]
+EOF
+        
+        # Create minimal server script
+        cat > "$tts_dir/server.py" << 'PYEOF'
+#!/usr/bin/env python3
+"""Minimal TTS server for Apple Silicon using Kokoro."""
+import os
+import io
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+import uvicorn
+
+app = FastAPI(title="Tiflis TTS", version="0.1.0")
+
+# Lazy load model
+_pipeline = None
+_default_voice = os.environ.get("TTS_DEFAULT_VOICE", "af_heart")
+
+def get_pipeline():
+    global _pipeline
+    if _pipeline is None:
+        from kokoro import KPipeline
+        _pipeline = KPipeline(lang_code="a")
+    return _pipeline
+
+class TTSRequest(BaseModel):
+    input: str
+    voice: str = None
+    model: str = "kokoro"
+    response_format: str = "mp3"
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "voice": _default_voice}
+
+@app.post("/v1/audio/speech")
+async def synthesize(request: TTSRequest):
+    import soundfile as sf
+    
+    pipeline = get_pipeline()
+    voice = request.voice or _default_voice
+    
+    # Generate audio
+    generator = pipeline(request.input, voice=voice)
+    audio_chunks = []
+    for _, _, audio in generator:
+        audio_chunks.append(audio)
+    
+    if not audio_chunks:
+        return {"error": "No audio generated"}
+    
+    import numpy as np
+    audio = np.concatenate(audio_chunks)
+    
+    # Convert to requested format
+    buffer = io.BytesIO()
+    sf.write(buffer, audio, 24000, format="WAV")
+    buffer.seek(0)
+    
+    return StreamingResponse(
+        buffer,
+        media_type="audio/wav",
+        headers={"Content-Disposition": "attachment; filename=speech.wav"}
+    )
+
+if __name__ == "__main__":
+    port = int(os.environ.get("TTS_PORT", "8101"))
+    uvicorn.run(app, host="0.0.0.0", port=port)
+PYEOF
+        
+        # Sync dependencies
+        uv sync 2>/dev/null || uv pip install -e .
+        
+        print_success "TTS dependencies installed"
+    fi
+    
+    # Create launchd plist
+    local plist_path="$HOME/Library/LaunchAgents/io.tiflis.tts.plist"
+    mkdir -p "$HOME/Library/LaunchAgents"
+    
+    cat > "$plist_path" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.tiflis.tts</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>${HOME}/.local/bin/uv</string>
+        <string>run</string>
+        <string>python</string>
+        <string>server.py</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>${tts_dir}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>TTS_DEFAULT_VOICE</key>
+        <string>${voice}</string>
+        <key>TTS_PORT</key>
+        <string>8101</string>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.local/bin</string>
+    </dict>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${TIFLIS_INSTALL_DIR}/logs/tts-output.log</string>
+    <key>StandardErrorPath</key>
+    <string>${TIFLIS_INSTALL_DIR}/logs/tts-error.log</string>
+</dict>
+</plist>
+EOF
+    
+    # Load service
+    if [ "$DRY_RUN" = "false" ]; then
+        launchctl bootout "gui/$(id -u)/io.tiflis.tts" 2>/dev/null || true
+        launchctl bootstrap "gui/$(id -u)" "$plist_path"
+        print_success "TTS service started (Kokoro ${voice})"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
+# Wait for Service Health
+# ─────────────────────────────────────────────────────────────
+wait_for_service() {
+    local url="$1"
+    local name="$2"
+    local max_attempts="${3:-30}"
+    local attempt=1
+    
+    print_step "Waiting for ${name} to be ready..."
+    
+    while [ $attempt -le $max_attempts ]; do
+        if curl -sf "$url" > /dev/null 2>&1; then
+            print_success "${name} is ready"
+            return 0
+        fi
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    
+    print_warning "${name} did not become ready in time"
+    return 1
+}
+
+# ─────────────────────────────────────────────────────────────
 # AI Provider Configuration (Optional)
 # ─────────────────────────────────────────────────────────────
 configure_ai_providers() {
@@ -311,6 +883,10 @@ configure_ai_providers() {
         print_info "Skipping AI configuration. You can configure later in .env"
         return
     fi
+    
+    # Detect GPU once for speech services
+    local detected_gpu="$(detect_gpu)"
+    local gpu_name="$(get_gpu_name "$detected_gpu")"
 
     # Supervisor Agent (LLM)
     echo ""
@@ -382,19 +958,32 @@ configure_ai_providers() {
     echo ""
     print_info "Speech-to-Text (STT)"
     echo ""
-    echo "  1) OpenAI Whisper"
-    echo "  2) Deepgram"
-    echo "  3) Skip"
+    echo "  1) OpenAI Whisper (cloud)"
+    echo "  2) Deepgram (cloud)"
+    echo "  3) Local (self-hosted Whisper)"
+    echo "  4) Skip"
+    echo ""
+    
+    if [ "$detected_gpu" != "cpu" ]; then
+        print_info "  Detected: ${gpu_name}"
+    fi
     echo ""
 
     local stt_choice
-    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select STT provider [1-3, default: 3]: " >&2
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select STT provider [1-4, default: 4]: " >&2
     read -r stt_choice < "$TTY_INPUT"
+
+    # Initialize local service variables
+    LOCAL_STT_GPU=""
+    LOCAL_STT_MODEL=""
+    LOCAL_TTS_GPU=""
+    LOCAL_TTS_VOICE=""
 
     case "$stt_choice" in
         1)
             STT_PROVIDER="openai"
             STT_MODEL="whisper-1"
+            STT_BASE_URL=""
             if [ -n "$AGENT_API_KEY" ] && [ "$AGENT_PROVIDER" = "openai" ]; then
                 if confirm "Use same API key as LLM?" "y"; then
                     STT_API_KEY="$AGENT_API_KEY"
@@ -413,6 +1002,7 @@ configure_ai_providers() {
         2)
             STT_PROVIDER="deepgram"
             STT_MODEL="nova-2"
+            STT_BASE_URL=""
             STT_API_KEY="$(prompt_secret "Enter Deepgram API key")"
             if [ -n "$STT_API_KEY" ]; then
                 print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
@@ -420,8 +1010,23 @@ configure_ai_providers() {
                 STT_PROVIDER=""
             fi
             ;;
+        3)
+            # Local STT
+            echo "" >&2
+            if [ "$detected_gpu" != "cpu" ]; then
+                if confirm "Use detected GPU (${gpu_name}) for STT?" "y"; then
+                    configure_local_stt "$detected_gpu"
+                else
+                    configure_local_stt "cpu"
+                fi
+            else
+                print_info "No GPU detected, will use CPU (slower)"
+                configure_local_stt "cpu"
+            fi
+            ;;
         *)
             STT_PROVIDER=""
+            STT_BASE_URL=""
             print_info "STT skipped"
             ;;
     esac
@@ -430,13 +1035,19 @@ configure_ai_providers() {
     echo ""
     print_info "Text-to-Speech (TTS)"
     echo ""
-    echo "  1) OpenAI (tts-1)"
-    echo "  2) ElevenLabs"
-    echo "  3) Skip"
+    echo "  1) OpenAI (tts-1, cloud)"
+    echo "  2) ElevenLabs (cloud)"
+    echo "  3) Local (self-hosted Kokoro)"
+    echo "  4) Skip"
+    echo ""
+    
+    if [ "$detected_gpu" != "cpu" ]; then
+        print_info "  Detected: ${gpu_name}"
+    fi
     echo ""
 
     local tts_choice
-    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select TTS provider [1-3, default: 3]: " >&2
+    echo -en "${COLOR_CYAN}?${COLOR_RESET} Select TTS provider [1-4, default: 4]: " >&2
     read -r tts_choice < "$TTY_INPUT"
 
     case "$tts_choice" in
@@ -444,6 +1055,7 @@ configure_ai_providers() {
             TTS_PROVIDER="openai"
             TTS_MODEL="tts-1"
             TTS_VOICE="nova"
+            TTS_BASE_URL=""
             if [ -n "$AGENT_API_KEY" ] && [ "$AGENT_PROVIDER" = "openai" ]; then
                 if confirm "Use same API key as LLM?" "y"; then
                     TTS_API_KEY="$AGENT_API_KEY"
@@ -468,6 +1080,7 @@ configure_ai_providers() {
         2)
             TTS_PROVIDER="elevenlabs"
             TTS_MODEL="eleven_multilingual_v2"
+            TTS_BASE_URL=""
             TTS_API_KEY="$(prompt_secret "Enter ElevenLabs API key")"
             if [ -n "$TTS_API_KEY" ]; then
                 echo "" >&2
@@ -483,8 +1096,23 @@ configure_ai_providers() {
                 TTS_PROVIDER=""
             fi
             ;;
+        3)
+            # Local TTS
+            echo "" >&2
+            if [ "$detected_gpu" != "cpu" ]; then
+                if confirm "Use detected GPU (${gpu_name}) for TTS?" "y"; then
+                    configure_local_tts "$detected_gpu"
+                else
+                    configure_local_tts "cpu"
+                fi
+            else
+                print_info "No GPU detected, will use CPU"
+                configure_local_tts "cpu"
+            fi
+            ;;
         *)
             TTS_PROVIDER=""
+            TTS_BASE_URL=""
             print_info "TTS skipped"
             ;;
     esac
@@ -783,25 +1411,45 @@ EOF
 
             # Add STT configuration if provided
             if [ -n "$STT_PROVIDER" ]; then
-                cat >> "${WORKSTATION_DIR}/.env" << EOF
+                if [ "$STT_PROVIDER" = "local" ]; then
+                    cat >> "${WORKSTATION_DIR}/.env" << EOF
+
+# Speech-to-Text (Local)
+STT_PROVIDER=${STT_PROVIDER}
+STT_BASE_URL=${STT_BASE_URL}
+STT_MODEL=${STT_MODEL}
+EOF
+                else
+                    cat >> "${WORKSTATION_DIR}/.env" << EOF
 
 # Speech-to-Text
 STT_PROVIDER=${STT_PROVIDER}
 STT_API_KEY=${STT_API_KEY}
 STT_MODEL=${STT_MODEL}
 EOF
+                fi
             else
                 cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
 # Speech-to-Text (optional)
 # STT_PROVIDER=openai
 # STT_API_KEY=your-openai-key
+# For local: STT_PROVIDER=local, STT_BASE_URL=http://localhost:8100
 EOF
             fi
 
             # Add TTS configuration if provided
             if [ -n "$TTS_PROVIDER" ]; then
-                cat >> "${WORKSTATION_DIR}/.env" << EOF
+                if [ "$TTS_PROVIDER" = "local" ]; then
+                    cat >> "${WORKSTATION_DIR}/.env" << EOF
+
+# Text-to-Speech (Local)
+TTS_PROVIDER=${TTS_PROVIDER}
+TTS_BASE_URL=${TTS_BASE_URL}
+TTS_VOICE=${TTS_VOICE}
+EOF
+                else
+                    cat >> "${WORKSTATION_DIR}/.env" << EOF
 
 # Text-to-Speech
 TTS_PROVIDER=${TTS_PROVIDER}
@@ -809,6 +1457,7 @@ TTS_API_KEY=${TTS_API_KEY}
 TTS_MODEL=${TTS_MODEL}
 TTS_VOICE=${TTS_VOICE}
 EOF
+                fi
             else
                 cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
 
@@ -816,10 +1465,56 @@ EOF
 # TTS_PROVIDER=openai
 # TTS_API_KEY=your-openai-key
 # TTS_VOICE=nova
+# For local: TTS_PROVIDER=local, TTS_BASE_URL=http://localhost:8101
 EOF
             fi
 
             chmod 600 "${WORKSTATION_DIR}/.env"
+        fi
+        
+        # Setup local speech services if configured
+        if [ -n "$LOCAL_STT_GPU" ] || [ -n "$LOCAL_TTS_GPU" ]; then
+            echo ""
+            print_info "Setting up local speech services..."
+            
+            local os_for_speech="$(detect_os)"
+            
+            # Determine deployment method based on platform
+            if [ "$os_for_speech" = "darwin" ] && [ "$LOCAL_STT_GPU" = "apple-silicon" -o "$LOCAL_TTS_GPU" = "apple-silicon" ]; then
+                # Apple Silicon: use native MLX services
+                if [ -n "$LOCAL_STT_MODEL" ]; then
+                    setup_native_stt "$LOCAL_STT_MODEL"
+                fi
+                if [ -n "$LOCAL_TTS_VOICE" ]; then
+                    setup_native_tts "$LOCAL_TTS_VOICE"
+                fi
+            else
+                # NVIDIA/CPU: use Docker
+                if command -v docker &>/dev/null; then
+                    generate_speech_docker_compose "$LOCAL_STT_GPU" "$LOCAL_TTS_GPU" "$LOCAL_STT_MODEL" "$LOCAL_TTS_VOICE"
+                    
+                    if confirm "Start speech services now with Docker Compose?" "y"; then
+                        print_step "Starting speech services..."
+                        if [ "$DRY_RUN" = "false" ]; then
+                            cd "${WORKSTATION_DIR}"
+                            docker compose -f docker-compose.speech.yml up -d
+                            
+                            # Wait for services to be ready
+                            if [ -n "$LOCAL_STT_MODEL" ]; then
+                                wait_for_service "http://localhost:8100/health" "STT" 60
+                            fi
+                            if [ -n "$LOCAL_TTS_VOICE" ]; then
+                                wait_for_service "http://localhost:8101/health" "TTS" 60
+                            fi
+                        fi
+                    else
+                        print_info "Start later with: cd ${WORKSTATION_DIR} && docker compose -f docker-compose.speech.yml up -d"
+                    fi
+                else
+                    print_warning "Docker not found. Install Docker to run local speech services."
+                    print_info "Or use native services on Apple Silicon (MLX)"
+                fi
+            fi
         fi
     else
         print_success "Keeping existing .env configuration"
