@@ -316,16 +316,19 @@ export class SupervisorAgent extends EventEmitter {
           }
         }
 
-        // Check for tool messages
+        // Check for tool messages (tool results)
         // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
         if (lastMessage.getType() === 'tool' && this.isExecuting && !this.isCancelled) {
           const toolContent = lastMessage.content;
           const toolName = (lastMessage as unknown as { name?: string }).name ?? 'tool';
+          // Extract tool_call_id from ToolMessage for proper merging with tool_use block
+          const toolCallId = (lastMessage as unknown as { tool_call_id?: string }).tool_call_id;
           const toolBlock = createToolBlock(
             toolName,
             'completed',
             undefined,
-            typeof toolContent === 'string' ? toolContent : JSON.stringify(toolContent)
+            typeof toolContent === 'string' ? toolContent : JSON.stringify(toolContent),
+            toolCallId
           );
           this.emit('blocks', deviceId, [toolBlock], false);
           allBlocks.push(toolBlock);
@@ -381,7 +384,9 @@ export class SupervisorAgent extends EventEmitter {
     if (type === 'tool_use') {
       const name = typeof item.name === 'string' ? item.name : 'tool';
       const input = item.input;
-      return createToolBlock(name, 'running', input);
+      // Extract id from tool_use block for proper merging with tool result
+      const toolUseId = typeof item.id === 'string' ? item.id : undefined;
+      return createToolBlock(name, 'running', input, undefined, toolUseId);
     }
 
     return null;
