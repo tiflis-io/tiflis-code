@@ -446,13 +446,16 @@ configure_hf_token() {
     echo "  Get your token at: https://huggingface.co/settings/tokens" >&2
     echo "" >&2
     
-    if confirm "Configure HuggingFace token?" "n"; then
-        HF_TOKEN="$(prompt_secret "Enter HuggingFace token (hf_...)")"
-        if [ -n "$HF_TOKEN" ]; then
+    # Prompt for token directly (empty to skip)
+    HF_TOKEN="$(prompt_value "HuggingFace token (leave empty to skip)")"
+    if [ -n "$HF_TOKEN" ]; then
+        # Validate token format
+        if [[ "$HF_TOKEN" == hf_* ]]; then
             print_success "HuggingFace token configured"
+        else
+            print_warning "Token should start with 'hf_' - using anyway"
         fi
     else
-        HF_TOKEN=""
         print_info "Skipped (can be added later to .env as HF_TOKEN=...)"
     fi
 }
@@ -1794,14 +1797,29 @@ EOF
 </dict>
 </plist>
 EOF
+                # Ensure service is fully stopped before starting
                 launchctl bootout "gui/$(id -u)/io.tiflis.workstation" 2>/dev/null || true
-                launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist"
-
-                sleep 3
-                if launchctl list | grep -q io.tiflis.workstation; then
-                    print_success "Workstation server is running!"
+                sleep 1
+                
+                # Bootstrap the service
+                if launchctl bootstrap "gui/$(id -u)" "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist" 2>&1; then
+                    sleep 2
+                    if launchctl list | grep -q io.tiflis.workstation; then
+                        print_success "Workstation server is running!"
+                    else
+                        print_warning "Service created but may not be running"
+                    fi
                 else
-                    print_warning "Service created but may not be running"
+                    # If bootstrap fails, try load as fallback
+                    print_warning "Bootstrap failed, trying alternative method..."
+                    launchctl load -w "$HOME/Library/LaunchAgents/io.tiflis.workstation.plist" 2>/dev/null || true
+                    sleep 2
+                    if launchctl list | grep -q io.tiflis.workstation; then
+                        print_success "Workstation server is running!"
+                    else
+                        print_error "Failed to start workstation service"
+                        print_info "Try manually: launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.workstation.plist"
+                    fi
                 fi
             fi
         fi
