@@ -972,25 +972,27 @@ async function bootstrap(): Promise<void> {
         return;
       }
 
+      // Handle voice command with audio payload
+      let commandText: string;
+      const messageId = commandMessage.payload.message_id;
+
       // Send immediate acknowledgment to client so they can show "Sent" status
+      // Use payload.message_id (client's message ID) if available, fallback to command.id
       if (messageBroadcaster) {
+        const ackMessageId = messageId || commandMessage.id;
         const ackMessage = {
           type: "message.ack",
           payload: {
-            message_id: commandMessage.id,
+            message_id: ackMessageId,
             status: "received",
           },
         };
         messageBroadcaster.sendToClient(deviceId, JSON.stringify(ackMessage));
         logger.debug(
-          { messageId: commandMessage.id, deviceId },
+          { messageId: ackMessageId, deviceId },
           "Sent message.ack for supervisor.command"
         );
       }
-
-      // Handle voice command with audio payload
-      let commandText: string;
-      const messageId = commandMessage.payload.message_id;
 
       // Reset stale cancellation state from previous commands BEFORE starting new one
       // This prevents previous cancellation from blocking new commands
@@ -1630,18 +1632,20 @@ async function bootstrap(): Promise<void> {
       const messageId = execMessage.payload.message_id;
 
       // Send immediate acknowledgment to client so they can show "Sent" status
+      // Use payload.message_id (client's message ID) if available, fallback to command.id
       if (deviceId && messageBroadcaster) {
+        const ackMessageId = messageId || execMessage.id;
         const ackMessage = {
           type: "message.ack",
           payload: {
-            message_id: execMessage.id,
+            message_id: ackMessageId,
             session_id: sessionId,
             status: "received",
           },
         };
         messageBroadcaster.sendToClient(deviceId, JSON.stringify(ackMessage));
         logger.debug(
-          { messageId: execMessage.id, sessionId, deviceId },
+          { messageId: ackMessageId, sessionId, deviceId },
           "Sent message.ack for session.execute"
         );
       }
