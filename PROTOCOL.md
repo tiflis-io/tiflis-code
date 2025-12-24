@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.11-blue" alt="Version 1.11">
+  <img src="https://img.shields.io/badge/version-1.12-blue" alt="Version 1.12">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket%20%7C%20HTTP-green" alt="WebSocket | HTTP">
 </p>
@@ -26,7 +26,15 @@
 
 ## Changelog
 
-### Version 1.11 (Current)
+### Version 1.12 (Current)
+- **Added:** `message.ack` message for delivery status confirmation (pending → sent → failed)
+- **Optimized:** Connection timing for faster disconnect detection (~5-8 seconds instead of ~40 seconds)
+- **Changed:** `PING_INTERVAL` reduced from 20s to 5s for faster liveness detection
+- **Changed:** `PONG_TIMEOUT` reduced from 30s to 10s for faster stale connection detection
+- **Changed:** `RECONNECT_DELAY_MAX` reduced from 30s to 5s for faster recovery
+- **Changed:** History limits reduced from 50/100 to 20 for faster sync
+
+### Version 1.11
 - **Added:** `lightweight` flag in `sync` message for watchOS optimization (excludes message histories)
 - **Added:** `history.request` / `history.response` messages for on-demand chat history loading
 - **Enhanced:** watchOS clients now use lightweight sync + lazy history loading for better performance
@@ -335,12 +343,14 @@ All WebSocket connections must implement heartbeat mechanism to detect stale con
 
 #### 3.2.2 Timing Requirements
 
+Optimized for fast disconnect detection (~5-8 seconds) while maintaining connection stability.
+
 | Parameter | Value | Description |
 |-----------|-------|-------------|
-| `PING_INTERVAL` | 20 seconds | How often to send ping |
-| `PONG_TIMEOUT` | 30 seconds | Max time to wait for pong |
-| `RECONNECT_DELAY_MIN` | 1 second | Initial reconnect delay |
-| `RECONNECT_DELAY_MAX` | 30 seconds | Maximum reconnect delay |
+| `PING_INTERVAL` | 5 seconds | How often to send ping (fast liveness detection) |
+| `PONG_TIMEOUT` | 10 seconds | Max time to wait for pong (fast stale detection) |
+| `RECONNECT_DELAY_MIN` | 0.5 seconds | Initial reconnect delay (fast first retry) |
+| `RECONNECT_DELAY_MAX` | 5 seconds | Maximum reconnect delay (don't wait too long) |
 | `RECONNECT_BACKOFF` | exponential | Delay doubles on each attempt |
 
 #### 3.2.3 Connection State Machine
@@ -815,7 +825,61 @@ Sent after TTS synthesis of response:
 
 **Note:** Long responses are automatically summarized to ~3 sentences before TTS synthesis to keep audio concise.
 
-### 4.9 Audio Request/Response (On-Demand Audio)
+### 4.9 Message Acknowledgment (Delivery Status)
+
+The `message.ack` message provides delivery confirmation for user messages, enabling "Sending..." → "Sent" → "Failed" UI indicators.
+
+#### Message Format
+
+```typescript
+// Server → Client (after receiving supervisor.command or session.execute)
+{
+  type: "message.ack",
+  payload: {
+    message_id: string,      // ID from the command's id field
+    session_id?: string,     // Present for agent sessions, absent for supervisor
+    status: "received"       // Message received and being processed
+  }
+}
+```
+
+#### Client Implementation
+
+1. **On sending user message:**
+   - Generate unique `message_id` (UUID)
+   - Include `id: message_id` in the command
+   - Set message `sendStatus = .pending`
+   - Display 🕐 (clock) indicator
+   - Start 5-second timeout timer
+
+2. **On receiving `message.ack`:**
+   - Find message by `message_id`
+   - Cancel timeout timer
+   - Set `sendStatus = .sent`
+   - Display ✓ (checkmark) indicator
+
+3. **On timeout (no ack within 5 seconds):**
+   - Set `sendStatus = .failed`
+   - Display ⚠️ (warning) indicator
+   - User can tap to retry
+
+#### Timing Constants
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `MESSAGE_ACK_TIMEOUT` | 5 seconds | Max time to wait for ack before marking failed |
+
+#### Server Implementation
+
+The workstation server sends `message.ack` immediately upon receiving:
+- `supervisor.command` — Acknowledges supervisor chat messages
+- `session.execute` — Acknowledges agent session commands
+
+The ack is sent **before** processing begins, indicating the message was received successfully.
+
+---
+
+### 4.10 Audio Request/Response (On-Demand Audio)
 
 Audio data is excluded from `sync.state` to reduce message size. Clients can request audio on-demand:
 
@@ -1541,6 +1605,7 @@ function handleTerminalOutput(payload) {
 | `response` | Response to command (by id) |
 | `error` | Error response |
 | `heartbeat.ack` | Heartbeat acknowledgment with workstation uptime |
+| `message.ack` | Message delivery acknowledgment (for send status UI) |
 | `audio.response` | Audio data response (or error if unavailable) |
 | `sync.state` | State sync data (audio excluded, use `has_audio` flags; histories excluded if `lightweight`) |
 | `history.response` | Chat history for a session (supervisor or agent) |

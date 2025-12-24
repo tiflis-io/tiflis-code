@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import io.tiflis.code.domain.models.Message
 import io.tiflis.code.domain.models.MessageContentBlock
 import io.tiflis.code.domain.models.MessageRole
+import io.tiflis.code.domain.models.MessageSendStatus
 import io.tiflis.code.domain.models.SessionType
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -141,6 +142,19 @@ fun MessageSegmentBubble(
                             isAudioPlaying = isAudioPlaying
                         )
                     }
+
+                    // Show send status indicator for user messages (only on last segment)
+                    if (isUser && !segment.isContinuation && originalMessage != null) {
+                        val sendStatus = originalMessage.sendStatus
+                        if (sendStatus != MessageSendStatus.NONE) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                MessageSendStatusIndicator(sendStatus = sendStatus)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -220,4 +234,47 @@ private fun getSegmentTextContent(segment: SplitMessageSegment): String {
             else -> null
         }
     }.filter { it.isNotBlank() }.joinToString("\n\n")
+}
+
+/**
+ * Indicator showing message send status (pending, sent, failed).
+ * Mirrors iOS MessageSendStatusIndicator.
+ */
+@Composable
+fun MessageSendStatusIndicator(
+    sendStatus: MessageSendStatus,
+    modifier: Modifier = Modifier
+) {
+    when (sendStatus) {
+        MessageSendStatus.PENDING -> {
+            // Clock icon for pending
+            Text(
+                text = "🕐",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                modifier = modifier
+            )
+        }
+        MessageSendStatus.SENT -> {
+            // Checkmark for sent
+            Text(
+                text = "✓",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f),
+                modifier = modifier
+            )
+        }
+        MessageSendStatus.FAILED -> {
+            // Warning for failed
+            Text(
+                text = "⚠️",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = modifier
+            )
+        }
+        MessageSendStatus.NONE -> {
+            // No indicator
+        }
+    }
 }

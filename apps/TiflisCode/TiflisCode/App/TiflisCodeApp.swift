@@ -149,6 +149,12 @@ final class AppState: ObservableObject {
     /// Scroll triggers for agent sessions - increments on any content update
     @Published var agentScrollTriggers: [String: Int] = [:]
 
+    /// Pending message acknowledgments - maps message ID to (sessionId, timeout task)
+    /// Used to track messages waiting for server acknowledgment
+    private var pendingMessageAcks: [String: (sessionId: String?, timeoutTask: Task<Void, Never>)] = [:]
+    /// Timeout for message acknowledgment (5 seconds)
+    private let messageAckTimeout: TimeInterval = 5.0
+
     @AppStorage("tunnelURL") private var tunnelURL = ""
     @AppStorage("tunnelId") private var tunnelId = ""
 
@@ -541,6 +547,8 @@ final class AppState: ObservableObject {
             handleSessionVoiceOutput(message)
         case "audio.response":
             handleAudioResponse(message)
+        case "message.ack":
+            handleMessageAck(message)
         default:
             break
         }
@@ -560,6 +568,74 @@ final class AppState: ObservableObject {
             audio: audio,
             error: error
         )
+    }
+
+    /// Handles message.ack from server - marks message as sent
+    private func handleMessageAck(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let messageId = payload["message_id"] as? String else {
+            return
+        }
+
+        let sessionId = payload["session_id"] as? String
+
+        // Cancel timeout task
+        if let pending = pendingMessageAcks[messageId] {
+            pending.timeoutTask.cancel()
+            pendingMessageAcks.removeValue(forKey: messageId)
+        }
+
+        // Update message status to sent
+        if let sessionId = sessionId {
+            // Agent session message
+            if var messages = agentMessages[sessionId],
+               let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].sendStatus = .sent
+                agentMessages[sessionId] = messages
+            }
+        } else {
+            // Supervisor message
+            if let index = supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                supervisorMessages[index].sendStatus = .sent
+            }
+        }
+
+        print("✅ Message acknowledged: \(messageId)")
+    }
+
+    /// Registers a message for acknowledgment tracking with timeout
+    func trackMessageForAck(messageId: String, sessionId: String?) {
+        // Start timeout task
+        let timeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(self?.messageAckTimeout ?? 5.0))
+            guard !Task.isCancelled else { return }
+
+            // Timeout - mark message as failed
+            self?.handleMessageAckTimeout(messageId: messageId, sessionId: sessionId)
+        }
+
+        pendingMessageAcks[messageId] = (sessionId: sessionId, timeoutTask: timeoutTask)
+    }
+
+    /// Handles message acknowledgment timeout - marks message as failed
+    private func handleMessageAckTimeout(messageId: String, sessionId: String?) {
+        pendingMessageAcks.removeValue(forKey: messageId)
+
+        if let sessionId = sessionId {
+            // Agent session message
+            if var messages = agentMessages[sessionId],
+               let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].sendStatus = .failed
+                agentMessages[sessionId] = messages
+            }
+        } else {
+            // Supervisor message
+            if let index = supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                supervisorMessages[index].sendStatus = .failed
+            }
+        }
+
+        print("⚠️ Message acknowledgment timeout: \(messageId)")
     }
     
     private func handleErrorMessage(_ message: [String: Any]) {

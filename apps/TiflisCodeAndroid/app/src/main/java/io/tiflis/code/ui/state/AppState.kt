@@ -131,6 +131,11 @@ class AppState @Inject constructor(
         java.util.concurrent.ConcurrentHashMap<String, Boolean>()
     )
 
+    // Track pending message acknowledgments with timeout jobs
+    // Maps messageId -> (sessionId, timeoutJob)
+    private val pendingMessageAcks = java.util.concurrent.ConcurrentHashMap<String, Pair<String?, kotlinx.coroutines.Job>>()
+    private val MESSAGE_ACK_TIMEOUT_MS = 5000L // 5 second timeout for acknowledgment
+
     // Lifecycle observer for app foreground/background detection
     private val lifecycleObserver = object : DefaultLifecycleObserver {
         override fun onStart(owner: LifecycleOwner) {
@@ -439,17 +444,20 @@ class AppState @Inject constructor(
             put("message_id", actualMessageId)
         }
 
-        // Add user message to local state
+        // Add user message to local state with pending send status
         if (text != null) {
             val userMessage = Message(
                 id = actualMessageId,
                 sessionId = SUPERVISOR_SESSION_ID,
                 role = MessageRole.USER,
-                content = text
+                content = text,
+                sendStatus = MessageSendStatus.PENDING
             )
             _supervisorMessages.value = _supervisorMessages.value + userMessage
             // Scroll when sending user message
             _supervisorScrollTrigger.value++
+            // Track for acknowledgment timeout
+            trackMessageForAck(actualMessageId, SUPERVISOR_SESSION_ID)
         } else if (audio != null) {
             // Voice input message with pending transcription
             val voiceMessage = Message(
@@ -463,11 +471,14 @@ class AppState @Inject constructor(
                         transcription = null,  // Will be filled when transcription arrives
                         durationMs = 0
                     )
-                )
+                ),
+                sendStatus = MessageSendStatus.PENDING
             )
             _supervisorMessages.value = _supervisorMessages.value + voiceMessage
             // Scroll when sending voice message
             _supervisorScrollTrigger.value++
+            // Track for acknowledgment timeout
+            trackMessageForAck(actualMessageId, SUPERVISOR_SESSION_ID)
             Log.d(TAG, "Added supervisor voice message with id=$actualMessageId, waiting for transcription")
         }
 
@@ -535,19 +546,22 @@ class AppState @Inject constructor(
             put("message_id", actualMessageId)
         }
 
-        // Add user message to local state - use actualId so it matches server responses
+        // Add user message to local state with pending send status - use actualId so it matches server responses
         if (text != null) {
             val userMessage = Message(
                 id = actualMessageId,
                 sessionId = actualId,
                 role = MessageRole.USER,
-                content = text
+                content = text,
+                sendStatus = MessageSendStatus.PENDING
             )
             addAgentMessage(actualId, userMessage)
             // Scroll when sending user message
             _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
                 put(actualId, (this[actualId] ?: 0) + 1)
             }
+            // Track for acknowledgment timeout
+            trackMessageForAck(actualMessageId, actualId)
         } else if (audio != null) {
             // Voice input message with pending transcription
             val voiceMessage = Message(
@@ -561,13 +575,16 @@ class AppState @Inject constructor(
                         transcription = null,  // Will be filled when transcription arrives
                         durationMs = 0
                     )
-                )
+                ),
+                sendStatus = MessageSendStatus.PENDING
             )
             addAgentMessage(actualId, voiceMessage)
             // Scroll when sending voice message
             _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
                 put(actualId, (this[actualId] ?: 0) + 1)
             }
+            // Track for acknowledgment timeout
+            trackMessageForAck(actualMessageId, actualId)
             Log.d(TAG, "Added agent voice message with id=$actualMessageId for session=$actualId, waiting for transcription")
         }
 
@@ -752,6 +769,7 @@ class AppState @Inject constructor(
             is WebSocketMessage.SupervisorContextCleared -> handleSupervisorContextCleared()
             is WebSocketMessage.SyncState -> handleSyncState(message.payload)
             is WebSocketMessage.AudioResponse -> handleAudioResponse(message.payload)
+            is WebSocketMessage.MessageAck -> handleMessageAck(message.payload)
             else -> { /* Other messages handled elsewhere */ }
         }
     }
@@ -770,6 +788,96 @@ class AppState @Inject constructor(
         }
 
         audioPlayerService.handleAudioResponse(messageId, audio)
+    }
+
+    /**
+     * Handle message acknowledgment from server.
+     * Updates the message send status from pending to sent.
+     */
+    private fun handleMessageAck(payload: JsonObject?) {
+        payload ?: return
+
+        val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull ?: return
+        val sessionId = payload["session_id"]?.jsonPrimitive?.contentOrNull
+        val status = payload["status"]?.jsonPrimitive?.contentOrNull ?: "received"
+
+        Log.d(TAG, "Message ack received: messageId=$messageId, sessionId=$sessionId, status=$status")
+
+        // Cancel timeout job
+        val pending = pendingMessageAcks.remove(messageId)
+        pending?.second?.cancel()
+
+        // Update message send status to sent
+        if (sessionId == null || sessionId == SUPERVISOR_SESSION_ID) {
+            // Supervisor message
+            val messages = _supervisorMessages.value.toMutableList()
+            val index = messages.indexOfFirst { it.id == messageId }
+            if (index >= 0) {
+                val existingMessage = messages[index]
+                messages[index] = existingMessage.withSendStatus(MessageSendStatus.SENT)
+                _supervisorMessages.value = messages.toList()
+                Log.d(TAG, "Updated supervisor message $messageId status to SENT")
+            }
+        } else {
+            // Agent message
+            _agentMessages.value = _agentMessages.value.toMutableMap().apply {
+                val sessionMessages = this[sessionId]?.toMutableList() ?: return@apply
+                val index = sessionMessages.indexOfFirst { it.id == messageId }
+                if (index >= 0) {
+                    val existingMessage = sessionMessages[index]
+                    sessionMessages[index] = existingMessage.withSendStatus(MessageSendStatus.SENT)
+                    put(sessionId, sessionMessages.toList())
+                    Log.d(TAG, "Updated agent message $messageId status to SENT")
+                }
+            }
+        }
+    }
+
+    /**
+     * Track a message for acknowledgment with timeout.
+     * If no ack is received within timeout, mark the message as failed.
+     */
+    private fun trackMessageForAck(messageId: String, sessionId: String?) {
+        val timeoutJob = viewModelScope.launch {
+            delay(MESSAGE_ACK_TIMEOUT_MS)
+            handleMessageAckTimeout(messageId, sessionId)
+        }
+        pendingMessageAcks[messageId] = Pair(sessionId, timeoutJob)
+    }
+
+    /**
+     * Handle message acknowledgment timeout - mark message as failed.
+     */
+    private fun handleMessageAckTimeout(messageId: String, sessionId: String?) {
+        // Remove from pending map
+        pendingMessageAcks.remove(messageId)
+
+        Log.w(TAG, "Message ack timeout for messageId=$messageId, marking as failed")
+
+        // Update message send status to failed
+        if (sessionId == null || sessionId == SUPERVISOR_SESSION_ID) {
+            // Supervisor message
+            val messages = _supervisorMessages.value.toMutableList()
+            val index = messages.indexOfFirst { it.id == messageId }
+            if (index >= 0) {
+                val existingMessage = messages[index]
+                messages[index] = existingMessage.withSendStatus(MessageSendStatus.FAILED)
+                _supervisorMessages.value = messages.toList()
+                Log.d(TAG, "Updated supervisor message $messageId status to FAILED (timeout)")
+            }
+        } else {
+            // Agent message
+            _agentMessages.value = _agentMessages.value.toMutableMap().apply {
+                val sessionMessages = this[sessionId]?.toMutableList() ?: return@apply
+                val index = sessionMessages.indexOfFirst { it.id == messageId }
+                if (index >= 0) {
+                    val existingMessage = sessionMessages[index]
+                    sessionMessages[index] = existingMessage.withSendStatus(MessageSendStatus.FAILED)
+                    put(sessionId, sessionMessages.toList())
+                    Log.d(TAG, "Updated agent message $messageId status to FAILED (timeout)")
+                }
+            }
+        }
     }
 
     private fun handleSessionCreated(sessionId: String?, payload: JsonObject?) {

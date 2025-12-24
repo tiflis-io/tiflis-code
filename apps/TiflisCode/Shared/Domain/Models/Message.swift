@@ -16,6 +16,8 @@ struct Message: Identifiable, Equatable {
     var contentBlocks: [MessageContentBlock]
     var isStreaming: Bool
     let createdAt: Date
+    /// Send status for user messages (pending -> sent -> failed)
+    var sendStatus: SendStatus
 
     enum MessageRole: String, Codable {
         case user
@@ -30,13 +32,23 @@ struct Message: Identifiable, Equatable {
         case transcription
     }
 
+    /// Send status for user messages
+    /// Shows delivery status: pending (clock icon) -> sent (checkmark) -> failed (error icon)
+    enum SendStatus: Equatable {
+        case none          // For assistant/system messages (not applicable)
+        case pending       // Message is being sent (show clock icon)
+        case sent          // Message was acknowledged by server (show checkmark)
+        case failed        // Message failed to send (show error icon with retry option)
+    }
+
     init(
         id: String = UUID().uuidString,
         sessionId: String,
         role: MessageRole,
         contentBlocks: [MessageContentBlock] = [],
         isStreaming: Bool = false,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        sendStatus: SendStatus = .none
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -44,6 +56,7 @@ struct Message: Identifiable, Equatable {
         self.contentBlocks = contentBlocks
         self.isStreaming = isStreaming
         self.createdAt = createdAt
+        self.sendStatus = sendStatus
     }
 
     /// Convenience initializer for simple text messages
@@ -53,7 +66,8 @@ struct Message: Identifiable, Equatable {
         role: MessageRole,
         content: String,
         isStreaming: Bool = false,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        sendStatus: SendStatus = .none
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -61,6 +75,7 @@ struct Message: Identifiable, Equatable {
         self.contentBlocks = [MessageContentBlock.text(id: UUID().uuidString, text: content)]
         self.isStreaming = isStreaming
         self.createdAt = createdAt
+        self.sendStatus = sendStatus
     }
 
     // MARK: - Computed Properties

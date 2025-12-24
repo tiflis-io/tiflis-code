@@ -629,7 +629,7 @@ export class ChatHistoryService {
    * Gets supervisor chat history (global, shared across all devices).
    * Returns messages sorted by sequence (oldest first) for chronological display.
    */
-  getSupervisorHistory(limit = 50): StoredMessage[] {
+  getSupervisorHistory(limit = 20): StoredMessage[] {
     const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
     const rows = this.messageRepo.getBySession(sessionId, limit);
     // Reverse to get chronological order (oldest first, since getBySession returns newest first)
@@ -708,7 +708,7 @@ export class ChatHistoryService {
    * Gets agent session chat history.
    * Returns messages sorted chronologically (oldest first).
    */
-  getAgentHistory(sessionId: string, limit = 100): StoredMessage[] {
+  getAgentHistory(sessionId: string, limit = 20): StoredMessage[] {
     const rows = this.messageRepo.getBySession(sessionId, limit);
     // Reverse to get chronological order (oldest first)
     return rows.reverse().map((row) => {
@@ -775,7 +775,7 @@ export class ChatHistoryService {
    */
   getAllAgentHistories(
     sessionIds: string[],
-    limit = 50
+    limit = 20
   ): Map<string, StoredMessage[]> {
     const histories = new Map<string, StoredMessage[]>();
     for (const sessionId of sessionIds) {

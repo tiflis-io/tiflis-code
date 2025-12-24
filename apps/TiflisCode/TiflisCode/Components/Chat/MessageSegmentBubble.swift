@@ -43,11 +43,18 @@ struct MessageSegmentBubble: View {
                     onAction: onAction
                 )
 
-                // Timestamp - only show on last segment
+                // Timestamp and send status - only show on last segment
                 if segment.showTimestamp {
-                    Text(segment.createdAt, style: .time)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                    HStack(spacing: 4) {
+                        Text(segment.createdAt, style: .time)
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+
+                        // Send status indicator for user messages
+                        if isUser, let message = originalMessage {
+                            MessageSendStatusIndicator(status: message.sendStatus)
+                        }
+                    }
                 }
             }
 
@@ -220,4 +227,33 @@ struct MessageSegmentContent: View {
         sessionType: .supervisor
     )
     .padding()
+}
+
+// MARK: - Send Status Indicator
+
+/// Shows message delivery status for user messages
+/// - pending: Clock icon (sending...)
+/// - sent: Checkmark icon (delivered to server)
+/// - failed: Exclamation icon (delivery failed)
+struct MessageSendStatusIndicator: View {
+    let status: Message.SendStatus
+
+    var body: some View {
+        switch status {
+        case .none:
+            EmptyView()
+        case .pending:
+            Image(systemName: "clock")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        case .sent:
+            Image(systemName: "checkmark")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        case .failed:
+            Image(systemName: "exclamationmark.circle")
+                .font(.caption2)
+                .foregroundStyle(.red)
+        }
+    }
 }

@@ -126,6 +126,28 @@ Cancel in-progress AI responses:
 - **Protocol**: Sends `supervisor.cancel` or `session.cancel` command
 - **Feedback**: Shows "Cancelled by user" status block
 
+### Message Delivery Status (v1.12)
+
+Real-time feedback for message delivery with "Sending..." → "Sent" → "Failed" indicators:
+
+- **Pending (🕐)**: Message sent, waiting for server acknowledgment
+- **Sent (✓)**: Server confirmed receipt via `message.ack`
+- **Failed (⚠️)**: No acknowledgment within 5 seconds
+
+```swift
+enum SendStatus: String, Codable {
+    case pending   // Waiting for ack
+    case sent      // Ack received
+    case failed    // Timeout, no ack
+}
+```
+
+**Implementation:**
+- Messages include unique `message_id` in command
+- AppState tracks pending acks with 5-second timeout
+- UI shows status indicator next to user messages
+- Works for both Supervisor and Agent session messages
+
 ### Message Splitting (v1.10)
 
 Long assistant responses are automatically split into multiple chat bubbles for improved readability:
@@ -1159,10 +1181,44 @@ final class ChatViewModel: ObservableObject {
 
     private let session: Session
 
-    func sendMessage() { ... }
+    func sendMessage() { ... }  // Sets sendStatus = .pending, tracks for ack
     func startRecording() { ... }
     func stopRecording() { ... }
     func clearContext() { ... }  // Supervisor only
+}
+```
+
+### Message Send Status
+
+User messages track delivery status via the `sendStatus` property:
+
+```swift
+struct Message {
+    // ...
+    var sendStatus: SendStatus?  // Only for user messages
+}
+
+enum SendStatus: String, Codable {
+    case pending  // 🕐 Waiting for server ack
+    case sent     // ✓ Server confirmed receipt
+    case failed   // ⚠️ Timeout, no ack received
+}
+```
+
+**AppState Ack Tracking:**
+
+```swift
+// Pending message acks with timeout tasks
+private var pendingMessageAcks: [String: Task<Void, Never>] = [:]
+
+func trackMessageForAck(messageId: String, sessionId: String?) {
+    // Start 5-second timeout task
+    // On timeout: mark message as failed
+}
+
+func handleMessageAck(messageId: String, sessionId: String?) {
+    // Cancel timeout task
+    // Find message and set sendStatus = .sent
 }
 ```
 

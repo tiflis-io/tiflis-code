@@ -26,6 +26,21 @@ enum class MessageRole {
 }
 
 /**
+ * Send status for user messages.
+ * Shows delivery status: pending (clock icon) -> sent (checkmark) -> failed (error icon)
+ */
+enum class MessageSendStatus {
+    /** For assistant/system messages (not applicable) */
+    NONE,
+    /** Message is being sent (show clock icon) */
+    PENDING,
+    /** Message was acknowledged by server (show checkmark) */
+    SENT,
+    /** Message failed to send (show error icon with retry option) */
+    FAILED
+}
+
+/**
  * Represents a chat message in a session.
  * Mirrors the iOS Message struct.
  */
@@ -35,7 +50,9 @@ data class Message(
     val role: MessageRole,
     val contentBlocks: MutableList<MessageContentBlock> = mutableListOf(),
     var isStreaming: Boolean = false,
-    val createdAt: Instant = Instant.now()
+    val createdAt: Instant = Instant.now(),
+    /** Send status for user messages (pending -> sent -> failed) */
+    var sendStatus: MessageSendStatus = MessageSendStatus.NONE
 ) {
     /**
      * Convenience constructor for simple text messages.
@@ -46,7 +63,8 @@ data class Message(
         role: MessageRole,
         content: String,
         isStreaming: Boolean = false,
-        createdAt: Instant = Instant.now()
+        createdAt: Instant = Instant.now(),
+        sendStatus: MessageSendStatus = MessageSendStatus.NONE
     ) : this(
         id = id,
         sessionId = sessionId,
@@ -58,7 +76,8 @@ data class Message(
             )
         ),
         isStreaming = isStreaming,
-        createdAt = createdAt
+        createdAt = createdAt,
+        sendStatus = sendStatus
     )
 
     // MARK: - Computed Properties
@@ -142,7 +161,21 @@ data class Message(
             role = this.role,
             contentBlocks = this.contentBlocks.toMutableList(),
             isStreaming = streaming,
-            createdAt = this.createdAt
+            createdAt = this.createdAt,
+            sendStatus = this.sendStatus
+        )
+    }
+
+    /** Creates a copy with updated send status */
+    fun withSendStatus(status: MessageSendStatus): Message {
+        return Message(
+            id = this.id,
+            sessionId = this.sessionId,
+            role = this.role,
+            contentBlocks = this.contentBlocks.toMutableList(),
+            isStreaming = this.isStreaming,
+            createdAt = this.createdAt,
+            sendStatus = status
         )
     }
 }

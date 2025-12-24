@@ -773,21 +773,31 @@ async function bootstrap(): Promise<void> {
         }[]
       > = {};
 
-      for (const [sessionId, history] of agentHistoriesMap) {
-        agentHistories[sessionId] = await Promise.all(
-          history.map(async (msg) => ({
-            sequence: msg.sequence,
-            role: msg.role,
-            content: msg.content,
-            content_blocks: await chatHistoryService.enrichBlocksWithAudio(
-              msg.contentBlocks,
-              msg.audioOutputPath,
-              msg.audioInputPath,
-              false // Don't include audio in sync.state
-            ),
-            createdAt: msg.createdAt.toISOString(),
-          }))
-        );
+      // Process all session histories in parallel for faster sync
+      const historyEntries = Array.from(agentHistoriesMap.entries());
+      const processedHistories = await Promise.all(
+        historyEntries.map(async ([sessionId, history]) => {
+          const enrichedHistory = await Promise.all(
+            history.map(async (msg) => ({
+              sequence: msg.sequence,
+              role: msg.role,
+              content: msg.content,
+              content_blocks: await chatHistoryService.enrichBlocksWithAudio(
+                msg.contentBlocks,
+                msg.audioOutputPath,
+                msg.audioInputPath,
+                false // Don't include audio in sync.state
+              ),
+              createdAt: msg.createdAt.toISOString(),
+            }))
+          );
+          return { sessionId, history: enrichedHistory };
+        })
+      );
+
+      // Build the agentHistories object from parallel results
+      for (const { sessionId, history } of processedHistories) {
+        agentHistories[sessionId] = history;
       }
 
       // Get available agents (base + aliases from environment)
@@ -960,6 +970,22 @@ async function bootstrap(): Promise<void> {
           })
         );
         return;
+      }
+
+      // Send immediate acknowledgment to client so they can show "Sent" status
+      if (messageBroadcaster) {
+        const ackMessage = {
+          type: "message.ack",
+          payload: {
+            message_id: commandMessage.id,
+            status: "received",
+          },
+        };
+        messageBroadcaster.sendToClient(deviceId, JSON.stringify(ackMessage));
+        logger.debug(
+          { messageId: commandMessage.id, deviceId },
+          "Sent message.ack for supervisor.command"
+        );
       }
 
       // Handle voice command with audio payload
@@ -1602,6 +1628,23 @@ async function bootstrap(): Promise<void> {
       const deviceId = execMessage.device_id;
       const sessionId = execMessage.session_id;
       const messageId = execMessage.payload.message_id;
+
+      // Send immediate acknowledgment to client so they can show "Sent" status
+      if (deviceId && messageBroadcaster) {
+        const ackMessage = {
+          type: "message.ack",
+          payload: {
+            message_id: execMessage.id,
+            session_id: sessionId,
+            status: "received",
+          },
+        };
+        messageBroadcaster.sendToClient(deviceId, JSON.stringify(ackMessage));
+        logger.debug(
+          { messageId: execMessage.id, sessionId, deviceId },
+          "Sent message.ack for session.execute"
+        );
+      }
 
       // Clear any previous cancellation state - new command starts fresh
       cancelledDuringTranscription.delete(sessionId);

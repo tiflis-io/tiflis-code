@@ -17,22 +17,63 @@ import type {
 
 export interface FileSystemWorkspaceDiscoveryConfig {
   workspacesRoot: string;
+  /** Cache TTL in milliseconds (default: 30000 = 30 seconds) */
+  cacheTtlMs?: number;
+}
+
+/**
+ * Cache entry for workspace/project data.
+ */
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
 }
 
 /**
  * File system implementation of workspace discovery.
+ * Includes caching layer for faster sync operations.
  */
 export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
   private readonly workspacesRoot: string;
+  private readonly cacheTtlMs: number;
+
+  /** Cache for workspace list */
+  private workspacesCache: CacheEntry<WorkspaceInfo[]> | null = null;
+
+  /** Cache for projects by workspace name */
+  private projectsCache: Map<string, CacheEntry<ProjectInfo[]>> = new Map();
 
   constructor(config: FileSystemWorkspaceDiscoveryConfig) {
     this.workspacesRoot = config.workspacesRoot;
+    this.cacheTtlMs = config.cacheTtlMs ?? 30_000; // 30 seconds default
+  }
+
+  /**
+   * Checks if a cache entry is still valid.
+   */
+  private isCacheValid<T>(entry: CacheEntry<T> | null | undefined): entry is CacheEntry<T> {
+    if (!entry) return false;
+    return Date.now() - entry.timestamp < this.cacheTtlMs;
+  }
+
+  /**
+   * Invalidates all caches. Call when workspace structure changes.
+   */
+  invalidateCache(): void {
+    this.workspacesCache = null;
+    this.projectsCache.clear();
   }
 
   /**
    * Lists all workspaces in the workspaces root.
+   * Results are cached for faster subsequent calls.
    */
   async listWorkspaces(): Promise<WorkspaceInfo[]> {
+    // Return cached data if valid
+    if (this.isCacheValid(this.workspacesCache)) {
+      return this.workspacesCache.data;
+    }
+
     const entries = await readdir(this.workspacesRoot, { withFileTypes: true });
     const workspaces: WorkspaceInfo[] = [];
 
@@ -48,13 +89,28 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
       }
     }
 
-    return workspaces.sort((a, b) => a.name.localeCompare(b.name));
+    const result = workspaces.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Cache the result
+    this.workspacesCache = {
+      data: result,
+      timestamp: Date.now(),
+    };
+
+    return result;
   }
 
   /**
    * Lists all projects in a workspace.
+   * Results are cached for faster subsequent calls.
    */
   async listProjects(workspace: string): Promise<ProjectInfo[]> {
+    // Return cached data if valid
+    const cached = this.projectsCache.get(workspace);
+    if (this.isCacheValid(cached)) {
+      return cached.data;
+    }
+
     const workspacePath = join(this.workspacesRoot, workspace);
 
     if (!(await this.pathExists(workspacePath))) {
@@ -92,7 +148,15 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
       }
     }
 
-    return projects.sort((a, b) => a.name.localeCompare(b.name));
+    const result = projects.sort((a, b) => a.name.localeCompare(b.name));
+
+    // Cache the result
+    this.projectsCache.set(workspace, {
+      data: result,
+      timestamp: Date.now(),
+    });
+
+    return result;
   }
 
   /**

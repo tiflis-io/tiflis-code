@@ -419,6 +419,27 @@ export interface SessionReplayDataMessage {
 }
 
 // ============================================================================
+// Message Acknowledgment
+// ============================================================================
+
+/**
+ * Workstation → Mobile: Message acknowledgment
+ * Sent when a user message (supervisor.send or session.execute) is received and queued for processing.
+ * Allows clients to show "Sending..." → "Sent" status for user messages.
+ */
+export interface MessageAckMessage {
+  type: 'message.ack';
+  payload: {
+    /** The message ID that was acknowledged */
+    message_id: string;
+    /** Session ID if this was a session command (undefined for supervisor) */
+    session_id?: string;
+    /** Status of the message */
+    status: 'received' | 'processing' | 'queued';
+  };
+}
+
+// ============================================================================
 // Response Messages
 // ============================================================================
 
@@ -507,6 +528,7 @@ export type OutgoingClientMessage =
   | SyncStateMessage
   | ResponseMessage
   | ErrorMessage
+  | MessageAckMessage
   | SessionCreatedMessage
   | SessionTerminatedMessage
   | SessionSubscribedMessage

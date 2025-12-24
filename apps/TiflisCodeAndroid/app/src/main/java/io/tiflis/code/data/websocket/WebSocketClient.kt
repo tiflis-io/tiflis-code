@@ -25,24 +25,26 @@ import javax.inject.Singleton
  * 3. Wait for "connected" response
  * 4. Send "auth" message
  * 5. Wait for "auth.success" response
- * 6. Start heartbeat (ping/pong every 15s)
+ * 6. Start heartbeat (ping/pong every 5s for fast detection)
  */
 @Singleton
 class WebSocketClient @Inject constructor() {
 
     companion object {
         private const val TAG = "WebSocketClient"
-        private const val PING_INTERVAL_MS = 15_000L
-        private const val PONG_TIMEOUT_MS = 20_000L // Reduced from 30s for faster detection
-        private const val HEALTH_CHECK_TIMEOUT_MS = 5_000L // Quick health check timeout
-        private const val MAX_RECONNECT_DELAY_MS = 30_000L
-        private const val INITIAL_RECONNECT_DELAY_MS = 1_000L
+        // Optimized for fast disconnect detection (~5-8s) while maintaining connection stability
+        private const val PING_INTERVAL_MS = 5_000L // 5 seconds - fast liveness detection
+        private const val PONG_TIMEOUT_MS = 5_000L // 5 seconds - quick timeout for faster detection
+        private const val HEALTH_CHECK_TIMEOUT_MS = 3_000L // 3 seconds - quick health check
+        private const val MAX_RECONNECT_DELAY_MS = 5_000L // 5 seconds - don't wait too long
+        private const val INITIAL_RECONNECT_DELAY_MS = 500L // 500ms - fast first retry
         private const val MAX_MESSAGE_SIZE = 50L * 1024 * 1024 // 50MB
 
         // Application-level heartbeat constants (end-to-end verification)
-        private const val HEARTBEAT_INTERVAL_MS = 10_000L // 10 seconds
-        private const val HEARTBEAT_TIMEOUT_MS = 5_000L   // 5 seconds
-        private const val MAX_HEARTBEAT_FAILURES = 2       // Force reconnect after 2 failures
+        // Optimized for fast disconnect detection
+        private const val HEARTBEAT_INTERVAL_MS = 3_000L // 3 seconds - fast end-to-end check
+        private const val HEARTBEAT_TIMEOUT_MS = 3_000L  // 3 seconds - quick timeout
+        private const val MAX_HEARTBEAT_FAILURES = 2      // Force reconnect after 2 failures
     }
 
     private val json = Json {

@@ -205,14 +205,15 @@ The implementation follows the project's **MVVM + Services** pattern with proper
 - **Heartbeat:**
   - **Task-Based Implementation:** Uses `Task.sleep` for periodic pings (no Timer/RunLoop dependency)
   - Sends initial ping immediately after authentication
-  - Sends `ping` every 20 seconds using async task loop
+  - Sends `ping` every 5 seconds using async task loop (optimized from 20s)
   - Tracks last `pong` timestamp
-  - **Pong Timeout:** Uses `Task`-based timeout (30 seconds) instead of Timer
-  - Marks connection stale if no `pong` received within 30 seconds
+  - **Pong Timeout:** Uses `Task`-based timeout (5 seconds) instead of Timer (optimized from 30s)
+  - Marks connection stale if no `pong` received within 5 seconds
   - Automatically reconnects on stale connection
   - Properly cancels all tasks on disconnection
+  - **Detection Time:** Disconnects detected in ~5-8 seconds (vs ~40 seconds previously)
 - **Reconnection:**
-  - Exponential backoff: 1s → 2s → 4s → ... → 30s max
+  - Exponential backoff: 0.5s → 1s → 2s → ... → 5s max (optimized from 1s-30s)
   - Automatic reconnection on disconnect or stale connection
   - **Smart Reconnection:** Skips reconnection attempts when workstation is offline (user needs to start workstation first)
   - Restores subscriptions after reconnect
@@ -373,7 +374,7 @@ Send initial ping immediately
     ↓
 Start periodic ping task (Task.sleep-based)
     ↓
-Every 20 seconds:
+Every 5 seconds:  (optimized from 20s for faster detection)
     ↓
 Check connection state on MainActor
     ↓
@@ -382,14 +383,14 @@ If connected:
         ↓
     Send {"type": "ping", "timestamp": ...}
         ↓
-    Start 30-second pong timeout task (Task-based)
+    Start 5-second pong timeout task (Task-based)  (optimized from 30s)
         ↓
-    If pong received within 30s:
+    If pong received within 5s:
         - Cancel pong timeout task
         - Update lastPongTimestamp
         - Continue normal operation
         ↓
-    If no pong within 30s:
+    If no pong within 5s:
         - handlePongTimeout() called
         - Mark connection stale
         - Disconnect
@@ -407,6 +408,7 @@ If not connected:
 - **Cancellation:** All tasks properly cancelled on disconnection via `stopHeartbeat()`
 - **Thread Safety:** Connection state checks happen on MainActor
 - **No RunLoop Dependency:** Works reliably in any async context
+- **Fast Detection:** Optimized intervals (5s ping, 5s timeout) detect disconnects in ~5-8 seconds
 
 ### 3. Reconnection Flow
 
@@ -426,7 +428,7 @@ scheduleReconnect()
     ↓
 Prevent multiple simultaneous attempts (isConnecting flag)
     ↓
-Calculate delay: min(1s * 2^attempts, 30s)
+Calculate delay: min(0.5s * 2^attempts, 5s)  (optimized: faster initial retry, lower max)
     ↓
 Wait for delay
     ↓
@@ -698,7 +700,7 @@ Automatic reconnection scheduled (if credentials available)
 ## Known Limitations
 
 1. **URL Port Requirement:** URLs with paths (like `/ws`) do not get default ports added. Users must include the port explicitly (e.g., `ws://host:3001/ws`). This is intentional to avoid incorrect port assumptions for service-specific endpoints.
-2. **Reconnection:** Maximum reconnection delay is 30 seconds; after that, manual reconnect may be needed.
+2. **Reconnection:** Maximum reconnection delay is 5 seconds (optimized for fast recovery).
 3. **Message Queueing:** Messages sent during disconnection are not queued (future enhancement).
 4. **Tunnel Socket Architecture:** The workstation server now supports optional socket for tunnel connections. Clients registered via tunnel don't require a direct WebSocket socket, improving architecture and eliminating the previous workaround.
 5. **Broadcast to All Clients:** When workstation sends auth response, tunnel forwards it to all clients (not just the requesting client). This works because clients only process messages intended for them, but is not optimal for multi-client scenarios.
@@ -707,7 +709,7 @@ Automatic reconnection scheduled (if credentials available)
 
 1. **Message Queueing:** Queue messages during disconnection and send on reconnect
 2. **Connection Quality Monitoring:** Track latency and connection quality metrics
-3. **Adaptive Heartbeat:** Adjust ping interval based on connection quality (currently fixed at 20s)
+3. **Adaptive Heartbeat:** Adjust ping interval based on connection quality (currently fixed at 5s)
 4. **Background Reconnection:** Continue reconnection attempts when app is backgrounded
 5. **Certificate Pinning:** For production WSS connections
 6. **Voice Activity Detection (VAD):** Automatic end-of-speech detection for voice input (currently requires manual stop)

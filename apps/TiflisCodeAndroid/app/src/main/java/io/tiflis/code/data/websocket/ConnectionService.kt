@@ -246,6 +246,9 @@ class ConnectionService @Inject constructor(
             // Audio response
             "audio.response" -> emitMessage(WebSocketMessage.AudioResponse(requestId, payload))
 
+            // Message acknowledgment
+            "message.ack" -> emitMessage(WebSocketMessage.MessageAck(payload))
+
             // Response/Error
             "response" -> emitMessage(WebSocketMessage.Response(requestId, payload))
             "error" -> emitMessage(WebSocketMessage.Error(requestId, payload))
@@ -406,6 +409,9 @@ sealed class WebSocketMessage {
 
     // Audio response
     data class AudioResponse(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
+
+    // Message acknowledgment
+    data class MessageAck(val payload: JsonObject?) : WebSocketMessage()
 
     // Response/Error
     data class Response(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()

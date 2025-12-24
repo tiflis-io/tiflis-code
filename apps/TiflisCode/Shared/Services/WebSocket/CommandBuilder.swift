@@ -16,12 +16,14 @@ enum CommandBuilder {
     // MARK: - Supervisor Commands
 
     /// Create a supervisor text command
-    /// - Parameter command: The text command to send
+    /// - Parameters:
+    ///   - command: The text command to send
+    ///   - messageId: Optional message ID for tracking (defaults to new UUID)
     /// - Returns: Command configuration with 3 retries and queue enabled
-    static func supervisorCommand(_ command: String) -> CommandConfig {
+    static func supervisorCommand(_ command: String, messageId: String = UUID().uuidString) -> CommandConfig {
         let message: [String: Any] = [
             "type": "supervisor.command",
-            "id": UUID().uuidString,
+            "id": messageId,
             "payload": [
                 "command": command
             ]
@@ -186,11 +188,12 @@ enum CommandBuilder {
     /// - Parameters:
     ///   - sessionId: ID of the session
     ///   - content: Text content to execute
+    ///   - messageId: Optional message ID for tracking (defaults to new UUID)
     /// - Returns: Command configuration with 3 retries and queue enabled
-    static func sessionExecute(sessionId: String, content: String) -> CommandConfig {
+    static func sessionExecute(sessionId: String, content: String, messageId: String = UUID().uuidString) -> CommandConfig {
         let message: [String: Any] = [
             "type": "session.execute",
-            "id": UUID().uuidString,
+            "id": messageId,
             "session_id": sessionId,
             "payload": [
                 "content": content

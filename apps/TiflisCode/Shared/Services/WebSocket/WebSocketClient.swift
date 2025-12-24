@@ -16,12 +16,13 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     weak var delegate: WebSocketClientDelegate?
     
     // MARK: - Constants
+    // Optimized for fast disconnect detection (~5-8s) while maintaining connection stability
 
-    private let pingInterval: TimeInterval = 15.0 // 15 seconds - keep connection alive through proxies/NAT
-    private let pongTimeout: TimeInterval = 20.0 // 20 seconds - allow time for slow networks
-    private let minReconnectDelay: TimeInterval = 1.0
-    private let maxReconnectDelay: TimeInterval = 30.0
-    private let missedPongsBeforeReconnect: Int = 2 // Reconnect after 2 missed pongs to avoid false positives
+    private let pingInterval: TimeInterval = 5.0 // 5 seconds - fast liveness detection
+    private let pongTimeout: TimeInterval = 5.0 // 5 seconds - quick timeout for faster detection
+    private let minReconnectDelay: TimeInterval = 0.5 // 500ms - fast first retry
+    private let maxReconnectDelay: TimeInterval = 5.0 // 5 seconds - don't wait too long
+    private let missedPongsBeforeReconnect: Int = 1 // Reconnect after 1 missed pong for fast detection
     
     // MARK: - Logging
     
@@ -48,11 +49,12 @@ final class WebSocketClient: NSObject, WebSocketClientProtocol, @unchecked Senda
     private var consecutiveMissedPongs: Int = 0 // Track consecutive missed pongs for connection health
 
     // Application-level heartbeat for end-to-end verification
+    // Optimized for fast disconnect detection
     private var heartbeatTask: Task<Void, Never>?
     private var heartbeatTimeoutTask: Task<Void, Never>?
     private var pendingHeartbeatId: String?
-    private let heartbeatInterval: TimeInterval = 10.0  // 10 seconds
-    private let heartbeatTimeout: TimeInterval = 5.0    // 5 seconds
+    private let heartbeatInterval: TimeInterval = 3.0  // 3 seconds - fast end-to-end check
+    private let heartbeatTimeout: TimeInterval = 3.0   // 3 seconds - quick timeout
     private var consecutiveHeartbeatFailures: Int = 0
     private let maxHeartbeatFailures: Int = 2
 

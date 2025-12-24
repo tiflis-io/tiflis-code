@@ -23,22 +23,23 @@ export function getProtocolVersion(): string {
 
 /**
  * Connection timing constants (in milliseconds).
+ * Optimized for fast disconnect detection (~5-8s) while maintaining connection stability.
  */
 export const CONNECTION_TIMING = {
-  /** How often clients should send ping (15 seconds - keeps connection alive through proxies) */
-  PING_INTERVAL_MS: 15_000,
+  /** How often clients should send ping (5 seconds - fast liveness detection) */
+  PING_INTERVAL_MS: 5_000,
 
-  /** Max time to wait for ping before considering connection stale (45 seconds) */
-  PONG_TIMEOUT_MS: 45_000,
+  /** Max time to wait for ping before considering connection stale (15 seconds = 3 missed pings) */
+  PONG_TIMEOUT_MS: 15_000,
 
-  /** Interval for checking timed-out connections (10 seconds) */
-  TIMEOUT_CHECK_INTERVAL_MS: 10_000,
+  /** Interval for checking timed-out connections (5 seconds - faster cleanup) */
+  TIMEOUT_CHECK_INTERVAL_MS: 5_000,
 
-  /** Minimum reconnect delay (1 second) */
-  RECONNECT_DELAY_MIN_MS: 1_000,
+  /** Minimum reconnect delay (500ms - fast first retry) */
+  RECONNECT_DELAY_MIN_MS: 500,
 
-  /** Maximum reconnect delay (30 seconds) */
-  RECONNECT_DELAY_MAX_MS: 30_000,
+  /** Maximum reconnect delay (5 seconds - don't wait too long) */
+  RECONNECT_DELAY_MAX_MS: 5_000,
 } as const;
 
 /**

@@ -399,18 +399,24 @@ final class ChatViewModel: ObservableObject {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
-        // Add user message to chat
+        // Generate message ID that will be used for both the Message and the command
+        // This allows us to track acknowledgment from server
+        let messageId = UUID().uuidString
+
+        // Add user message to chat with pending status
         let userMessage = Message(
+            id: messageId,
             sessionId: session.id,
             role: .user,
-            content: text
+            content: text,
+            sendStatus: .pending
         )
 
-        // Send via WebSocket
+        // Send via WebSocket with the same message ID
         if session.type == .supervisor {
-            sendSupervisorCommand(text)
+            sendSupervisorCommand(text, messageId: messageId)
         } else {
-            sendSessionExecute(text)
+            sendSessionExecute(text, messageId: messageId)
         }
 
         // Update state on next run loop cycle to avoid publishing during view updates
@@ -421,9 +427,13 @@ final class ChatViewModel: ObservableObject {
             if self.session.type == .supervisor {
                 self.appState?.supervisorMessages.append(userMessage)
                 self.appState?.supervisorScrollTrigger += 1
+                // Track message for acknowledgment
+                self.appState?.trackMessageForAck(messageId: messageId, sessionId: nil)
             } else {
                 self.appState?.appendAgentMessage(userMessage, for: self.session.id)
                 self.appState?.agentScrollTriggers[self.session.id, default: 0] += 1
+                // Track message for acknowledgment
+                self.appState?.trackMessageForAck(messageId: messageId, sessionId: self.session.id)
             }
 
             self.inputText = ""
@@ -432,8 +442,8 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func sendSupervisorCommand(_ command: String) {
-        let config = CommandBuilder.supervisorCommand(command)
+    private func sendSupervisorCommand(_ command: String, messageId: String) {
+        let config = CommandBuilder.supervisorCommand(command, messageId: messageId)
 
         Task { @MainActor [weak self] in
             guard let self = self else { return }
@@ -445,8 +455,8 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    private func sendSessionExecute(_ content: String) {
-        let config = CommandBuilder.sessionExecute(sessionId: session.id, content: content)
+    private func sendSessionExecute(_ content: String, messageId: String) {
+        let config = CommandBuilder.sessionExecute(sessionId: session.id, content: content, messageId: messageId)
 
         Task { @MainActor [weak self] in
             guard let self = self else { return }
