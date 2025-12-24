@@ -869,9 +869,9 @@ EOF
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>${TIFLIS_INSTALL_DIR}/logs/stt-output.log</string>
+    <string>${TIFLIS_INSTALL_DIR}/logs/stt.log</string>
     <key>StandardErrorPath</key>
-    <string>${TIFLIS_INSTALL_DIR}/logs/stt-error.log</string>
+    <string>${TIFLIS_INSTALL_DIR}/logs/stt.log</string>
 </dict>
 </plist>
 EOF
@@ -1163,9 +1163,9 @@ EOF
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>${TIFLIS_INSTALL_DIR}/logs/tts-output.log</string>
+    <string>${TIFLIS_INSTALL_DIR}/logs/tts.log</string>
     <key>StandardErrorPath</key>
-    <string>${TIFLIS_INSTALL_DIR}/logs/tts-error.log</string>
+    <string>${TIFLIS_INSTALL_DIR}/logs/tts.log</string>
 </dict>
 </plist>
 EOF
@@ -1940,8 +1940,8 @@ EnvironmentFile=${WORKSTATION_DIR}/.env
 ExecStart=$(which node) ${WORKSTATION_DIR}/node_modules/${PACKAGE_NAME}/dist/main.js
 Restart=always
 RestartSec=10
-StandardOutput=append:${WORKSTATION_DIR}/logs/output.log
-StandardError=append:${WORKSTATION_DIR}/logs/error.log
+StandardOutput=append:${WORKSTATION_DIR}/logs/workstation.log
+StandardError=append:${WORKSTATION_DIR}/logs/workstation.log
 
 [Install]
 WantedBy=multi-user.target
@@ -2004,9 +2004,9 @@ EOF
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>${WORKSTATION_DIR}/logs/output.log</string>
+    <string>${WORKSTATION_DIR}/logs/workstation.log</string>
     <key>StandardErrorPath</key>
-    <string>${WORKSTATION_DIR}/logs/error.log</string>
+    <string>${WORKSTATION_DIR}/logs/workstation.log</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -2079,8 +2079,7 @@ EOF
         echo "    Restart: sudo systemctl restart tiflis-workstation"
         echo ""
         echo "  Debug (if service not working):"
-        echo "    cat ${WORKSTATION_DIR}/logs/output.log"
-        echo "    cat ${WORKSTATION_DIR}/logs/error.log"
+        echo "    cat ${WORKSTATION_DIR}/logs/workstation.log"
         echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
         
         # Show Docker commands if speech services configured
@@ -2096,14 +2095,13 @@ EOF
     elif [ "$init_system" = "launchd" ]; then
         echo "  Workstation Commands:"
         echo "    Status:  launchctl list | grep tiflis"
-        echo "    Logs:    tail -f ${WORKSTATION_DIR}/logs/output.log"
+        echo "    Logs:    tail -f ${WORKSTATION_DIR}/logs/workstation.log"
         echo "    Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.workstation"
         echo "    Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.workstation"
         echo "    Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.workstation.plist"
         echo ""
         echo "  Debug (if service not working):"
-        echo "    cat ${WORKSTATION_DIR}/logs/output.log"
-        echo "    cat ${WORKSTATION_DIR}/logs/error.log"
+        echo "    cat ${WORKSTATION_DIR}/logs/workstation.log"
         echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
         
         # Show native speech service commands if configured
@@ -2118,14 +2116,14 @@ EOF
             echo "    Status:  launchctl list | grep tiflis"
             if [ -f "$HOME/Library/LaunchAgents/io.tiflis.stt.plist" ]; then
                 echo ""
-                echo "    STT Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/stt-output.log"
+                echo "    STT Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/stt.log"
                 echo "    STT Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.stt"
                 echo "    STT Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.stt"
                 echo "    STT Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.stt.plist"
             fi
             if [ -f "$HOME/Library/LaunchAgents/io.tiflis.tts.plist" ]; then
                 echo ""
-                echo "    TTS Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/tts-output.log"
+                echo "    TTS Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/tts.log"
                 echo "    TTS Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.tts"
                 echo "    TTS Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.tts"
                 echo "    TTS Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.tts.plist"
@@ -2151,7 +2149,7 @@ EOF
     
     # Show speech logs location if configured
     if [ -f "$HOME/Library/LaunchAgents/io.tiflis.stt.plist" ] || [ -f "$HOME/Library/LaunchAgents/io.tiflis.tts.plist" ]; then
-        echo "  Speech Logs:   ${TIFLIS_INSTALL_DIR}/logs/stt-*.log, tts-*.log"
+        echo "  Speech Logs:   ${TIFLIS_INSTALL_DIR}/logs/stt.log, tts.log"
     fi
 }
 
