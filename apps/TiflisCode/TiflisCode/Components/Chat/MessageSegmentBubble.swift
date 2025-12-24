@@ -49,11 +49,6 @@ struct MessageSegmentBubble: View {
                         Text(segment.createdAt, style: .time)
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
-
-                        // Send status indicator for user messages
-                        if isUser, let message = originalMessage {
-                            MessageSendStatusIndicator(status: message.sendStatus)
-                        }
                     }
                 }
             }

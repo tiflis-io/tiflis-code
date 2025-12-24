@@ -45,17 +45,14 @@ struct WatchChatView: View {
                 LazyVStack(spacing: 6) {
                     ForEach(messages.suffix(15)) { message in
                         // Split message into separate bubbles per content block
-                        let blocks = messageBlocks(for: message)
-                        ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                        ForEach(Array(messageBlocks(for: message).enumerated()), id: \.offset) { index, block in
                             WatchMessageBlockBubble(
                                 block: block,
                                 role: message.role,
                                 audioService: audioService,
                                 requestAudio: { messageId in
                                     await appState.connectionService?.requestAudio(messageId: messageId)
-                                },
-                                isLastBlock: index == blocks.count - 1,
-                                sendStatus: message.sendStatus
+                                }
                             )
                             .id("\(message.id)-\(index)")
                         }

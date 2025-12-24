@@ -15,10 +15,6 @@ struct WatchMessageBlockBubble: View {
     let role: Message.MessageRole
     @ObservedObject var audioService: WatchAudioService
     var requestAudio: ((String) async -> Void)?
-    /// Whether this is the last block in the message (for showing send status)
-    var isLastBlock: Bool = false
-    /// Send status for user messages (only shown on last block)
-    var sendStatus: Message.SendStatus = .none
 
     var body: some View {
         HStack {
@@ -26,19 +22,11 @@ struct WatchMessageBlockBubble: View {
                 Spacer(minLength: 20)
             }
 
-            VStack(alignment: role == .user ? .trailing : .leading, spacing: 2) {
-                blockView(for: block)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 6)
-                    .background(bubbleColor)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                // Show send status indicator for last block of user messages
-                if role == .user && isLastBlock && sendStatus != .none {
-                    WatchSendStatusIndicator(status: sendStatus)
-                        .padding(.trailing, 4)
-                }
-            }
+            blockView(for: block)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(bubbleColor)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
 
             if role == .assistant {
                 Spacer(minLength: 20)

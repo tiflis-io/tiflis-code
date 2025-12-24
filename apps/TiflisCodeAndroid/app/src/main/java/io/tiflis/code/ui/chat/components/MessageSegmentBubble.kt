@@ -142,19 +142,6 @@ fun MessageSegmentBubble(
                             isAudioPlaying = isAudioPlaying
                         )
                     }
-
-                    // Show send status indicator for user messages (only on last segment)
-                    if (isUser && !segment.isContinuation && originalMessage != null) {
-                        val sendStatus = originalMessage.sendStatus
-                        if (sendStatus != MessageSendStatus.NONE) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
-                            ) {
-                                MessageSendStatusIndicator(sendStatus = sendStatus)
-                            }
-                        }
-                    }
                 }
             }
 
