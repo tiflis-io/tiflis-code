@@ -11,7 +11,7 @@ import type { Logger } from 'pino';
 /**
  * TTS provider types.
  */
-export type TTSProvider = 'openai' | 'elevenlabs';
+export type TTSProvider = 'openai' | 'elevenlabs' | 'local';
 
 /**
  * Configuration for TTS service.
@@ -58,10 +58,19 @@ export class TTSService {
     const startTime = Date.now();
 
     try {
-      const result =
-        this.config.provider === 'openai'
-          ? await this.synthesizeOpenAI(text)
-          : await this.synthesizeElevenLabs(text);
+      let result: TTSResult;
+      switch (this.config.provider) {
+        case 'openai':
+        case 'local':
+          // Local provider uses OpenAI-compatible API
+          result = await this.synthesizeOpenAI(text);
+          break;
+        case 'elevenlabs':
+          result = await this.synthesizeElevenLabs(text);
+          break;
+        default:
+          throw new Error(`Unsupported TTS provider: ${this.config.provider}`);
+      }
 
       const elapsed = Date.now() - startTime;
       this.logger.info(
@@ -145,12 +154,16 @@ export class TTSService {
     };
   }
 
-  /**
-   * Check if the service is configured and ready.
-   */
-  isConfigured(): boolean {
-    return Boolean(this.config.apiKey && this.config.model && this.config.voice);
+/**
+ * Check if the service is configured and ready.
+ */
+isConfigured(): boolean {
+  // Local provider doesn't require API key
+  if (this.config.provider === 'local') {
+    return Boolean(this.config.baseUrl && this.config.voice);
   }
+  return Boolean(this.config.apiKey && this.config.model && this.config.voice);
+}
 
   /**
    * Get provider information.
@@ -179,8 +192,15 @@ export function createTTSService(
 ): TTSService | null {
   const provider = (env.TTS_PROVIDER ?? 'openai').toLowerCase() as TTSProvider;
   const apiKey = env.TTS_API_KEY;
+  const baseUrl = env.TTS_BASE_URL;
 
-  if (!apiKey) {
+  // Local provider requires base URL but not API key
+  if (provider === 'local') {
+    if (!baseUrl) {
+      logger.warn('TTS_BASE_URL not configured for local provider, TTS service disabled');
+      return null;
+    }
+  } else if (!apiKey) {
     logger.warn('TTS_API_KEY not configured, TTS service disabled');
     return null;
   }
@@ -189,14 +209,15 @@ export function createTTSService(
   const defaults: Record<TTSProvider, { model: string; voice: string }> = {
     openai: { model: 'tts-1', voice: 'alloy' },
     elevenlabs: { model: 'eleven_flash_v2_5', voice: '21m00Tcm4TlvDq8ikWAM' },
+    local: { model: 'kokoro', voice: 'af_heart' },
   };
 
   const config: TTSConfig = {
     provider,
-    apiKey,
+    apiKey: apiKey ?? '',
     model: env.TTS_MODEL ?? defaults[provider].model,
     voice: env.TTS_VOICE ?? defaults[provider].voice,
-    baseUrl: env.TTS_BASE_URL,
+    baseUrl,
   };
 
   return new TTSService(config, logger);

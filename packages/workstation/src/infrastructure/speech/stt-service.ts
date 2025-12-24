@@ -15,7 +15,7 @@ import type { Logger } from 'pino';
 /**
  * STT provider types.
  */
-export type STTProvider = 'openai' | 'elevenlabs';
+export type STTProvider = 'openai' | 'elevenlabs' | 'deepgram' | 'local';
 
 /**
  * Supported audio formats for transcription.
@@ -76,10 +76,19 @@ export class STTService {
     const startTime = Date.now();
 
     try {
-      const result =
-        this.config.provider === 'openai'
-          ? await this.transcribeOpenAI(audioBuffer, format, signal)
-          : await this.transcribeElevenLabs(audioBuffer, format, signal);
+      let result: TranscriptionResult;
+      switch (this.config.provider) {
+        case 'openai':
+        case 'local':
+          // Local provider uses OpenAI-compatible API
+          result = await this.transcribeOpenAI(audioBuffer, format, signal);
+          break;
+        case 'elevenlabs':
+          result = await this.transcribeElevenLabs(audioBuffer, format, signal);
+          break;
+        default:
+          throw new Error(`Unsupported STT provider: ${this.config.provider}`);
+      }
 
       const elapsed = Date.now() - startTime;
       this.logger.info(
@@ -227,12 +236,16 @@ export class STTService {
     }
   }
 
-  /**
-   * Check if the service is configured and ready.
-   */
-  isConfigured(): boolean {
-    return Boolean(this.config.apiKey && this.config.model);
+/**
+ * Check if the service is configured and ready.
+ */
+isConfigured(): boolean {
+  // Local provider doesn't require API key
+  if (this.config.provider === 'local') {
+    return Boolean(this.config.baseUrl && this.config.model);
   }
+  return Boolean(this.config.apiKey && this.config.model);
+}
 
   /**
    * Get provider information.
@@ -261,8 +274,15 @@ export function createSTTService(
 ): STTService | null {
   const provider = (env.STT_PROVIDER ?? 'openai').toLowerCase() as STTProvider;
   const apiKey = env.STT_API_KEY;
+  const baseUrl = env.STT_BASE_URL;
 
-  if (!apiKey) {
+  // Local provider requires base URL but not API key
+  if (provider === 'local') {
+    if (!baseUrl) {
+      logger.warn('STT_BASE_URL not configured for local provider, STT service disabled');
+      return null;
+    }
+  } else if (!apiKey) {
     logger.warn('STT_API_KEY not configured, STT service disabled');
     return null;
   }
@@ -271,14 +291,16 @@ export function createSTTService(
   const defaults: Record<STTProvider, { model: string }> = {
     openai: { model: 'whisper-1' },
     elevenlabs: { model: 'scribe_v1' },
+    deepgram: { model: 'nova-2' },
+    local: { model: 'large-v3' },
   };
 
   const config: STTConfig = {
     provider,
-    apiKey,
+    apiKey: apiKey ?? '',
     model: env.STT_MODEL ?? defaults[provider].model,
     language: env.STT_LANGUAGE,
-    baseUrl: env.STT_BASE_URL,
+    baseUrl,
   };
 
   return new STTService(config, logger);

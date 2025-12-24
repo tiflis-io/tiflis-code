@@ -75,7 +75,7 @@ const EnvSchema = z.object({
   // ─────────────────────────────────────────────────────────────
   // Speech-to-Text (STT) Configuration
   // ─────────────────────────────────────────────────────────────
-  STT_PROVIDER: z.enum(["openai", "elevenlabs", "deepgram"]).default("openai"),
+  STT_PROVIDER: z.enum(["openai", "elevenlabs", "deepgram", "local"]).default("openai"),
   STT_API_KEY: z.string().optional(),
   STT_MODEL: z.string().default("whisper-1"),
   STT_BASE_URL: z.string().url().optional(),
@@ -84,7 +84,7 @@ const EnvSchema = z.object({
   // ─────────────────────────────────────────────────────────────
   // Text-to-Speech (TTS) Configuration
   // ─────────────────────────────────────────────────────────────
-  TTS_PROVIDER: z.enum(["openai", "elevenlabs"]).default("openai"),
+  TTS_PROVIDER: z.enum(["openai", "elevenlabs", "local"]).default("openai"),
   TTS_API_KEY: z.string().optional(),
   TTS_MODEL: z.string().default("tts-1"),
   TTS_VOICE: z.string().default("alloy"),
