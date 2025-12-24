@@ -88,6 +88,15 @@ final class WatchAppState: ObservableObject {
     /// Interval for periodic session list sync (30 seconds)
     private let periodicSyncInterval: TimeInterval = 30
 
+    // MARK: - Message Acknowledgment Tracking
+
+    /// Pending message acknowledgments - maps message ID to (sessionId, timeout task)
+    /// Used to track messages waiting for server acknowledgment
+    private var pendingMessageAcks: [String: (sessionId: String?, timeoutTask: Task<Void, Never>)] = [:]
+
+    /// Timeout for message acknowledgment (5 seconds)
+    private let messageAckTimeout: TimeInterval = 5.0
+
     // MARK: - Initialization
 
     init(connectivityManager: WatchConnectivityManager = .shared) {
@@ -280,16 +289,20 @@ final class WatchAppState: ObservableObject {
     func sendSupervisorCommand(_ text: String) async {
         guard let service = connectionService else { return }
 
-        // Create and add user message
+        // Create and add user message with pending status
         let messageId = UUID().uuidString
         let userMessage = Message(
             id: messageId,
             sessionId: "supervisor",
             role: .user,
-            content: text
+            content: text,
+            sendStatus: .pending
         )
         addSupervisorMessage(userMessage)
         supervisorIsLoading = true
+
+        // Track message for acknowledgment
+        trackMessageForAck(messageId: messageId, sessionId: nil)
 
         // Send command
         await service.sendSupervisorCommand(text: text, messageId: messageId)
@@ -299,7 +312,7 @@ final class WatchAppState: ObservableObject {
     func sendSupervisorVoiceCommand(audioData: Data, format: String) async {
         guard let service = connectionService else { return }
 
-        // Create and add user message with voice indicator
+        // Create and add user message with voice indicator and pending status
         let messageId = UUID().uuidString
         let userMessage = Message(
             id: messageId,
@@ -307,10 +320,14 @@ final class WatchAppState: ObservableObject {
             role: .user,
             contentBlocks: [
                 .voiceInput(id: UUID().uuidString, audioURL: nil, transcription: nil, duration: 0)
-            ]
+            ],
+            sendStatus: .pending
         )
         addSupervisorMessage(userMessage)
         supervisorIsLoading = true
+
+        // Track message for acknowledgment
+        trackMessageForAck(messageId: messageId, sessionId: nil)
 
         // Send voice command
         await service.sendSupervisorVoiceCommand(
@@ -324,16 +341,20 @@ final class WatchAppState: ObservableObject {
     func sendAgentCommand(_ text: String, sessionId: String) async {
         guard let service = connectionService else { return }
 
-        // Create and add user message
+        // Create and add user message with pending status
         let messageId = UUID().uuidString
         let userMessage = Message(
             id: messageId,
             sessionId: sessionId,
             role: .user,
-            content: text
+            content: text,
+            sendStatus: .pending
         )
         addAgentMessage(userMessage, for: sessionId)
         agentIsLoading[sessionId] = true
+
+        // Track message for acknowledgment
+        trackMessageForAck(messageId: messageId, sessionId: sessionId)
 
         // Send command
         await service.sendAgentCommand(text: text, sessionId: sessionId, messageId: messageId)
@@ -343,7 +364,7 @@ final class WatchAppState: ObservableObject {
     func sendAgentVoiceCommand(audioData: Data, format: String, sessionId: String) async {
         guard let service = connectionService else { return }
 
-        // Create and add user message with voice indicator
+        // Create and add user message with voice indicator and pending status
         let messageId = UUID().uuidString
         let userMessage = Message(
             id: messageId,
@@ -351,10 +372,14 @@ final class WatchAppState: ObservableObject {
             role: .user,
             contentBlocks: [
                 .voiceInput(id: UUID().uuidString, audioURL: nil, transcription: nil, duration: 0)
-            ]
+            ],
+            sendStatus: .pending
         )
         addAgentMessage(userMessage, for: sessionId)
         agentIsLoading[sessionId] = true
+
+        // Track message for acknowledgment
+        trackMessageForAck(messageId: messageId, sessionId: sessionId)
 
         // Send voice command
         await service.sendAgentVoiceCommand(
@@ -512,5 +537,68 @@ final class WatchAppState: ObservableObject {
         if supervisorMessages.count > maxMessagesPerSession {
             supervisorMessages.removeFirst(supervisorMessages.count - maxMessagesPerSession)
         }
+    }
+
+    // MARK: - Message Acknowledgment
+
+    /// Registers a message for acknowledgment tracking with timeout
+    private func trackMessageForAck(messageId: String, sessionId: String?) {
+        // Start timeout task
+        let timeoutTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(self?.messageAckTimeout ?? 5.0))
+            guard !Task.isCancelled else { return }
+
+            // Timeout - mark message as failed
+            self?.handleMessageAckTimeout(messageId: messageId, sessionId: sessionId)
+        }
+
+        pendingMessageAcks[messageId] = (sessionId: sessionId, timeoutTask: timeoutTask)
+    }
+
+    /// Handles message.ack from server - marks message as sent
+    func handleMessageAck(messageId: String, sessionId: String?) {
+        // Cancel timeout task
+        if let pending = pendingMessageAcks[messageId] {
+            pending.timeoutTask.cancel()
+            pendingMessageAcks.removeValue(forKey: messageId)
+        }
+
+        // Update message status to sent
+        if let sessionId = sessionId {
+            // Agent session message
+            if var messages = agentMessages[sessionId],
+               let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].sendStatus = .sent
+                agentMessages[sessionId] = messages
+            }
+        } else {
+            // Supervisor message
+            if let index = supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                supervisorMessages[index].sendStatus = .sent
+            }
+        }
+
+        NSLog("⌚️ WatchAppState: Message acknowledged: %@", messageId)
+    }
+
+    /// Handles message acknowledgment timeout - marks message as failed
+    private func handleMessageAckTimeout(messageId: String, sessionId: String?) {
+        pendingMessageAcks.removeValue(forKey: messageId)
+
+        if let sessionId = sessionId {
+            // Agent session message
+            if var messages = agentMessages[sessionId],
+               let index = messages.firstIndex(where: { $0.id == messageId }) {
+                messages[index].sendStatus = .failed
+                agentMessages[sessionId] = messages
+            }
+        } else {
+            // Supervisor message
+            if let index = supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                supervisorMessages[index].sendStatus = .failed
+            }
+        }
+
+        NSLog("⌚️ WatchAppState: Message acknowledgment timeout: %@", messageId)
     }
 }

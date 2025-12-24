@@ -573,6 +573,9 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: supervisor.context_cleared received")
             appState?.clearSupervisorMessages()
 
+        case "message.ack":
+            handleMessageAck(message)
+
         default:
             print("⌚️ WatchConnectionService: Unhandled message type: \(messageType)")
         }
@@ -1129,6 +1132,23 @@ final class WatchConnectionService {
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to request audio: %@", error.localizedDescription)
         }
+    }
+
+    /// Handle message.ack from server - marks message as sent
+    private func handleMessageAck(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let messageId = payload["message_id"] as? String else {
+            NSLog("⌚️ WatchConnectionService: message.ack missing required fields")
+            return
+        }
+
+        let sessionId = payload["session_id"] as? String
+
+        NSLog("⌚️ WatchConnectionService: message.ack received for messageId=%@, sessionId=%@",
+              messageId, sessionId ?? "supervisor")
+
+        // Update message status to sent via AppState
+        appState?.handleMessageAck(messageId: messageId, sessionId: sessionId)
     }
 
     private func handleSessionCreated(_ message: [String: Any]) {
