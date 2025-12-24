@@ -335,3 +335,95 @@ export function createActionButton(
     action,
   };
 }
+
+/**
+ * Merges tool blocks with the same tool_use_id.
+ * When a tool_use and tool_result arrive separately, they should be merged into one block.
+ * The merged block preserves input from tool_use and adds output from tool_result.
+ *
+ * @param blocks - Array of content blocks to merge
+ * @returns Array with tool blocks merged by tool_use_id
+ */
+export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const toolBlocksByUseId = new Map<string, ToolBlock>();
+  const result: ContentBlock[] = [];
+
+  for (const block of blocks) {
+    if (isToolBlock(block) && block.metadata.tool_use_id) {
+      const toolUseId = block.metadata.tool_use_id;
+      const existing = toolBlocksByUseId.get(toolUseId);
+
+      if (existing) {
+        // Merge: combine existing and new block
+        // Take the most complete status (completed > failed > running)
+        const mergedStatus = getMergedToolStatus(
+          existing.metadata.tool_status,
+          block.metadata.tool_status
+        );
+
+        const mergedBlock: ToolBlock = {
+          id: existing.id, // Keep original ID
+          block_type: 'tool',
+          content: block.metadata.tool_name || existing.content,
+          metadata: {
+            tool_name: block.metadata.tool_name || existing.metadata.tool_name,
+            tool_use_id: toolUseId,
+            // Preserve input from whichever block has it
+            tool_input: block.metadata.tool_input || existing.metadata.tool_input,
+            // Preserve output from whichever block has it
+            tool_output: block.metadata.tool_output || existing.metadata.tool_output,
+            tool_status: mergedStatus,
+          },
+        };
+
+        toolBlocksByUseId.set(toolUseId, mergedBlock);
+      } else {
+        // First occurrence of this tool_use_id
+        toolBlocksByUseId.set(toolUseId, block);
+      }
+    } else {
+      // Non-tool block or tool without use_id - add directly
+      result.push(block);
+    }
+  }
+
+  // Add merged tool blocks in order of first appearance
+  // We need to insert them at their original positions
+  const seenToolUseIds = new Set<string>();
+  const finalResult: ContentBlock[] = [];
+
+  for (const block of blocks) {
+    if (isToolBlock(block) && block.metadata.tool_use_id) {
+      const toolUseId = block.metadata.tool_use_id;
+      if (!seenToolUseIds.has(toolUseId)) {
+        seenToolUseIds.add(toolUseId);
+        const mergedBlock = toolBlocksByUseId.get(toolUseId);
+        if (mergedBlock) {
+          finalResult.push(mergedBlock);
+        }
+      }
+      // Skip duplicate tool blocks (already merged)
+    } else {
+      finalResult.push(block);
+    }
+  }
+
+  return finalResult;
+}
+
+/**
+ * Determines the merged tool status.
+ * Priority: completed > failed > running
+ */
+function getMergedToolStatus(
+  status1: ToolStatus,
+  status2: ToolStatus
+): ToolStatus {
+  if (status1 === 'completed' || status2 === 'completed') {
+    return 'completed';
+  }
+  if (status1 === 'failed' || status2 === 'failed') {
+    return 'failed';
+  }
+  return 'running';
+}

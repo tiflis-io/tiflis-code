@@ -36,6 +36,7 @@ import { AuthKey } from "./domain/value-objects/auth-key.js";
 import { SessionId } from "./domain/value-objects/session-id.js";
 import { DeviceId } from "./domain/value-objects/device-id.js";
 import type { ContentBlock } from "./domain/value-objects/content-block.js";
+import { mergeToolBlocks } from "./domain/value-objects/content-block.js";
 import {
   isTerminalSession,
   type TerminalSession,
@@ -2694,8 +2695,12 @@ async function bootstrap(): Promise<void> {
       // Get accumulated blocks to send full state (iOS expects full state, not incremental)
       const accumulatedBlocks = agentMessageAccumulator.get(sessionId) ?? [];
 
+      // Merge tool blocks with the same tool_use_id
+      // This handles the case where tool_use and tool_result arrive as separate blocks
+      const mergedBlocks = mergeToolBlocks(accumulatedBlocks);
+
       // Build full text content from accumulated blocks for backward compat
-      const fullAccumulatedText = accumulatedBlocks
+      const fullAccumulatedText = mergedBlocks
         .filter((b) => b.block_type === "text")
         .map((b) => b.content)
         .join("\n");
@@ -2706,7 +2711,7 @@ async function bootstrap(): Promise<void> {
         payload: {
           content_type: "agent",
           content: fullAccumulatedText, // Full accumulated text for backward compat
-          content_blocks: accumulatedBlocks, // Full accumulated blocks for rich UI
+          content_blocks: mergedBlocks, // Full accumulated blocks for rich UI (merged)
           timestamp: Date.now(),
           is_complete: isComplete,
         },
