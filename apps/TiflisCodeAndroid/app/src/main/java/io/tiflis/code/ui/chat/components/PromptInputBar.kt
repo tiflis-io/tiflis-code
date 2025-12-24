@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.tiflis.code.R
+import io.tiflis.code.data.audio.AudioPlayerService
 import io.tiflis.code.data.audio.AudioRecorderService
 
 /**
@@ -81,7 +82,8 @@ fun PromptInputBar(
     isConnected: Boolean,
     accentColor: Color = Color.Unspecified, // Deprecated - not used
     modifier: Modifier = Modifier,
-    audioRecorderService: AudioRecorderService = hiltViewModel<PromptInputBarViewModel>().audioRecorderService
+    audioRecorderService: AudioRecorderService = hiltViewModel<PromptInputBarViewModel>().audioRecorderService,
+    audioPlayerService: AudioPlayerService = hiltViewModel<PromptInputBarViewModel>().audioPlayerService
 ) {
     var text by remember { mutableStateOf("") }
     val context = LocalContext.current
@@ -94,6 +96,8 @@ fun PromptInputBar(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
+            // Stop any audio playback before starting recording
+            audioPlayerService.stop()
             audioRecorderService.startRecording()
         }
     }
@@ -107,6 +111,9 @@ fun PromptInputBar(
     }
 
     fun startRecording() {
+        // Stop any audio playback before starting recording
+        audioPlayerService.stop()
+
         when {
             ContextCompat.checkSelfPermission(
                 context,
@@ -603,9 +610,10 @@ private fun VoiceRecordButton(
 }
 
 /**
- * ViewModel for PromptInputBar to access AudioRecorderService.
+ * ViewModel for PromptInputBar to access AudioRecorderService and AudioPlayerService.
  */
 @dagger.hilt.android.lifecycle.HiltViewModel
 class PromptInputBarViewModel @javax.inject.Inject constructor(
-    val audioRecorderService: AudioRecorderService
+    val audioRecorderService: AudioRecorderService,
+    val audioPlayerService: AudioPlayerService
 ) : androidx.lifecycle.ViewModel()
