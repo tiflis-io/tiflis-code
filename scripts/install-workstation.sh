@@ -422,7 +422,7 @@ configure_local_stt() {
     esac
     
     STT_PROVIDER="local"
-    STT_BASE_URL="http://localhost:8100"
+    STT_BASE_URL="http://localhost:8100/v1"
     STT_API_KEY=""  # Not needed for local
     LOCAL_STT_GPU="$gpu_type"
     LOCAL_STT_MODEL="$STT_MODEL"
@@ -470,7 +470,7 @@ configure_local_tts() {
     esac
     
     TTS_PROVIDER="local"
-    TTS_BASE_URL="http://localhost:8101"
+    TTS_BASE_URL="http://localhost:8101/v1"
     TTS_API_KEY=""  # Not needed for local
     TTS_MODEL="kokoro"
     LOCAL_TTS_GPU="$gpu_type"
