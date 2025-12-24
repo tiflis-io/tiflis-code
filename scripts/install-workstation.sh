@@ -1706,7 +1706,7 @@ EOF
 
     echo ""
     if [ "$init_system" = "systemd" ]; then
-        echo "  Commands:"
+        echo "  Workstation Commands:"
         echo "    Status:  sudo systemctl status tiflis-workstation"
         echo "    Logs:    sudo journalctl -u tiflis-workstation -f"
         echo "    Stop:    sudo systemctl stop tiflis-workstation"
@@ -1717,8 +1717,19 @@ EOF
         echo "    cat ${WORKSTATION_DIR}/logs/output.log"
         echo "    cat ${WORKSTATION_DIR}/logs/error.log"
         echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
+        
+        # Show Docker commands if speech services configured
+        if [ -f "${WORKSTATION_DIR}/docker-compose.speech.yml" ]; then
+            echo ""
+            echo "  Speech Services (Docker):"
+            echo "    Status:  docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml ps"
+            echo "    Logs:    docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml logs -f"
+            echo "    Stop:    docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml down"
+            echo "    Start:   docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml up -d"
+            echo "    Restart: docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml restart"
+        fi
     elif [ "$init_system" = "launchd" ]; then
-        echo "  Commands:"
+        echo "  Workstation Commands:"
         echo "    Status:  launchctl list | grep tiflis"
         echo "    Logs:    tail -f ${WORKSTATION_DIR}/logs/output.log"
         echo "    Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.workstation"
@@ -1729,12 +1740,54 @@ EOF
         echo "    cat ${WORKSTATION_DIR}/logs/output.log"
         echo "    cat ${WORKSTATION_DIR}/logs/error.log"
         echo "    cd ${WORKSTATION_DIR} && source .env && node node_modules/${PACKAGE_NAME}/dist/main.js"
+        
+        # Show native speech service commands if configured
+        local has_speech_services=false
+        if [ -f "$HOME/Library/LaunchAgents/io.tiflis.stt.plist" ] || [ -f "$HOME/Library/LaunchAgents/io.tiflis.tts.plist" ]; then
+            has_speech_services=true
+        fi
+        
+        if [ "$has_speech_services" = "true" ]; then
+            echo ""
+            echo "  Speech Services (Native):"
+            echo "    Status:  launchctl list | grep tiflis"
+            if [ -f "$HOME/Library/LaunchAgents/io.tiflis.stt.plist" ]; then
+                echo ""
+                echo "    STT Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/stt-output.log"
+                echo "    STT Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.stt"
+                echo "    STT Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.stt"
+                echo "    STT Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.stt.plist"
+            fi
+            if [ -f "$HOME/Library/LaunchAgents/io.tiflis.tts.plist" ]; then
+                echo ""
+                echo "    TTS Logs:    tail -f ${TIFLIS_INSTALL_DIR}/logs/tts-output.log"
+                echo "    TTS Restart: launchctl kickstart -k gui/\$(id -u)/io.tiflis.tts"
+                echo "    TTS Stop:    launchctl bootout gui/\$(id -u)/io.tiflis.tts"
+                echo "    TTS Start:   launchctl bootstrap gui/\$(id -u) ~/Library/LaunchAgents/io.tiflis.tts.plist"
+            fi
+        fi
+        
+        # Show Docker commands if speech services configured via Docker
+        if [ -f "${WORKSTATION_DIR}/docker-compose.speech.yml" ]; then
+            echo ""
+            echo "  Speech Services (Docker):"
+            echo "    Status:  docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml ps"
+            echo "    Logs:    docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml logs -f"
+            echo "    Stop:    docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml down"
+            echo "    Start:   docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml up -d"
+            echo "    Restart: docker compose -f ${WORKSTATION_DIR}/docker-compose.speech.yml restart"
+        fi
     fi
 
     echo ""
     echo "  Configuration: ${WORKSTATION_DIR}/.env"
     echo "  Data:          ${WORKSTATION_DIR}/data/"
     echo "  Logs:          ${WORKSTATION_DIR}/logs/"
+    
+    # Show speech logs location if configured
+    if [ -f "$HOME/Library/LaunchAgents/io.tiflis.stt.plist" ] || [ -f "$HOME/Library/LaunchAgents/io.tiflis.tts.plist" ]; then
+        echo "  Speech Logs:   ${TIFLIS_INSTALL_DIR}/logs/stt-*.log, tts-*.log"
+    fi
 }
 
 # ─────────────────────────────────────────────────────────────
