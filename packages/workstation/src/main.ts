@@ -36,7 +36,7 @@ import { AuthKey } from "./domain/value-objects/auth-key.js";
 import { SessionId } from "./domain/value-objects/session-id.js";
 import { DeviceId } from "./domain/value-objects/device-id.js";
 import type { ContentBlock } from "./domain/value-objects/content-block.js";
-import { mergeToolBlocks } from "./domain/value-objects/content-block.js";
+import { mergeToolBlocks, accumulateBlocks } from "./domain/value-objects/content-block.js";
 import {
   isTerminalSession,
   type TerminalSession,
@@ -2617,11 +2617,11 @@ async function bootstrap(): Promise<void> {
       // Filter out status blocks for history persistence (they're transient UI hints)
       const persistableBlocks = blocks.filter((b) => b.block_type !== "status");
 
-      // Accumulate blocks for this session
+      // Accumulate blocks for this session, merging tool blocks in-place
       if (persistableBlocks.length > 0) {
         const accumulated = agentMessageAccumulator.get(sessionId) ?? [];
         const wasEmpty = accumulated.length === 0;
-        accumulated.push(...persistableBlocks);
+        accumulateBlocks(accumulated, persistableBlocks);
         agentMessageAccumulator.set(sessionId, accumulated);
 
         // Log first blocks being accumulated (helps debug missing first lines issue)

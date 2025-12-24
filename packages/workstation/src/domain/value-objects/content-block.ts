@@ -427,3 +427,61 @@ function getMergedToolStatus(
   }
   return 'running';
 }
+
+/**
+ * Accumulates new blocks into existing blocks array, merging tool blocks in-place.
+ * This preserves the original order of blocks while updating tool status/output.
+ *
+ * @param existing - Existing accumulated blocks (modified in place)
+ * @param newBlocks - New blocks to add/merge
+ */
+export function accumulateBlocks(
+  existing: ContentBlock[],
+  newBlocks: ContentBlock[]
+): void {
+  for (const block of newBlocks) {
+    if (isToolBlock(block) && block.metadata.tool_use_id) {
+      const toolUseId = block.metadata.tool_use_id;
+      // Find existing tool block with same tool_use_id
+      const existingIndex = existing.findIndex(
+        (b) => isToolBlock(b) && b.metadata.tool_use_id === toolUseId
+      );
+
+      if (existingIndex >= 0) {
+        // Merge in-place at original position
+        const existingBlock = existing[existingIndex] as ToolBlock;
+        const mergedStatus = getMergedToolStatus(
+          existingBlock.metadata.tool_status,
+          block.metadata.tool_status
+        );
+
+        existing[existingIndex] = {
+          id: existingBlock.id,
+          block_type: 'tool',
+          content: block.metadata.tool_name || existingBlock.content,
+          metadata: {
+            tool_name: block.metadata.tool_name || existingBlock.metadata.tool_name,
+            tool_use_id: toolUseId,
+            tool_input: block.metadata.tool_input || existingBlock.metadata.tool_input,
+            tool_output: block.metadata.tool_output || existingBlock.metadata.tool_output,
+            tool_status: mergedStatus,
+          },
+        };
+      } else {
+        // New tool block - add to end
+        existing.push(block);
+      }
+    } else if (isTextBlock(block)) {
+      // Text blocks: update last text block or add new one
+      const lastTextIndex = existing.findLastIndex((b) => b.block_type === 'text');
+      if (lastTextIndex >= 0) {
+        existing[lastTextIndex] = block;
+      } else {
+        existing.push(block);
+      }
+    } else {
+      // Other blocks: just append
+      existing.push(block);
+    }
+  }
+}
