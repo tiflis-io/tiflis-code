@@ -726,8 +726,11 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=port)
 PYEOF
         
-        # Sync dependencies
-        uv sync 2>/dev/null || uv pip install -e .
+        # Create venv with pip and sync dependencies
+        print_info "Creating virtual environment..."
+        uv venv --seed
+        print_info "Installing Python packages..."
+        uv sync
         
         print_success "STT dependencies installed"
     fi
@@ -848,8 +851,21 @@ dependencies = [
     "uvicorn>=0.32.0",
     "kokoro>=0.3.0",
     "soundfile>=0.12.1",
+    "spacy>=3.7.0",
 ]
 EOF
+        
+        # Create venv with pip (required for spacy model download)
+        print_info "Creating virtual environment..."
+        uv venv --seed
+        
+        # Sync dependencies
+        print_info "Installing Python packages..."
+        uv sync
+        
+        # Download spacy English model (required by misaki/kokoro)
+        print_info "Downloading spacy language model..."
+        uv run python -m spacy download en_core_web_sm
         
         # Create minimal server script
         cat > "$tts_dir/server.py" << 'PYEOF'
@@ -857,6 +873,16 @@ EOF
 """Minimal TTS server for Apple Silicon using Kokoro."""
 import os
 import io
+
+# Pre-load spacy model to avoid runtime download
+import spacy
+try:
+    spacy.load("en_core_web_sm")
+except OSError:
+    # Model not found, try to download
+    from spacy.cli import download
+    download("en_core_web_sm")
+
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -919,9 +945,6 @@ if __name__ == "__main__":
     port = int(os.environ.get("TTS_PORT", "8101"))
     uvicorn.run(app, host="0.0.0.0", port=port)
 PYEOF
-        
-        # Sync dependencies
-        uv sync 2>/dev/null || uv pip install -e .
         
         print_success "TTS dependencies installed"
     fi
