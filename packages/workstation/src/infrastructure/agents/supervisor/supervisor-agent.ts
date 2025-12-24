@@ -674,6 +674,9 @@ Creating worktrees with \`create_worktree\`:
 - When creating sessions, confirm the workspace and project first
 - For ambiguous requests, ask clarifying questions
 - Format responses for terminal display (avoid markdown links)
+- NEVER use tables - they display poorly on mobile devices
+- ALWAYS use bullet lists or numbered lists instead of tables
+- Keep list items short and scannable for mobile reading
 - ALWAYS prioritize safety - check before deleting/merging`
 
     // Return as HumanMessage since some models don't support SystemMessage well
