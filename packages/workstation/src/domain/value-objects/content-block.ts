@@ -340,13 +340,14 @@ export function createActionButton(
  * Merges tool blocks with the same tool_use_id.
  * When a tool_use and tool_result arrive separately, they should be merged into one block.
  * The merged block preserves input from tool_use and adds output from tool_result.
+ * Preserves the original order of all blocks.
  *
  * @param blocks - Array of content blocks to merge
- * @returns Array with tool blocks merged by tool_use_id
+ * @returns Array with tool blocks merged by tool_use_id, preserving order
  */
 export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  // First pass: collect and merge tool blocks by tool_use_id
   const toolBlocksByUseId = new Map<string, ToolBlock>();
-  const result: ContentBlock[] = [];
 
   for (const block of blocks) {
     if (isToolBlock(block) && block.metadata.tool_use_id) {
@@ -355,7 +356,6 @@ export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
 
       if (existing) {
         // Merge: combine existing and new block
-        // Take the most complete status (completed > failed > running)
         const mergedStatus = getMergedToolStatus(
           existing.metadata.tool_status,
           block.metadata.tool_status
@@ -368,9 +368,7 @@ export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
           metadata: {
             tool_name: block.metadata.tool_name || existing.metadata.tool_name,
             tool_use_id: toolUseId,
-            // Preserve input from whichever block has it
             tool_input: block.metadata.tool_input || existing.metadata.tool_input,
-            // Preserve output from whichever block has it
             tool_output: block.metadata.tool_output || existing.metadata.tool_output,
             tool_status: mergedStatus,
           },
@@ -378,37 +376,34 @@ export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
 
         toolBlocksByUseId.set(toolUseId, mergedBlock);
       } else {
-        // First occurrence of this tool_use_id
         toolBlocksByUseId.set(toolUseId, block);
       }
-    } else {
-      // Non-tool block or tool without use_id - add directly
-      result.push(block);
     }
   }
 
-  // Add merged tool blocks in order of first appearance
-  // We need to insert them at their original positions
+  // Second pass: build result preserving original order
   const seenToolUseIds = new Set<string>();
-  const finalResult: ContentBlock[] = [];
+  const result: ContentBlock[] = [];
 
   for (const block of blocks) {
     if (isToolBlock(block) && block.metadata.tool_use_id) {
       const toolUseId = block.metadata.tool_use_id;
+      // Only add each tool once (at its first position)
       if (!seenToolUseIds.has(toolUseId)) {
         seenToolUseIds.add(toolUseId);
         const mergedBlock = toolBlocksByUseId.get(toolUseId);
         if (mergedBlock) {
-          finalResult.push(mergedBlock);
+          result.push(mergedBlock);
         }
       }
-      // Skip duplicate tool blocks (already merged)
+      // Skip subsequent occurrences of same tool_use_id
     } else {
-      finalResult.push(block);
+      // Non-tool blocks: add as-is, preserving their position
+      result.push(block);
     }
   }
 
-  return finalResult;
+  return result;
 }
 
 /**
@@ -431,6 +426,11 @@ function getMergedToolStatus(
 /**
  * Accumulates new blocks into existing blocks array, merging tool blocks in-place.
  * This preserves the original order of blocks while updating tool status/output.
+ *
+ * Text block handling:
+ * - If the last block is a text block, update it (streaming text)
+ * - If the last block is NOT a text block (e.g., tool call), add new text block
+ * - This preserves: Tool1 -> Text1 -> Tool2 -> Text2 order
  *
  * @param existing - Existing accumulated blocks (modified in place)
  * @param newBlocks - New blocks to add/merge
@@ -472,11 +472,14 @@ export function accumulateBlocks(
         existing.push(block);
       }
     } else if (isTextBlock(block)) {
-      // Text blocks: update last text block or add new one
-      const lastTextIndex = existing.findLastIndex((b) => b.block_type === 'text');
-      if (lastTextIndex >= 0) {
-        existing[lastTextIndex] = block;
+      // Text blocks: only update the LAST block if it's also a text block
+      // If the last block is a tool/other block, add new text block to preserve order
+      const lastBlock = existing[existing.length - 1];
+      if (lastBlock && isTextBlock(lastBlock)) {
+        // Last block is text - update it (LangGraph sends full state)
+        existing[existing.length - 1] = block;
       } else {
+        // Last block is not text (or no blocks) - add new text block
         existing.push(block);
       }
     } else {
