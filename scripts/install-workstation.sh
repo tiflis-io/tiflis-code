@@ -676,6 +676,7 @@ dependencies = [
     "uvicorn>=0.32.0",
     "mlx-whisper>=0.4.0",
     "python-multipart>=0.0.9",
+    "psutil>=5.9.0",
 ]
 EOF
         
@@ -684,10 +685,21 @@ EOF
 #!/usr/bin/env python3
 """Minimal STT server for Apple Silicon using MLX Whisper."""
 import os
+import time
 import tempfile
+import logging
+import psutil
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
 import uvicorn
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-7s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("stt")
 
 app = FastAPI(title="Tiflis STT", version="0.1.0")
 
@@ -695,19 +707,65 @@ app = FastAPI(title="Tiflis STT", version="0.1.0")
 _model = None
 _model_name = os.environ.get("STT_MODEL", "large-v3")
 
+# Stats
+_total_requests = 0
+_total_audio_seconds = 0.0
+_total_processing_time = 0.0
+
 def get_model():
     global _model
     if _model is None:
+        logger.info(f"Loading Whisper model: {_model_name}")
+        load_start = time.time()
         import mlx_whisper
         _model = mlx_whisper
+        logger.info(f"Model loaded in {time.time() - load_start:.2f}s")
     return _model
+
+def get_audio_duration(file_path: str) -> float:
+    """Get audio duration in seconds."""
+    try:
+        import wave
+        with wave.open(file_path, 'rb') as w:
+            frames = w.getnframes()
+            rate = w.getframerate()
+            return frames / float(rate)
+    except Exception:
+        return 0.0
+
+def format_bytes(size: int) -> str:
+    """Format bytes to human readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
 
 @app.get("/health")
 async def health():
     return {"status": "ok", "model": _model_name}
 
+@app.get("/stats")
+async def stats():
+    """Return server statistics."""
+    process = psutil.Process()
+    mem = process.memory_info()
+    return {
+        "model": _model_name,
+        "total_requests": _total_requests,
+        "total_audio_seconds": round(_total_audio_seconds, 2),
+        "total_processing_time": round(_total_processing_time, 2),
+        "avg_realtime_factor": round(_total_processing_time / _total_audio_seconds, 2) if _total_audio_seconds > 0 else 0,
+        "memory_rss_mb": round(mem.rss / 1024 / 1024, 1),
+        "memory_vms_mb": round(mem.vms / 1024 / 1024, 1),
+        "cpu_percent": process.cpu_percent(),
+    }
+
 @app.post("/v1/audio/transcriptions")
 async def transcribe(file: UploadFile = File(...)):
+    global _total_requests, _total_audio_seconds, _total_processing_time
+    
+    request_start = time.time()
     whisper = get_model()
     
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -715,15 +773,48 @@ async def transcribe(file: UploadFile = File(...)):
         tmp.write(content)
         tmp_path = tmp.name
     
+    file_size = len(content)
+    audio_duration = get_audio_duration(tmp_path)
+    
     try:
+        # Transcribe
+        transcribe_start = time.time()
         result = whisper.transcribe(tmp_path, path_or_hf_repo=f"mlx-community/whisper-{_model_name}-mlx")
-        return JSONResponse({"text": result.get("text", "")})
+        transcribe_time = time.time() - transcribe_start
+        
+        text = result.get("text", "")
+        total_time = time.time() - request_start
+        
+        # Update stats
+        _total_requests += 1
+        _total_audio_seconds += audio_duration
+        _total_processing_time += transcribe_time
+        
+        # Calculate realtime factor (lower is faster)
+        rtf = transcribe_time / audio_duration if audio_duration > 0 else 0
+        
+        # Log stats
+        logger.info(
+            f"STT #{_total_requests} | "
+            f"audio: {audio_duration:.1f}s | "
+            f"size: {format_bytes(file_size)} | "
+            f"transcribe: {transcribe_time:.2f}s | "
+            f"RTF: {rtf:.2f}x | "
+            f"total: {total_time:.2f}s | "
+            f"chars: {len(text)}"
+        )
+        
+        return JSONResponse({"text": text})
+    except Exception as e:
+        logger.error(f"Transcription failed: {e}")
+        raise
     finally:
         os.unlink(tmp_path)
 
 if __name__ == "__main__":
     port = int(os.environ.get("STT_PORT", "8100"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    logger.info(f"Starting STT server on port {port} with model {_model_name}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 PYEOF
         
         # Create venv with pip and sync dependencies
@@ -852,6 +943,7 @@ dependencies = [
     "kokoro>=0.3.0",
     "soundfile>=0.12.1",
     "spacy>=3.7.0",
+    "psutil>=5.9.0",
 ]
 EOF
         
@@ -873,13 +965,23 @@ EOF
 """Minimal TTS server for Apple Silicon using Kokoro."""
 import os
 import io
+import time
+import logging
+import psutil
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)-7s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger("tts")
 
 # Pre-load spacy model to avoid runtime download
 import spacy
 try:
     spacy.load("en_core_web_sm")
 except OSError:
-    # Model not found, try to download
     from spacy.cli import download
     download("en_core_web_sm")
 
@@ -894,12 +996,29 @@ app = FastAPI(title="Tiflis TTS", version="0.1.0")
 _pipeline = None
 _default_voice = os.environ.get("TTS_DEFAULT_VOICE", "af_heart")
 
+# Stats
+_total_requests = 0
+_total_chars = 0
+_total_audio_seconds = 0.0
+_total_processing_time = 0.0
+
 def get_pipeline():
     global _pipeline
     if _pipeline is None:
+        logger.info(f"Loading Kokoro TTS model...")
+        load_start = time.time()
         from kokoro import KPipeline
         _pipeline = KPipeline(lang_code="a")
+        logger.info(f"Model loaded in {time.time() - load_start:.2f}s")
     return _pipeline
+
+def format_bytes(size: int) -> str:
+    """Format bytes to human readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.1f}{unit}"
+        size /= 1024
+    return f"{size:.1f}TB"
 
 class TTSRequest(BaseModel):
     input: str
@@ -911,29 +1030,80 @@ class TTSRequest(BaseModel):
 async def health():
     return {"status": "ok", "voice": _default_voice}
 
+@app.get("/stats")
+async def stats():
+    """Return server statistics."""
+    process = psutil.Process()
+    mem = process.memory_info()
+    return {
+        "voice": _default_voice,
+        "total_requests": _total_requests,
+        "total_chars": _total_chars,
+        "total_audio_seconds": round(_total_audio_seconds, 2),
+        "total_processing_time": round(_total_processing_time, 2),
+        "avg_chars_per_second": round(_total_chars / _total_processing_time, 1) if _total_processing_time > 0 else 0,
+        "memory_rss_mb": round(mem.rss / 1024 / 1024, 1),
+        "memory_vms_mb": round(mem.vms / 1024 / 1024, 1),
+        "cpu_percent": process.cpu_percent(),
+    }
+
 @app.post("/v1/audio/speech")
 async def synthesize(request: TTSRequest):
-    import soundfile as sf
+    global _total_requests, _total_chars, _total_audio_seconds, _total_processing_time
     
+    import soundfile as sf
+    import numpy as np
+    
+    request_start = time.time()
     pipeline = get_pipeline()
     voice = request.voice or _default_voice
+    text_length = len(request.input)
     
     # Generate audio
+    synthesis_start = time.time()
     generator = pipeline(request.input, voice=voice)
     audio_chunks = []
     for _, _, audio in generator:
         audio_chunks.append(audio)
     
     if not audio_chunks:
+        logger.error(f"No audio generated for text: {request.input[:50]}...")
         return {"error": "No audio generated"}
     
-    import numpy as np
     audio = np.concatenate(audio_chunks)
+    synthesis_time = time.time() - synthesis_start
     
-    # Convert to requested format
+    # Calculate audio duration (24kHz sample rate)
+    audio_duration = len(audio) / 24000.0
+    
+    # Convert to WAV
     buffer = io.BytesIO()
     sf.write(buffer, audio, 24000, format="WAV")
+    audio_size = buffer.tell()
     buffer.seek(0)
+    
+    total_time = time.time() - request_start
+    
+    # Update stats
+    _total_requests += 1
+    _total_chars += text_length
+    _total_audio_seconds += audio_duration
+    _total_processing_time += synthesis_time
+    
+    # Calculate chars per second
+    chars_per_sec = text_length / synthesis_time if synthesis_time > 0 else 0
+    
+    # Log stats
+    logger.info(
+        f"TTS #{_total_requests} | "
+        f"voice: {voice} | "
+        f"chars: {text_length} | "
+        f"audio: {audio_duration:.1f}s | "
+        f"size: {format_bytes(audio_size)} | "
+        f"synth: {synthesis_time:.2f}s | "
+        f"speed: {chars_per_sec:.0f} chars/s | "
+        f"total: {total_time:.2f}s"
+    )
     
     return StreamingResponse(
         buffer,
@@ -943,7 +1113,8 @@ async def synthesize(request: TTSRequest):
 
 if __name__ == "__main__":
     port = int(os.environ.get("TTS_PORT", "8101"))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    logger.info(f"Starting TTS server on port {port} with voice {_default_voice}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 PYEOF
         
         print_success "TTS dependencies installed"
