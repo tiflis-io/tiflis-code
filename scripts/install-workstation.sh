@@ -72,12 +72,56 @@ prompt_value() {
     fi
 }
 
+# Prompt for required value with retry
+prompt_required() {
+    local prompt="$1" min_length="${2:-1}" value
+    while true; do
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
+        read -r value < "$TTY_INPUT"
+        if [ -n "$value" ] && [ ${#value} -ge "$min_length" ]; then
+            echo "$value"
+            return 0
+        fi
+        if [ "$min_length" -gt 1 ]; then
+            print_error "Value must be at least ${min_length} characters. Please try again."
+        else
+            print_error "Value cannot be empty. Please try again."
+        fi
+    done
+}
+
+# Prompt for secret with optional validation
 prompt_secret() {
-    local prompt="$1" value
-    echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
-    read -rs value < "$TTY_INPUT"
-    echo "" >&2
-    echo "$value"
+    local prompt="$1" min_length="${2:-0}" value
+    while true; do
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
+        read -rs value < "$TTY_INPUT"
+        echo "" >&2
+        if [ "$min_length" -eq 0 ] || [ ${#value} -ge "$min_length" ]; then
+            echo "$value"
+            return 0
+        fi
+        print_error "Value must be at least ${min_length} characters. Please try again."
+    done
+}
+
+# Prompt for secret with retry until valid
+prompt_secret_required() {
+    local prompt="$1" min_length="${2:-1}" value
+    while true; do
+        echo -en "${COLOR_CYAN}?${COLOR_RESET} ${prompt}: " >&2
+        read -rs value < "$TTY_INPUT"
+        echo "" >&2
+        if [ -n "$value" ] && [ ${#value} -ge "$min_length" ]; then
+            echo "$value"
+            return 0
+        fi
+        if [ "$min_length" -gt 1 ]; then
+            print_error "Value must be at least ${min_length} characters. Please try again."
+        else
+            print_error "Value cannot be empty. Please try again."
+        fi
+    done
 }
 
 confirm() {
@@ -1056,13 +1100,20 @@ configure_ai_providers() {
     esac
 
     if [ -n "$AGENT_PROVIDER" ]; then
-        AGENT_API_KEY="$(prompt_secret "Enter ${AGENT_PROVIDER^^} API key")"
-        if [ -z "$AGENT_API_KEY" ]; then
-            print_warning "No API key provided. Supervisor agent will be disabled."
-            AGENT_PROVIDER=""
-        else
-            print_success "LLM configured: ${AGENT_PROVIDER} (${AGENT_MODEL_NAME})"
-        fi
+        while true; do
+            AGENT_API_KEY="$(prompt_secret "Enter ${AGENT_PROVIDER^^} API key (or 'skip' to disable)")"
+            if [ "$AGENT_API_KEY" = "skip" ] || [ "$AGENT_API_KEY" = "s" ]; then
+                print_warning "Supervisor agent will be disabled."
+                AGENT_PROVIDER=""
+                AGENT_API_KEY=""
+                break
+            elif [ -n "$AGENT_API_KEY" ]; then
+                print_success "LLM configured: ${AGENT_PROVIDER} (${AGENT_MODEL_NAME})"
+                break
+            else
+                print_error "API key cannot be empty. Enter key or 'skip' to disable."
+            fi
+        done
     fi
 
     # Speech-to-Text
@@ -1098,28 +1149,22 @@ configure_ai_providers() {
             if [ -n "$AGENT_API_KEY" ] && [ "$AGENT_PROVIDER" = "openai" ]; then
                 if confirm "Use same API key as LLM?" "y"; then
                     STT_API_KEY="$AGENT_API_KEY"
+                    print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
                 else
-                    STT_API_KEY="$(prompt_secret "Enter OpenAI API key for STT")"
+                    STT_API_KEY="$(prompt_secret_required "Enter OpenAI API key for STT" 1)"
+                    print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
                 fi
             else
-                STT_API_KEY="$(prompt_secret "Enter OpenAI API key for STT")"
-            fi
-            if [ -n "$STT_API_KEY" ]; then
+                STT_API_KEY="$(prompt_secret_required "Enter OpenAI API key for STT" 1)"
                 print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
-            else
-                STT_PROVIDER=""
             fi
             ;;
         2)
             STT_PROVIDER="deepgram"
             STT_MODEL="nova-2"
             STT_BASE_URL=""
-            STT_API_KEY="$(prompt_secret "Enter Deepgram API key")"
-            if [ -n "$STT_API_KEY" ]; then
-                print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
-            else
-                STT_PROVIDER=""
-            fi
+            STT_API_KEY="$(prompt_secret_required "Enter Deepgram API key" 1)"
+            print_success "STT configured: ${STT_PROVIDER} (${STT_MODEL})"
             ;;
         3)
             # Local STT
@@ -1170,42 +1215,33 @@ configure_ai_providers() {
             if [ -n "$AGENT_API_KEY" ] && [ "$AGENT_PROVIDER" = "openai" ]; then
                 if confirm "Use same API key as LLM?" "y"; then
                     TTS_API_KEY="$AGENT_API_KEY"
+                    print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL}, voice: ${TTS_VOICE})"
                 else
-                    TTS_API_KEY="$(prompt_secret "Enter OpenAI API key for TTS")"
+                    TTS_API_KEY="$(prompt_secret_required "Enter OpenAI API key for TTS" 1)"
+                    print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL}, voice: ${TTS_VOICE})"
                 fi
             elif [ -n "$STT_API_KEY" ] && [ "$STT_PROVIDER" = "openai" ]; then
                 if confirm "Use same API key as STT?" "y"; then
                     TTS_API_KEY="$STT_API_KEY"
+                    print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL}, voice: ${TTS_VOICE})"
                 else
-                    TTS_API_KEY="$(prompt_secret "Enter OpenAI API key for TTS")"
+                    TTS_API_KEY="$(prompt_secret_required "Enter OpenAI API key for TTS" 1)"
+                    print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL}, voice: ${TTS_VOICE})"
                 fi
             else
-                TTS_API_KEY="$(prompt_secret "Enter OpenAI API key for TTS")"
-            fi
-            if [ -n "$TTS_API_KEY" ]; then
+                TTS_API_KEY="$(prompt_secret_required "Enter OpenAI API key for TTS" 1)"
                 print_success "TTS configured: ${TTS_PROVIDER} (${TTS_MODEL}, voice: ${TTS_VOICE})"
-            else
-                TTS_PROVIDER=""
             fi
             ;;
         2)
             TTS_PROVIDER="elevenlabs"
             TTS_MODEL="eleven_multilingual_v2"
             TTS_BASE_URL=""
-            TTS_API_KEY="$(prompt_secret "Enter ElevenLabs API key")"
-            if [ -n "$TTS_API_KEY" ]; then
-                echo "" >&2
-                print_info "Find your voice ID at: https://elevenlabs.io/app/voice-library"
-                TTS_VOICE="$(prompt_value "Enter ElevenLabs voice ID")"
-                if [ -z "$TTS_VOICE" ]; then
-                    print_warning "No voice ID provided. TTS will be disabled."
-                    TTS_PROVIDER=""
-                else
-                    print_success "TTS configured: ${TTS_PROVIDER} (voice: ${TTS_VOICE})"
-                fi
-            else
-                TTS_PROVIDER=""
-            fi
+            TTS_API_KEY="$(prompt_secret_required "Enter ElevenLabs API key" 1)"
+            echo "" >&2
+            print_info "Find your voice ID at: https://elevenlabs.io/app/voice-library"
+            TTS_VOICE="$(prompt_required "Enter ElevenLabs voice ID")"
+            print_success "TTS configured: ${TTS_PROVIDER} (voice: ${TTS_VOICE})"
             ;;
         3)
             # Local TTS
@@ -1395,21 +1431,13 @@ install_workstation() {
         # Tunnel URL
         tunnel_url="${TUNNEL_URL:-}"
         if [ -z "$tunnel_url" ]; then
-            tunnel_url="$(prompt_value "Tunnel URL (wss://...)")"
-        fi
-        if [ -z "$tunnel_url" ]; then
-            print_error "Tunnel URL is required"
-            exit 1
+            tunnel_url="$(prompt_required "Tunnel URL (wss://...)")"
         fi
 
         # Tunnel API key
         tunnel_api_key="${TUNNEL_API_KEY:-}"
         if [ -z "$tunnel_api_key" ]; then
-            tunnel_api_key="$(prompt_secret "Tunnel API key")"
-        fi
-        if [ -z "$tunnel_api_key" ] || [ ${#tunnel_api_key} -lt 32 ]; then
-            print_error "Tunnel API key must be at least 32 characters"
-            exit 1
+            tunnel_api_key="$(prompt_secret_required "Tunnel API key" 32)"
         fi
 
         # Workstation auth key
@@ -1419,12 +1447,8 @@ install_workstation() {
                 workstation_auth_key="$(generate_key 24)"
                 print_success "Generated auth key: ${workstation_auth_key:0:8}..."
             else
-                workstation_auth_key="$(prompt_secret "Workstation auth key (min 16 chars)")"
+                workstation_auth_key="$(prompt_secret_required "Workstation auth key (min 16 chars)" 16)"
             fi
-        fi
-        if [ ${#workstation_auth_key} -lt 16 ]; then
-            print_error "Workstation auth key must be at least 16 characters"
-            exit 1
         fi
 
         # Workspaces root
