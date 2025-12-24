@@ -591,6 +591,19 @@ setup_native_stt() {
     print_step "Setting up native STT service for Apple Silicon..."
     
     local stt_dir="${TIFLIS_INSTALL_DIR}/stt"
+    
+    # Stop existing service first
+    if launchctl list 2>/dev/null | grep -q io.tiflis.stt; then
+        print_info "Stopping existing STT service..."
+        launchctl bootout "gui/$(id -u)/io.tiflis.stt" 2>/dev/null || true
+        sleep 1
+    fi
+    
+    # Clean and recreate directory for fresh install
+    if [ -d "$stt_dir" ]; then
+        print_info "Removing existing STT installation..."
+        rm -rf "$stt_dir"
+    fi
     mkdir -p "$stt_dir"
     
     # Create virtual environment and install
@@ -724,9 +737,24 @@ EOF
     
     # Load service
     if [ "$DRY_RUN" = "false" ]; then
+        # Ensure service is fully stopped
         launchctl bootout "gui/$(id -u)/io.tiflis.stt" 2>/dev/null || true
-        launchctl bootstrap "gui/$(id -u)" "$plist_path"
-        print_success "STT service started (MLX Whisper ${model})"
+        sleep 1
+        
+        # Bootstrap the service
+        if launchctl bootstrap "gui/$(id -u)" "$plist_path" 2>&1; then
+            print_success "STT service started (MLX Whisper ${model})"
+        else
+            # If bootstrap fails, try load as fallback
+            print_warning "Bootstrap failed, trying alternative method..."
+            launchctl load -w "$plist_path" 2>/dev/null || true
+            sleep 1
+            if launchctl list 2>/dev/null | grep -q io.tiflis.stt; then
+                print_success "STT service started (MLX Whisper ${model})"
+            else
+                print_error "Failed to start STT service. Check logs: tail -f ${TIFLIS_INSTALL_DIR}/logs/stt-error.log"
+            fi
+        fi
     fi
 }
 
@@ -735,6 +763,19 @@ setup_native_tts() {
     print_step "Setting up native TTS service for Apple Silicon..."
     
     local tts_dir="${TIFLIS_INSTALL_DIR}/tts"
+    
+    # Stop existing service first
+    if launchctl list 2>/dev/null | grep -q io.tiflis.tts; then
+        print_info "Stopping existing TTS service..."
+        launchctl bootout "gui/$(id -u)/io.tiflis.tts" 2>/dev/null || true
+        sleep 1
+    fi
+    
+    # Clean and recreate directory for fresh install
+    if [ -d "$tts_dir" ]; then
+        print_info "Removing existing TTS installation..."
+        rm -rf "$tts_dir"
+    fi
     mkdir -p "$tts_dir"
     
     # Create virtual environment and install
@@ -890,9 +931,24 @@ EOF
     
     # Load service
     if [ "$DRY_RUN" = "false" ]; then
+        # Ensure service is fully stopped
         launchctl bootout "gui/$(id -u)/io.tiflis.tts" 2>/dev/null || true
-        launchctl bootstrap "gui/$(id -u)" "$plist_path"
-        print_success "TTS service started (Kokoro ${voice})"
+        sleep 1
+        
+        # Bootstrap the service
+        if launchctl bootstrap "gui/$(id -u)" "$plist_path" 2>&1; then
+            print_success "TTS service started (Kokoro ${voice})"
+        else
+            # If bootstrap fails, try load as fallback
+            print_warning "Bootstrap failed, trying alternative method..."
+            launchctl load -w "$plist_path" 2>/dev/null || true
+            sleep 1
+            if launchctl list 2>/dev/null | grep -q io.tiflis.tts; then
+                print_success "TTS service started (Kokoro ${voice})"
+            else
+                print_error "Failed to start TTS service. Check logs: tail -f ${TIFLIS_INSTALL_DIR}/logs/tts-error.log"
+            fi
+        fi
     fi
 }
 
