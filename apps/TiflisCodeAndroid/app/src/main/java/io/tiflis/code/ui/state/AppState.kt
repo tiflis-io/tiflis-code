@@ -1188,59 +1188,16 @@ class AppState @Inject constructor(
 
         if (existingIndex >= 0) {
             // Update existing message
-            // For supervisor (LangGraph), replace last text block but append non-text blocks
+            // Server now sends full accumulated state on each update
+            // Just replace all content blocks with the new ones
             val existingMessage = messages[existingIndex]
-            val updatedBlocks = existingMessage.contentBlocks.toMutableList()
-
-            for (newBlock in contentBlocks) {
-                when (newBlock) {
-                    is MessageContentBlock.Text -> {
-                        // Replace the last text block with the new one
-                        val lastTextIndex = updatedBlocks.indexOfLast { it is MessageContentBlock.Text }
-                        if (lastTextIndex >= 0) {
-                            updatedBlocks[lastTextIndex] = newBlock
-                        } else {
-                            updatedBlocks.add(newBlock)
-                        }
-                    }
-                    is MessageContentBlock.ToolCall -> {
-                        // For tool calls, update by toolUseId or add new
-                        val existingToolIndex = updatedBlocks.indexOfFirst {
-                            it is MessageContentBlock.ToolCall && it.toolUseId == newBlock.toolUseId
-                        }
-                        if (existingToolIndex >= 0) {
-                            updatedBlocks[existingToolIndex] = newBlock
-                        } else {
-                            updatedBlocks.add(newBlock)
-                        }
-                    }
-                    else -> {
-                        // Append other block types if not already present
-                        if (updatedBlocks.none { it.id == newBlock.id }) {
-                            updatedBlocks.add(newBlock)
-                        }
-                    }
-                }
-            }
-
-            // Handle text-only update - only if textContent is not blank
-            // Empty content should NOT overwrite existing text (streaming may send empty updates)
-            if (contentBlocks.isEmpty() && !textContent.isNullOrBlank()) {
-                val lastTextIndex = updatedBlocks.indexOfLast { it is MessageContentBlock.Text }
-                if (lastTextIndex >= 0) {
-                    val existingBlock = updatedBlocks[lastTextIndex] as MessageContentBlock.Text
-                    updatedBlocks[lastTextIndex] = existingBlock.copy(text = textContent)
-                } else {
-                    updatedBlocks.add(MessageContentBlock.Text(UUID.randomUUID().toString(), textContent))
-                }
-            }
 
             // Create new Message instance to trigger Compose recomposition
             messages[existingIndex] = Message(
                 id = existingMessage.id,
                 sessionId = existingMessage.sessionId,
                 role = existingMessage.role,
-                contentBlocks = updatedBlocks,
+                contentBlocks = contentBlocks.toMutableList(),
                 isStreaming = !isComplete,
                 createdAt = existingMessage.createdAt
             )

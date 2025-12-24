@@ -1247,24 +1247,10 @@ final class AppState: ObservableObject {
         // Update or create streaming message
         if let streamingId = supervisorStreamingMessageId,
            let index = supervisorMessages.firstIndex(where: { $0.id == streamingId }) {
-            // For text blocks, replace the last one instead of appending
-            // This handles LangGraph sending full state on each update
+            // Server now sends full accumulated state on each update
+            // Just replace all content blocks with the new ones
             var updatedMessage = supervisorMessages[index]
-
-            for newBlock in blocks {
-                if case .text = newBlock,
-                   let lastIndex = updatedMessage.contentBlocks.lastIndex(where: {
-                       if case .text = $0 { return true }
-                       return false
-                   }) {
-                    // Replace the last text block with the new one
-                    updatedMessage.contentBlocks[lastIndex] = newBlock
-                } else {
-                    // Append non-text blocks (tool calls, etc.)
-                    updatedMessage.contentBlocks.append(newBlock)
-                }
-            }
-
+            updatedMessage.contentBlocks = blocks
             updatedMessage.isStreaming = !isComplete
             supervisorMessages[index] = updatedMessage
             // Trigger scroll on content update

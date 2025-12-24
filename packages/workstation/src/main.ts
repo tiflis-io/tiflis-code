@@ -2810,6 +2810,9 @@ async function bootstrap(): Promise<void> {
     }
   );
 
+  // Accumulator for supervisor blocks (similar to agent sessions)
+  let supervisorBlockAccumulator: ContentBlock[] = [];
+
   // Stream Supervisor Agent output to ALL clients (supervisor chat is global/shared)
   supervisorAgent.on(
     "blocks",
@@ -2832,11 +2835,24 @@ async function bootstrap(): Promise<void> {
           { deviceId, blockCount: blocks.length, isComplete },
           "Ignoring supervisor blocks - execution was cancelled"
         );
+        // Reset accumulator on cancel
+        supervisorBlockAccumulator = [];
         return;
       }
 
+      // Filter out status blocks (transient UI hints)
+      const persistableBlocks = blocks.filter((b) => b.block_type !== "status");
+
+      // Accumulate blocks, merging tool blocks in-place
+      if (persistableBlocks.length > 0) {
+        accumulateBlocks(supervisorBlockAccumulator, persistableBlocks);
+      }
+
+      // Merge tool blocks with same tool_use_id for clean output
+      const mergedBlocks = mergeToolBlocks(supervisorBlockAccumulator);
+
       // Build plain text content for backward compatibility
-      const textContent = blocks
+      const textContent = mergedBlocks
         .filter((b) => b.block_type === "text")
         .map((b) => b.content)
         .join("\n");
@@ -2846,7 +2862,7 @@ async function bootstrap(): Promise<void> {
         payload: {
           content_type: "supervisor",
           content: textContent,
-          content_blocks: blocks,
+          content_blocks: mergedBlocks,
           timestamp: Date.now(),
           is_complete: isComplete,
         },
@@ -2856,6 +2872,11 @@ async function bootstrap(): Promise<void> {
 
       // Broadcast to ALL clients since supervisor chat is shared across devices
       broadcaster.broadcastToAll(message);
+
+      // Reset accumulator when complete
+      if (isComplete) {
+        supervisorBlockAccumulator = [];
+      }
 
       // Save assistant response to persistent history when streaming completes (global)
       if (isComplete && finalOutput && finalOutput.length > 0) {
