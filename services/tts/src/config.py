@@ -52,6 +52,9 @@ class Settings(BaseSettings):
         default="auto", description="Compute device (auto, cuda, mps, cpu)"
     )
 
+    # HuggingFace
+    hf_token: str | None = Field(default=None, alias="HF_TOKEN", description="HuggingFace token")
+
     @property
     def cors_origins_list(self) -> list[str]:
         """Parse CORS origins into a list."""

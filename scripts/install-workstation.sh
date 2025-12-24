@@ -436,6 +436,28 @@ configure_local_tts() {
 }
 
 # ─────────────────────────────────────────────────────────────
+# Configure HuggingFace Token for Local Speech Services
+# ─────────────────────────────────────────────────────────────
+configure_hf_token() {
+    echo "" >&2
+    print_info "HuggingFace Token (Optional)"
+    echo "" >&2
+    echo "  Some models require a HuggingFace token to download." >&2
+    echo "  Get your token at: https://huggingface.co/settings/tokens" >&2
+    echo "" >&2
+    
+    if confirm "Configure HuggingFace token?" "n"; then
+        HF_TOKEN="$(prompt_secret "Enter HuggingFace token (hf_...)")"
+        if [ -n "$HF_TOKEN" ]; then
+            print_success "HuggingFace token configured"
+        fi
+    else
+        HF_TOKEN=""
+        print_info "Skipped (can be added later to .env as HF_TOKEN=...)"
+    fi
+}
+
+# ─────────────────────────────────────────────────────────────
 # Generate Docker Compose for Local Services
 # ─────────────────────────────────────────────────────────────
 generate_speech_docker_compose() {
@@ -486,6 +508,12 @@ EOF
       - STT_MODEL=${stt_model}
       - STT_HOST=0.0.0.0
       - STT_PORT=8100
+EOF
+        # Add HF_TOKEN if set
+        if [ -n "$HF_TOKEN" ]; then
+            echo "      - HF_TOKEN=${HF_TOKEN}" >> "$compose_file"
+        fi
+        cat >> "$compose_file" << EOF
     volumes:
       - stt-models:/app/models
       - stt-cache:/root/.cache
@@ -515,6 +543,12 @@ EOF
       - TTS_DEFAULT_VOICE=${tts_voice}
       - TTS_HOST=0.0.0.0
       - TTS_PORT=8101
+EOF
+        # Add HF_TOKEN if set
+        if [ -n "$HF_TOKEN" ]; then
+            echo "      - HF_TOKEN=${HF_TOKEN}" >> "$compose_file"
+        fi
+        cat >> "$compose_file" << EOF
     volumes:
       - tts-models:/app/models
       - tts-cache:/root/.cache
@@ -666,6 +700,15 @@ PYEOF
         <string>8100</string>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.local/bin</string>
+EOF
+    # Add HF_TOKEN if set
+    if [ -n "$HF_TOKEN" ]; then
+        cat >> "$plist_path" << EOF
+        <key>HF_TOKEN</key>
+        <string>${HF_TOKEN}</string>
+EOF
+    fi
+    cat >> "$plist_path" << EOF
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -823,6 +866,15 @@ PYEOF
         <string>8101</string>
         <key>PATH</key>
         <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:${HOME}/.local/bin</string>
+EOF
+    # Add HF_TOKEN if set
+    if [ -n "$HF_TOKEN" ]; then
+        cat >> "$plist_path" << EOF
+        <key>HF_TOKEN</key>
+        <string>${HF_TOKEN}</string>
+EOF
+    fi
+    cat >> "$plist_path" << EOF
     </dict>
     <key>RunAtLoad</key>
     <true/>
@@ -1116,6 +1168,12 @@ configure_ai_providers() {
             print_info "TTS skipped"
             ;;
     esac
+
+    # Configure HuggingFace token if local services are used
+    HF_TOKEN=""
+    if [ "$STT_PROVIDER" = "local" ] || [ "$TTS_PROVIDER" = "local" ]; then
+        configure_hf_token
+    fi
 
     echo ""
 }
@@ -1466,6 +1524,21 @@ EOF
 # TTS_API_KEY=your-openai-key
 # TTS_VOICE=nova
 # For local: TTS_PROVIDER=local, TTS_BASE_URL=http://localhost:8101
+EOF
+            fi
+
+            # Add HuggingFace token if provided (for local speech services)
+            if [ -n "$HF_TOKEN" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << EOF
+
+# HuggingFace (for downloading models)
+HF_TOKEN=${HF_TOKEN}
+EOF
+            elif [ "$STT_PROVIDER" = "local" ] || [ "$TTS_PROVIDER" = "local" ]; then
+                cat >> "${WORKSTATION_DIR}/.env" << 'EOF'
+
+# HuggingFace (optional - for downloading gated models)
+# HF_TOKEN=hf_xxxxxxxxxxxxxxxxxxxxx
 EOF
             fi
 
