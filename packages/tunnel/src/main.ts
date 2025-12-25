@@ -62,6 +62,7 @@ import {
 } from "./infrastructure/persistence/in-memory-registry.js";
 import { registerHealthRoute } from "./infrastructure/http/health-route.js";
 import { registerWatchApiRoute } from "./infrastructure/http/watch-api-route.js";
+import { registerWebClientRoute } from "./infrastructure/http/web-client-route.js";
 import {
   ConnectionHandler,
   WebSocketServerWrapper,
@@ -175,6 +176,14 @@ async function bootstrap(): Promise<void> {
     httpClientOperations,
     logger,
   });
+
+  // Register Web Client static files (if configured)
+  if (env.WEB_CLIENT_PATH) {
+    await registerWebClientRoute(app, {
+      webClientPath: env.WEB_CLIENT_PATH,
+      logger,
+    });
+  }
 
   // Create WebSocket server
   const wsServer = new WebSocketServerWrapper(
