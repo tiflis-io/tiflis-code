@@ -68,8 +68,10 @@ export class TTSService {
         case 'elevenlabs':
           result = await this.synthesizeElevenLabs(text);
           break;
-        default:
-          throw new Error(`Unsupported TTS provider: ${this.config.provider}`);
+        default: {
+          const exhaustiveCheck: never = this.config.provider;
+          throw new Error(`Unsupported TTS provider: ${exhaustiveCheck as string}`);
+        }
       }
 
       const elapsed = Date.now() - startTime;

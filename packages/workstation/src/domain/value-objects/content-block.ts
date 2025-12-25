@@ -368,8 +368,8 @@ export function mergeToolBlocks(blocks: ContentBlock[]): ContentBlock[] {
           metadata: {
             tool_name: block.metadata.tool_name || existing.metadata.tool_name,
             tool_use_id: toolUseId,
-            tool_input: block.metadata.tool_input || existing.metadata.tool_input,
-            tool_output: block.metadata.tool_output || existing.metadata.tool_output,
+            tool_input: block.metadata.tool_input ?? existing.metadata.tool_input,
+            tool_output: block.metadata.tool_output ?? existing.metadata.tool_output,
             tool_status: mergedStatus,
           },
         };
@@ -462,8 +462,8 @@ export function accumulateBlocks(
           metadata: {
             tool_name: block.metadata.tool_name || existingBlock.metadata.tool_name,
             tool_use_id: toolUseId,
-            tool_input: block.metadata.tool_input || existingBlock.metadata.tool_input,
-            tool_output: block.metadata.tool_output || existingBlock.metadata.tool_output,
+            tool_input: block.metadata.tool_input ?? existingBlock.metadata.tool_input,
+            tool_output: block.metadata.tool_output ?? existingBlock.metadata.tool_output,
             tool_status: mergedStatus,
           },
         };

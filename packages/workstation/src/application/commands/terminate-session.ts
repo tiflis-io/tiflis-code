@@ -8,8 +8,10 @@ import type { Logger } from "pino";
 import type { SessionManager } from "../../domain/ports/session-manager.js";
 import type { MessageBroadcaster } from "../../domain/ports/message-broadcaster.js";
 import type { ChatHistoryService } from "../services/chat-history-service.js";
+import type { AgentSessionManager } from "../../infrastructure/agents/agent-session-manager.js";
 import { SessionId } from "../../domain/value-objects/session-id.js";
 import { SessionNotFoundError } from "../../domain/errors/domain-errors.js";
+import { isAgentType } from "../../domain/entities/agent-session.js";
 import type {
   ResponseMessage,
   SessionTerminatedMessage,
@@ -17,6 +19,7 @@ import type {
 
 export interface TerminateSessionDeps {
   sessionManager: SessionManager;
+  agentSessionManager: AgentSessionManager;
   messageBroadcaster: MessageBroadcaster;
   chatHistoryService: ChatHistoryService;
   logger: Logger;
@@ -86,6 +89,10 @@ export class TerminateSessionUseCase {
 
     // Terminate from in-memory store if present
     if (session) {
+      // Terminate from agent session manager if it's an agent
+      if (isAgentType(session.type)) {
+        this.deps.agentSessionManager.terminateSession(sessionId);
+      }
       await this.deps.sessionManager.terminateSession(id);
       terminatedInMemory = true;
       this.logger.info(
@@ -133,5 +140,59 @@ export class TerminateSessionUseCase {
     };
 
     return { response, broadcast };
+  }
+
+  /**
+   * Terminates a session and broadcasts the termination to all clients.
+   * Use this for internal calls (e.g., from supervisor tools) where no request/response is needed.
+   * Returns true if session was found and terminated, false otherwise.
+   */
+  async terminateAndBroadcast(sessionId: string): Promise<boolean> {
+    const id = new SessionId(sessionId);
+
+    this.logger.info({ sessionId }, "Attempting to terminate session (internal)");
+
+    // Check if session exists in memory
+    const session = this.deps.sessionManager.getSession(id);
+
+    // Cannot terminate supervisor
+    if (session?.type === "supervisor") {
+      throw new Error("Cannot terminate supervisor session");
+    }
+
+    let terminatedInMemory = false;
+    let terminatedInDb = false;
+
+    // Terminate from in-memory store if present
+    if (session) {
+      // Terminate from agent session manager if it's an agent
+      if (isAgentType(session.type)) {
+        this.deps.agentSessionManager.terminateSession(sessionId);
+      }
+      await this.deps.sessionManager.terminateSession(id);
+      terminatedInMemory = true;
+    }
+
+    // Also terminate in database (for persisted agent sessions)
+    terminatedInDb = this.deps.chatHistoryService.terminateSession(sessionId);
+
+    // If session wasn't found in either place, return false
+    if (!terminatedInMemory && !terminatedInDb) {
+      return false;
+    }
+
+    // Broadcast termination to all clients
+    const broadcast: SessionTerminatedMessage = {
+      type: "session.terminated",
+      session_id: sessionId,
+    };
+    this.deps.messageBroadcaster.broadcastToAll(JSON.stringify(broadcast));
+
+    this.logger.info(
+      { sessionId, terminatedInMemory, terminatedInDb },
+      "Session terminated and broadcast sent"
+    );
+
+    return true;
   }
 }

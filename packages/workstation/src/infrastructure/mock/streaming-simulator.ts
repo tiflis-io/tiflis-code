@@ -7,6 +7,7 @@
  */
 
 import type { ContentBlock } from "../../domain/value-objects/content-block.js";
+import { createTextBlock, isTextBlock } from "../../domain/value-objects/content-block.js";
 
 /**
  * Default delay between tokens in milliseconds.
@@ -33,13 +34,10 @@ export async function simulateStreaming(
   let accumulated = "";
 
   for (let i = 0; i < tokens.length; i++) {
-    accumulated += tokens[i];
+    accumulated += tokens[i] ?? "";
 
     // Create a text content block with accumulated content
-    const block: ContentBlock = {
-      type: "text",
-      text: accumulated,
-    };
+    const block = createTextBlock(accumulated);
 
     // Emit the block (not complete yet)
     onBlock([block], false);
@@ -51,10 +49,7 @@ export async function simulateStreaming(
   }
 
   // Final emission with complete flag
-  const finalBlock: ContentBlock = {
-    type: "text",
-    text: accumulated,
-  };
+  const finalBlock = createTextBlock(accumulated);
   onBlock([finalBlock], true);
 
   onComplete();
@@ -77,22 +72,17 @@ export async function simulateBlockStreaming(
 ): Promise<void> {
   const result: ContentBlock[] = [];
 
-  for (let blockIndex = 0; blockIndex < blocks.length; blockIndex++) {
-    const block = blocks[blockIndex]!;
-
-    if (block.type === "text" && block.text) {
+  for (const block of blocks) {
+    if (isTextBlock(block)) {
       // Stream text blocks token by token
-      const tokens = tokenize(block.text);
+      const tokens = tokenize(block.content);
       let accumulated = "";
 
       for (let i = 0; i < tokens.length; i++) {
-        accumulated += tokens[i];
+        accumulated += tokens[i] ?? "";
 
         // Update current block in result
-        const currentBlock: ContentBlock = {
-          type: "text",
-          text: accumulated,
-        };
+        const currentBlock = createTextBlock(accumulated);
 
         // Emit all completed blocks plus current streaming block
         onBlock([...result, currentBlock], false);
@@ -103,7 +93,7 @@ export async function simulateBlockStreaming(
       }
 
       // Add completed text block to result
-      result.push({ type: "text", text: accumulated });
+      result.push(createTextBlock(accumulated));
     } else {
       // Non-text blocks are emitted immediately
       result.push(block);

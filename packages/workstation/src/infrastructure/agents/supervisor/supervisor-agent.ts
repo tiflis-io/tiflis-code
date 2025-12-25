@@ -22,7 +22,6 @@ import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
 import { createFilesystemTools } from './tools/filesystem-tools.js';
 import { getEnv } from '../../../config/env.js';
-import type { ContentBlock } from '../../../domain/value-objects/content-block.js';
 import {
   createTextBlock,
   createToolBlock,
@@ -32,6 +31,12 @@ import {
   mergeToolBlocks,
   type ContentBlock,
 } from '../../../domain/value-objects/content-block.js';
+
+/**
+ * Callback for terminating a session.
+ * Returns true if session was found and terminated, false otherwise.
+ */
+export type TerminateSessionCallback = (sessionId: string) => Promise<boolean>;
 
 /**
  * Configuration for SupervisorAgent.
@@ -46,6 +51,8 @@ export interface SupervisorAgentConfig {
   getMessageBroadcaster?: () => MessageBroadcaster | null;
   /** Optional getter for chat history service (late-bound) */
   getChatHistoryService?: () => ChatHistoryService | null;
+  /** Optional callback for terminating sessions (late-bound) */
+  getTerminateSession?: () => TerminateSessionCallback | null;
 }
 
 /**
@@ -92,6 +99,8 @@ export interface SupervisorAgentEvents {
 export class SupervisorAgent extends EventEmitter {
   private readonly logger: Logger;
   private readonly agent: ReturnType<typeof createReactAgent>;
+  private readonly getMessageBroadcaster?: () => MessageBroadcaster | null;
+  private readonly getChatHistoryService?: () => ChatHistoryService | null;
   private conversationHistory: ConversationEntry[] = [];
   private abortController: AbortController | null = null;
   private isExecuting = false;
@@ -104,10 +113,22 @@ export class SupervisorAgent extends EventEmitter {
   constructor(config: SupervisorAgentConfig) {
     super();
     this.logger = config.logger.child({ component: 'SupervisorAgent' });
+    this.getMessageBroadcaster = config.getMessageBroadcaster;
+    this.getChatHistoryService = config.getChatHistoryService;
 
     // Create LLM
     const env = getEnv();
     const llm = this.createLLM(env);
+
+    // Create terminate session callback wrapper
+    const terminateSessionCallback = async (sessionId: string): Promise<boolean> => {
+      const terminate = config.getTerminateSession?.();
+      if (!terminate) {
+        this.logger.warn('Terminate session callback not available');
+        return false;
+      }
+      return terminate(sessionId);
+    };
 
     // Create all tools
     const tools: StructuredToolInterface[] = [
@@ -119,7 +140,9 @@ export class SupervisorAgent extends EventEmitter {
         config.workspaceDiscovery,
         config.workspacesRoot,
         config.getMessageBroadcaster,
-        config.getChatHistoryService
+        config.getChatHistoryService,
+        () => this.clearContext(),
+        terminateSessionCallback
       ),
       ...createFilesystemTools(config.workspacesRoot),
     ];
@@ -473,14 +496,45 @@ export class SupervisorAgent extends EventEmitter {
   }
 
   /**
-   * Clears global conversation history.
+   * Clears global conversation history (in-memory only).
    * Also resets cancellation state to allow new commands.
+   * @deprecated Use clearContext() for full context clearing with persistence and broadcast.
    */
   clearHistory(): void {
     this.conversationHistory = [];
     // Reset cancellation state so new commands can execute
     this.isCancelled = false;
     this.logger.info('Global conversation history cleared');
+  }
+
+  /**
+   * Clears supervisor context completely:
+   * - In-memory conversation history
+   * - Persistent history in database
+   * - Notifies all connected clients
+   */
+  clearContext(): void {
+    // Clear in-memory history
+    this.conversationHistory = [];
+    this.isCancelled = false;
+
+    // Clear persistent history
+    const chatHistoryService = this.getChatHistoryService?.();
+    if (chatHistoryService) {
+      chatHistoryService.clearSupervisorHistory();
+    }
+
+    // Notify all clients that context was cleared
+    const broadcaster = this.getMessageBroadcaster?.();
+    if (broadcaster) {
+      const clearNotification = JSON.stringify({
+        type: 'supervisor.context_cleared',
+        payload: { timestamp: Date.now() },
+      });
+      broadcaster.broadcastToAll(clearNotification);
+    }
+
+    this.logger.info('Supervisor context cleared (in-memory, persistent, and clients notified)');
   }
 
   /**

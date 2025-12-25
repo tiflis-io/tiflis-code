@@ -74,11 +74,11 @@ export class MockSupervisorAgent extends EventEmitter {
   /**
    * Executes a command (non-streaming).
    */
-  async execute(
+  execute(
     command: string,
     deviceId: string,
     _currentSessionId?: string
-  ): Promise<MockSupervisorResult> {
+  ): MockSupervisorResult {
     this.logger.info({ command, deviceId }, "Mock supervisor execute");
 
     const response = this.getResponse(command);
@@ -105,7 +105,8 @@ export class MockSupervisorAgent extends EventEmitter {
     try {
       const response = this.getResponse(command);
 
-      // Emit status block
+      // Emit status block - check state dynamically as it may be changed by cancel
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state can be changed during async streaming
       if (this.isExecuting && !this.isCancelled) {
         const statusBlock = createStatusBlock("Processing...");
         this.emit("blocks", deviceId, [statusBlock], false);
@@ -133,7 +134,8 @@ export class MockSupervisorAgent extends EventEmitter {
         }
       );
 
-      // Emit completion
+      // Emit completion - check state dynamically as it may be changed by cancel
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state can be changed during async streaming
       if (this.isExecuting && !this.isCancelled) {
         // Add to history
         this.conversationHistory.push({ role: "user", content: command });
@@ -153,6 +155,7 @@ export class MockSupervisorAgent extends EventEmitter {
         );
       }
     } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state can be changed during async streaming
       if (this.isCancelled) {
         this.logger.info({ deviceId }, "Mock supervisor cancelled");
         return;

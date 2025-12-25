@@ -37,8 +37,9 @@ export function loadFixture(
 ): MockFixture | null {
   const cacheKey = `${customPath ?? "default"}:${name}`;
 
-  if (fixtureCache.has(cacheKey)) {
-    return fixtureCache.get(cacheKey)!;
+  const cached = fixtureCache.get(cacheKey);
+  if (cached) {
+    return cached;
   }
 
   const fixturesDir = customPath ?? DEFAULT_FIXTURES_PATH;

@@ -477,6 +477,7 @@ async function bootstrap(): Promise<void> {
         logger,
         getMessageBroadcaster: () => messageBroadcaster,
         getChatHistoryService: () => chatHistoryService,
+        getTerminateSession: () => terminateSession?.terminateAndBroadcast.bind(terminateSession) ?? null,
       });
 
   if (env.MOCK_MODE) {
@@ -980,7 +981,7 @@ async function bootstrap(): Promise<void> {
       // Send immediate acknowledgment to client so they can show "Sent" status
       // Use payload.message_id (client's message ID) if available, fallback to command.id
       if (messageBroadcaster) {
-        const ackMessageId = messageId || commandMessage.id;
+        const ackMessageId = messageId ?? commandMessage.id;
         const ackMessage = {
           type: "message.ack",
           payload: {
@@ -1312,16 +1313,8 @@ async function bootstrap(): Promise<void> {
         directClient?.isAuthenticated ?? tunnelClient?.isAuthenticated;
 
       if (isAuthenticated) {
-        // Clear both in-memory and persistent history (global)
-        supervisorAgent.clearHistory();
-        chatHistoryService.clearSupervisorHistory();
-
-        // Notify all clients that context was cleared
-        const clearNotification = JSON.stringify({
-          type: "supervisor.context_cleared",
-          payload: { timestamp: Date.now() },
-        });
-        broadcaster.broadcastToAll(clearNotification);
+        // Clear context (in-memory, persistent, and notifies all clients)
+        supervisorAgent.clearContext();
 
         sendToDevice(
           socket,
@@ -1635,7 +1628,7 @@ async function bootstrap(): Promise<void> {
       // Send immediate acknowledgment to client so they can show "Sent" status
       // Use payload.message_id (client's message ID) if available, fallback to command.id
       if (deviceId && messageBroadcaster) {
-        const ackMessageId = messageId || execMessage.id;
+        const ackMessageId = messageId ?? execMessage.id;
         const ackMessage = {
           type: "message.ack",
           payload: {
@@ -2579,6 +2572,7 @@ async function bootstrap(): Promise<void> {
 
   terminateSession = new TerminateSessionUseCase({
     sessionManager,
+    agentSessionManager,
     messageBroadcaster,
     chatHistoryService,
     logger,

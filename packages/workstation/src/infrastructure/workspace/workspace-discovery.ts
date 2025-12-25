@@ -41,7 +41,7 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
   private workspacesCache: CacheEntry<WorkspaceInfo[]> | null = null;
 
   /** Cache for projects by workspace name */
-  private projectsCache: Map<string, CacheEntry<ProjectInfo[]>> = new Map();
+  private projectsCache = new Map<string, CacheEntry<ProjectInfo[]>>();
 
   constructor(config: FileSystemWorkspaceDiscoveryConfig) {
     this.workspacesRoot = config.workspacesRoot;
@@ -584,7 +584,7 @@ export class FileSystemWorkspaceDiscovery implements WorkspaceDiscovery {
       // Merge source branch
       try {
         execSync(`git merge "${sourceBranch}"`, { cwd: projectPath });
-      } catch (error) {
+      } catch {
         // Handle merge conflicts
         const conflicts = execSync('git diff --name-only --diff-filter=U', {
           cwd: projectPath,

@@ -344,8 +344,8 @@ export class AgentSessionManager extends EventEmitter {
 
     for (const [sessionId, state] of this.sessions) {
       // Check if session is related to this worktree
-      const isInWorktree = state.workingDir.includes(worktreePath) || 
-                          state.cliSessionId?.includes(`${project}--${branch}`) ||
+      const isInWorktree = state.workingDir.includes(worktreePath) ||
+                          (state.cliSessionId?.includes(`${project}--${branch}`) ?? false) ||
                           state.workingDir.endsWith(`${project}--${branch}`);
 
       if (isInWorktree) {
@@ -380,9 +380,9 @@ export class AgentSessionManager extends EventEmitter {
   } {
     const worktreePath = `/${workspace}/${project}--${branch}`;
     
-    const activeSessions = Array.from(this.sessions.values()).filter(session => 
-      session.workingDir.includes(worktreePath) || 
-      session.cliSessionId?.includes(`${project}--${branch}`) ||
+    const activeSessions = Array.from(this.sessions.values()).filter(session =>
+      session.workingDir.includes(worktreePath) ||
+      (session.cliSessionId?.includes(`${project}--${branch}`) ?? false) ||
       session.workingDir.endsWith(`${project}--${branch}`)
     );
 

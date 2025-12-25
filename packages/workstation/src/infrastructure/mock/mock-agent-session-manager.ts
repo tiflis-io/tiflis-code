@@ -190,7 +190,8 @@ export class MockAgentSessionManager extends EventEmitter {
         }
       );
 
-      // Complete the response
+      // Complete the response - check state dynamically as it may be changed by cancel
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state can be changed during async streaming
       if (state.isExecuting && !state.isCancelled) {
         // Add assistant message to history
         const assistantMessage: StoredMessage = {
@@ -215,6 +216,7 @@ export class MockAgentSessionManager extends EventEmitter {
         this.emit("blocks", sessionId, completionBlocks, true);
       }
     } catch (error) {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- state can be changed during async streaming
       if (!state.isCancelled) {
         this.logger.error({ sessionId, error }, "Mock command execution error");
         const errorBlocks = [

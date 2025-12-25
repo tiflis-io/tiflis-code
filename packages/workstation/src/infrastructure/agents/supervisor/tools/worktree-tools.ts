@@ -133,16 +133,16 @@ export function createWorktreeTools(
       project: string;
     }) => {
       try {
-        const status = await (workspaceDiscovery as any).getBranchStatus(workspace, project);
-        
+        const status = await workspaceDiscovery.getBranchStatus(workspace, project);
+
         return {
           currentBranch: status.currentBranch,
           uncommittedChanges: status.uncommittedChanges,
           aheadCommits: status.aheadCommits,
           isClean: status.isClean,
-          summary: status.isClean 
+          summary: status.isClean
             ? `Branch "${status.currentBranch}" is clean with ${status.aheadCommits} commits ahead of main`
-            : `Branch "${status.currentBranch}" has ${status.uncommittedChanges.length} uncommitted changes:\n${status.uncommittedChanges.map((c: string) => `  ${c}`).join('\n')}`,
+            : `Branch "${status.currentBranch}" has ${status.uncommittedChanges.length} uncommitted changes:\n${status.uncommittedChanges.map((c) => `  ${c}`).join('\n')}`,
         };
       } catch (error) {
         return { error: error instanceof Error ? error.message : String(error) };

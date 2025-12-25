@@ -104,17 +104,17 @@ const EnvSchema = z.object({
   /** Hide base Cursor agent option (only show aliases) */
   HIDE_BASE_CURSOR: z
     .string()
-    .transform((val) => val?.toLowerCase() === "true")
+    .transform((val) => val.toLowerCase() === "true")
     .default("false"),
   /** Hide base Claude agent option (only show aliases) */
   HIDE_BASE_CLAUDE: z
     .string()
-    .transform((val) => val?.toLowerCase() === "true")
+    .transform((val) => val.toLowerCase() === "true")
     .default("false"),
   /** Hide base OpenCode agent option (only show aliases) */
   HIDE_BASE_OPENCODE: z
     .string()
-    .transform((val) => val?.toLowerCase() === "true")
+    .transform((val) => val.toLowerCase() === "true")
     .default("false"),
 
   // ─────────────────────────────────────────────────────────────
@@ -132,7 +132,7 @@ const EnvSchema = z.object({
   /** Enable mock mode for screenshot automation tests */
   MOCK_MODE: z
     .string()
-    .transform((val) => val?.toLowerCase() === "true")
+    .transform((val) => val.toLowerCase() === "true")
     .default("false"),
   /** Path to mock fixtures directory (defaults to built-in fixtures) */
   MOCK_FIXTURES_PATH: z.string().optional(),
@@ -201,7 +201,8 @@ export function parseAgentAliases(): Map<string, AgentAlias> {
     let commandStartIndex = 0;
 
     for (let i = 0; i < parts.length; i++) {
-      const part = parts[i]!;
+      const part = parts[i];
+      if (!part) break;
       // Check if this part is an env var assignment (contains = but doesn't start with -)
       const eqIndex = part.indexOf("=");
       if (eqIndex > 0 && !part.startsWith("-")) {
@@ -225,7 +226,11 @@ export function parseAgentAliases(): Map<string, AgentAlias> {
       continue;
     }
 
-    const baseCommand = commandParts[0]!;
+    const baseCommand = commandParts[0];
+    if (!baseCommand) {
+      console.warn(`Invalid agent alias ${key}: empty base command`);
+      continue;
+    }
     const additionalArgs = commandParts.slice(1);
 
     aliases.set(aliasName, {

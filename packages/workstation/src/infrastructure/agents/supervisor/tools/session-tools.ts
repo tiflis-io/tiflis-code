@@ -11,9 +11,7 @@ import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../../domain/ports/workspace-discovery.js';
-import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
 import type { ChatHistoryService } from '../../../../application/services/chat-history-service.js';
-import type { SessionTerminatedMessage } from '../../../../protocol/messages.js';
 import { isAgentType } from '../../../../domain/entities/agent-session.js';
 import { getAvailableAgents, getAgentConfig } from '../../../../config/constants.js';
 
@@ -28,6 +26,17 @@ interface SessionInfo {
 }
 
 /**
+ * Callback for clearing supervisor context.
+ */
+export type ClearSupervisorContextCallback = () => void;
+
+/**
+ * Callback for terminating a session.
+ * Returns true if session was found and terminated, false otherwise.
+ */
+export type TerminateSessionCallback = (sessionId: string) => Promise<boolean>;
+
+/**
  * Creates session management tools.
  */
 export function createSessionTools(
@@ -35,21 +44,11 @@ export function createSessionTools(
   agentSessionManager: AgentSessionManager,
   workspaceDiscovery: WorkspaceDiscovery,
   workspacesRoot: string,
-  getMessageBroadcaster?: () => MessageBroadcaster | null,
-  getChatHistoryService?: () => ChatHistoryService | null
+  _getMessageBroadcaster?: () => unknown,
+  getChatHistoryService?: () => ChatHistoryService | null,
+  clearSupervisorContext?: ClearSupervisorContextCallback,
+  terminateSessionCallback?: TerminateSessionCallback
 ) {
-  /**
-   * Helper to broadcast session termination.
-   */
-  const broadcastTermination = (sessionId: string) => {
-    const broadcaster = getMessageBroadcaster?.();
-    if (!broadcaster) return;
-    const message: SessionTerminatedMessage = {
-      type: 'session.terminated',
-      session_id: sessionId,
-    };
-    broadcaster.broadcastToAll(JSON.stringify(message));
-  };
   /**
    * Lists all active sessions.
    * Shows both in-memory sessions and persisted agent sessions from database.
@@ -251,39 +250,24 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
 
   /**
    * Terminates a session.
-   * Checks both in-memory store and database for the session.
+   * Delegates to TerminateSessionUseCase which handles:
+   * - In-memory session cleanup
+   * - Agent executor cleanup
+   * - Database cleanup
+   * - Client notification broadcast
    */
   const terminateSession = tool(
     async ({ sessionId }: { sessionId: string }) => {
       try {
-        const { SessionId } = await import('../../../../domain/value-objects/session-id.js');
-        const id = new SessionId(sessionId);
-        const session = sessionManager.getSession(id);
-
-        let terminatedInMemory = false;
-        let terminatedInDb = false;
-
-        // Terminate from in-memory if found
-        if (session) {
-          // Terminate from agent session manager if it's an agent
-          if (isAgentType(session.type)) {
-            agentSessionManager.terminateSession(sessionId);
-          }
-          await sessionManager.terminateSession(id);
-          terminatedInMemory = true;
+        if (!terminateSessionCallback) {
+          return 'Error: Terminate session callback not configured.';
         }
 
-        // Also terminate in database (for persisted agent sessions)
-        const chatHistoryService = getChatHistoryService?.();
-        if (chatHistoryService) {
-          terminatedInDb = chatHistoryService.terminateSession(sessionId);
-        }
-
-        if (!terminatedInMemory && !terminatedInDb) {
+        const terminated = await terminateSessionCallback(sessionId);
+        if (!terminated) {
           return `Session "${sessionId}" not found.`;
         }
 
-        broadcastTermination(sessionId);
         return `Session "${sessionId}" terminated.`;
       } catch (error) {
         return `Error terminating session: ${error instanceof Error ? error.message : String(error)}`;
@@ -300,11 +284,15 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
 
   /**
    * Terminates all sessions of a specific type or all sessions.
-   * Checks both in-memory sessions and persisted agent sessions in database.
+   * Uses terminateSessionCallback for each session to ensure proper cleanup and broadcast.
    */
   const terminateAllSessions = tool(
     async ({ sessionType }: { sessionType?: 'terminal' | 'cursor' | 'claude' | 'opencode' | 'all' }) => {
       try {
+        if (!terminateSessionCallback) {
+          return 'Error: Terminate session callback not configured.';
+        }
+
         const typeFilter = sessionType === 'all' || !sessionType ? null : sessionType;
         const chatHistoryService = getChatHistoryService?.();
 
@@ -321,7 +309,13 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
           .filter(s => !inMemoryIds.has(s.sessionId)) // Not already in memory
           .filter(s => !typeFilter || s.sessionType === typeFilter);
 
-        if (inMemoryToTerminate.length === 0 && persistedToTerminate.length === 0) {
+        // Collect all session IDs to terminate
+        const sessionsToTerminate = [
+          ...inMemoryToTerminate.map(s => ({ id: s.id.value, type: s.type })),
+          ...persistedToTerminate.map(s => ({ id: s.sessionId, type: s.sessionType })),
+        ];
+
+        if (sessionsToTerminate.length === 0) {
           return typeFilter
             ? `No active ${typeFilter} sessions to terminate.`
             : 'No active sessions to terminate.';
@@ -330,31 +324,17 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
         const terminated: string[] = [];
         const errors: string[] = [];
 
-        // Terminate in-memory sessions
-        for (const session of inMemoryToTerminate) {
+        // Terminate each session using the shared callback
+        for (const session of sessionsToTerminate) {
           try {
-            // Terminate from agent session manager if it's an agent
-            if (isAgentType(session.type)) {
-              agentSessionManager.terminateSession(session.id.value);
+            const success = await terminateSessionCallback(session.id);
+            if (success) {
+              terminated.push(`${session.type}:${session.id}`);
+            } else {
+              errors.push(`${session.id}: Session not found`);
             }
-            await sessionManager.terminateSession(session.id);
-            // Also terminate in database
-            chatHistoryService?.terminateSession(session.id.value);
-            broadcastTermination(session.id.value);
-            terminated.push(`${session.type}:${session.id.value}`);
           } catch (error) {
-            errors.push(`${session.id.value}: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-
-        // Terminate persisted-only sessions (not in memory)
-        for (const session of persistedToTerminate) {
-          try {
-            chatHistoryService?.terminateSession(session.sessionId);
-            broadcastTermination(session.sessionId);
-            terminated.push(`${session.sessionType}:${session.sessionId}`);
-          } catch (error) {
-            errors.push(`${session.sessionId}: ${error instanceof Error ? error.message : String(error)}`);
+            errors.push(`${session.id}: ${error instanceof Error ? error.message : String(error)}`);
           }
         }
 
@@ -529,16 +509,43 @@ Use this tool when user asks to "open terminal", "create terminal", or similar r
     }
   );
 
+  /**
+   * Clears the supervisor agent's conversation context.
+   * Delegates to SupervisorAgent.clearContext() which handles:
+   * - In-memory history clearing
+   * - Persistent history clearing
+   * - Client notification broadcast
+   */
+  const clearContext = tool(
+    () => {
+      try {
+        if (clearSupervisorContext) {
+          clearSupervisorContext();
+        }
+        return 'Supervisor context cleared successfully. Conversation history has been reset.';
+      } catch (error) {
+        return `Error clearing context: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    },
+    {
+      name: 'clear_supervisor_context',
+      description:
+        'Clears the supervisor agent conversation context and history. Use when user asks to "clear context", "reset conversation", "start fresh", or similar requests.',
+      schema: z.object({}),
+    }
+  );
+
   return [
-    listSessions, 
-    listAvailableAgents, 
-    createAgentSession, 
-    createTerminalSession, 
-    terminateSession, 
-    terminateAllSessions, 
+    listSessions,
+    listAvailableAgents,
+    createAgentSession,
+    createTerminalSession,
+    terminateSession,
+    terminateAllSessions,
     getSessionInfo,
     listSessionsWithWorktrees,
     getWorktreeSessionSummary,
     terminateWorktreeSessions,
+    clearContext,
   ];
 }
