@@ -1261,12 +1261,7 @@ main() {
         exit 1
     fi
     
-    # Check if running as root directly
-    if [ "$EUID" -eq 0 ]; then
-        print_error "Please run this installer as a normal user (not as root)"
-        echo "  The installer will ask for sudo access when needed."
-        exit 1
-    fi
+    # Remove root check - allow running as root or normal user
     
     # Check existing installation
     if [ -d "$SPEECH_DIR" ]; then
