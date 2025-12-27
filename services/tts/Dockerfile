@@ -45,9 +45,11 @@ COPY README.md ./
 # Create virtual environment and install dependencies
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip setuptools wheel
 
 # Install PyTorch CPU version (smaller image size)
-RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu && \
+    pip install wheel setuptools
 
 # Install the application dependencies
 RUN pip install .
@@ -122,9 +124,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Create virtual environment
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --upgrade pip setuptools wheel
 
 # Install PyTorch with CUDA support
-RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
+RUN pip install torch --index-url https://download.pytorch.org/whl/cu121 && \
+    pip install wheel setuptools
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml ./
