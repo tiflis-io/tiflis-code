@@ -43,11 +43,38 @@ docker build --target cpu -t tiflis-code-tts:cpu .
 # Build CUDA image
 docker build --target cuda -t tiflis-code-tts:cuda .
 
-# Run CPU image
-docker run -p 8101:8101 tiflis-code-tts:cpu
+# Run CPU image (detached, auto-restart, static name)
+docker run -d \
+  --name tiflis-tts \
+  --restart unless-stopped \
+  -p 8101:8101 \
+  -v tts-models:/home/appuser/.cache/huggingface \
+  tiflis-code-tts:cpu
 
 # Run CUDA image (requires nvidia-container-toolkit)
-docker run --gpus all -p 8101:8101 tiflis-code-tts:cuda
+docker run -d \
+  --name tiflis-tts-gpu \
+  --restart unless-stopped \
+  --gpus all \
+  -p 8101:8101 \
+  -v tts-models:/home/appuser/.cache/huggingface \
+  tiflis-code-tts:cuda
+```
+
+#### Container Management
+
+```bash
+# View logs
+docker logs -f tiflis-tts
+
+# Stop container
+docker stop tiflis-tts
+
+# Remove container
+docker rm tiflis-tts
+
+# Restart container
+docker restart tiflis-tts
 ```
 
 ## Configuration

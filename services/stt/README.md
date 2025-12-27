@@ -40,11 +40,38 @@ docker build --target cpu -t tiflis-code-stt:cpu .
 # Build CUDA image
 docker build --target cuda -t tiflis-code-stt:cuda .
 
-# Run CPU image
-docker run -p 8100:8100 -v ./models:/app/models tiflis-code-stt:cpu
+# Run CPU image (detached, auto-restart, static name)
+docker run -d \
+  --name tiflis-stt \
+  --restart unless-stopped \
+  -p 8100:8100 \
+  -v stt-models:/app/models \
+  tiflis-code-stt:cpu
 
 # Run CUDA image (requires nvidia-container-toolkit)
-docker run --gpus all -p 8100:8100 -v ./models:/app/models tiflis-code-stt:cuda
+docker run -d \
+  --name tiflis-stt-gpu \
+  --restart unless-stopped \
+  --gpus all \
+  -p 8100:8100 \
+  -v stt-models:/app/models \
+  tiflis-code-stt:cuda
+```
+
+#### Container Management
+
+```bash
+# View logs
+docker logs -f tiflis-stt
+
+# Stop container
+docker stop tiflis-stt
+
+# Remove container
+docker rm tiflis-stt
+
+# Restart container
+docker restart tiflis-stt
 ```
 
 ## Configuration
