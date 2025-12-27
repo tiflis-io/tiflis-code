@@ -717,7 +717,7 @@ create_venv() {
         # Ensure uv is available
         export PATH="$HOME/.local/bin:$PATH"
         uv venv
-        source venv/bin/activate
+        source .venv/bin/activate
         
         # Install packages
         print_step "Installing Python packages (this may take a few minutes)..."
@@ -725,7 +725,7 @@ create_venv() {
         
         # Download spacy model
         print_step "Downloading spacy English model..."
-        venv/bin/python -m spacy download en_core_web_sm
+        .venv/bin/python -m spacy download en_core_web_sm
         
         print_success "Python environment and packages installed"
     else
@@ -772,7 +772,7 @@ TTS_LOG_LEVEL=INFO
 $hf_token_line
 
 # CUDA library path (if using pip-installed cuDNN)
-# LD_LIBRARY_PATH=/opt/tiflis-code/speech/venv/lib/$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")/site-packages/nvidia/cudnn/lib
+# LD_LIBRARY_PATH=/opt/tiflis-code/speech/.venv/lib/$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")/site-packages/nvidia/cudnn/lib
 EOF
         
         chmod 600 "$SPEECH_DIR/.env"
@@ -798,7 +798,7 @@ User=root
 Group=root
 WorkingDirectory=$SPEECH_DIR
 EnvironmentFile=$SPEECH_DIR/.env
-ExecStart=$SPEECH_DIR/venv/bin/python -m uvicorn src.stt.main:app --host \${STT_HOST:-0.0.0.0} --port \${STT_PORT:-8100}
+ExecStart=$SPEECH_DIR/.venv/bin/python -m uvicorn src.stt.main:app --host \${STT_HOST:-0.0.0.0} --port \${STT_PORT:-8100}
 Restart=always
 RestartSec=10
 StandardOutput=journal
@@ -828,7 +828,7 @@ User=root
 Group=root
 WorkingDirectory=$SPEECH_DIR
 EnvironmentFile=$SPEECH_DIR/.env
-ExecStart=$SPEECH_DIR/venv/bin/python -m uvicorn src.tts.main:app --host \${TTS_HOST:-0.0.0.0} --port \${TTS_PORT:-8101}
+ExecStart=$SPEECH_DIR/.venv/bin/python -m uvicorn src.tts.main:app --host \${TTS_HOST:-0.0.0.0} --port \${TTS_PORT:-8101}
 Restart=always
 RestartSec=10
 StandardOutput=journal
