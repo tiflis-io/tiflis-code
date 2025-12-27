@@ -9,9 +9,6 @@
 #   curl -fsSL https://raw.githubusercontent.com/tiflis-io/tiflis-code/main/scripts/install-speech-services.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/tiflis-io/tiflis-code/main/scripts/install-speech-services.sh | bash -s -- --dry-run
 #
-
-# DEBUG: Script started!
-echo "DEBUG: Script execution started at $(date)" > /tmp/tiflis_debug.log
 # Environment variables:
 #   STT_MODEL          - Whisper model (default: large-v3)
 #   TTS_VOICE          - TTS voice (default: af_heart)
@@ -238,9 +235,6 @@ check_python() {
     local required="${1:-3.11}"
     print_step "Checking Python..."
     
-    # Simple debug that doesn't rely on stderr redirection
-    echo "DEBUG: Python detection started" > /tmp/tiflis_debug.log
-    
     # Check for available Python versions in order of preference
     local python_version=""
     local python_cmd=""
@@ -248,17 +242,11 @@ check_python() {
     # Try specific versions in order of preference
     # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
     for version in "3.13" "3.12" "3.11"; do
-        echo "DEBUG: Checking python$version..." >> /tmp/tiflis_debug.log
         if command -v "python$version" &>/dev/null; then
-            echo "DEBUG: Found python$version command" >> /tmp/tiflis_debug.log
             # Python --version outputs to stderr on some systems
             local full_version="$(python$version --version 2>&1)"
-            local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
             local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
             local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
-            
-            # Debug info
-            echo "DEBUG: Checking python$version -> $full_version (major=$major, minor=$minor)" >&2
             
             # Check if version >= 3.11
             if [ -n "$major" ] && [ -n "$minor" ]; then
@@ -274,17 +262,11 @@ check_python() {
     done
     
     # Check if python3 is available and meets requirements
-    echo "DEBUG: Checking python3 command..." >> /tmp/tiflis_debug.log
     if command -v python3 &>/dev/null; then
-        echo "DEBUG: Found python3 command" >> /tmp/tiflis_debug.log
         # Python --version outputs to stderr on some systems
         local full_version="$(python3 --version 2>&1)"
-        local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
         local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
         local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
-        
-        # Debug info
-        echo "DEBUG: Checking python3 -> $full_version (major=$major, minor=$minor)" >&2
         
         # Check if version >= 3.11
         if [ -n "$major" ] && [ -n "$minor" ]; then
@@ -317,16 +299,13 @@ check_python() {
             fi
         fi
         
-        # Check again after installation
+# Check again after installation
         for version in "3.13" "3.12" "3.11"; do
             if command -v "python$version" &>/dev/null; then
                 # Python --version outputs to stderr on some systems
                 local full_version="$(python$version --version 2>&1)"
                 local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
                 local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
-                
-                # Debug info
-                echo "DEBUG: Post-install check python$version -> $full_version (major=$major, minor=$minor)" >&2
                 
                 # Check if version >= 3.11
                 if [ -n "$major" ] && [ -n "$minor" ]; then
@@ -336,9 +315,7 @@ check_python() {
                         PYTHON_CMD="$python_cmd"
                         print_success "$python_version installed"
                         return 0
-fi
-    
-    echo "DEBUG: No suitable Python version found" >&2
+                    fi
                 fi
             fi
         done
@@ -953,7 +930,6 @@ print_success_summary() {
 # Main Installation
 # ─────────────────────────────────────────────────────────────
 main() {
-    echo "DEBUG: Entering main() function at $(date)" >> /tmp/tiflis_debug.log
     print_banner
     
     # Pre-flight checks
@@ -1005,10 +981,7 @@ main() {
     # Check dependencies
     if [ "${SKIP_DEPS:-}" != "true" ]; then
         check_sudo_access
-        echo "DEBUG: About to call check_python at $(date)" >> /tmp/tiflis_debug.log
-        print_step "Checking Python..." >> /tmp/tiflis_debug.log
         check_python
-        echo "DEBUG: Returned from check_python at $(date)" >> /tmp/tiflis_debug.log
         check_system_deps
         
         if [ "$detected_gpu" = "nvidia" ]; then
