@@ -611,9 +611,30 @@ check_cuda() {
             # Install CUDA 12.4 (compatible with RTX 2060 and newer)
             print_info "Installing CUDA 12.4 toolkit..."
             # Workaround for nsight-systems dependency issue
-            sudo apt-get install -y libtinfo5
-            sudo apt-get install -y cuda-toolkit-12-4 || \
-            sudo apt-get install -y cuda-toolkit-12-4 --fix-missing
+            # Try multiple approaches to install required dependencies
+            print_info "Installing required libraries for CUDA..."
+            
+            # First try direct libtinfo5 installation
+            if ! sudo apt-get install -y libtinfo5 2>/dev/null; then
+                # If libtinfo5 fails, try alternatives
+                print_info "libtinfo5 not available, trying alternatives..."
+                sudo apt-get install -y libncurses5 2>/dev/null || true
+                sudo apt-get install -y libncursesw5 2>/dev/null || true
+                # Create symlink if needed
+                sudo ln -sf /lib/x86_64-linux-gnu/libncurses.so.6 /lib/x86_64-linux-gnu/libtinfo5.so.5 2>/dev/null || true
+            fi
+            
+            # Try installing CUDA toolkit with dependency fixes
+            if ! sudo apt-get install -y cuda-toolkit-12-4; then
+                print_info "Standard CUDA installation failed, trying with fixes..."
+                # Try with --fix-missing
+                sudo apt-get install -y cuda-toolkit-12-4 --fix-missing || (
+                    print_info "Attempting to install individual CUDA components..."
+                    # Install core components without problematic visual tools
+                    sudo apt-get install -y cuda-compiler-12-4 cuda-runtime-12-4 cuda-cudart-12-4 cuda-cufft-12-4 cuda-cublas-12-4 cuda-cusolver-12-4 cuda-cusparse-12-4 cuda-nvrtc-12-4 cuda-nvtx-12-4 || \
+                    print_error "CUDA installation failed, will try alternative approach"
+                )
+            fi
             ;;
         *)
             # Fallback for other Ubuntu versions
