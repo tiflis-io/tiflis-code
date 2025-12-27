@@ -610,7 +610,10 @@ check_cuda() {
             
             # Install CUDA 12.4 (compatible with RTX 2060 and newer)
             print_info "Installing CUDA 12.4 toolkit..."
-            sudo apt-get install -y cuda-toolkit-12-4
+            # Workaround for nsight-systems dependency issue
+            sudo apt-get install -y libtinfo5
+            sudo apt-get install -y cuda-toolkit-12-4 || \
+            sudo apt-get install -y cuda-toolkit-12-4 --fix-missing
             ;;
         *)
             # Fallback for other Ubuntu versions
