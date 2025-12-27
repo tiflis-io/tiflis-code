@@ -211,14 +211,38 @@ done
 detect_gpu() {
     local os="$(detect_os)"
     
-    # Check for NVIDIA GPU
-    if command -v nvidia-smi &>/dev/null; then
-        if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | grep -qi "nvidia\|geforce\|rtx\|gtx\|quadro\|tesla"; then
+    # Method 1: Check for NVIDIA GPU hardware first (most reliable)
+    if command -v lspci &>/dev/null; then
+        if lspci 2>/dev/null | grep -i "nvidia" | grep -i "vga\|3d\|display" >/dev/null; then
             echo "nvidia"
             return
         fi
     fi
     
+    # Method 2: Check if nvidia-smi command exists
+    if command -v nvidia-smi &>/dev/null; then
+        # Test if nvidia-smi actually works (not just exists)
+        if timeout 10 nvidia-smi &>/dev/null; then
+            if nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | grep -qi "nvidia\|geforce\|rtx\|gtx\|quadro\|tesla"; then
+                echo "nvidia"
+                return
+            fi
+        fi
+    fi
+    
+    # Method 3: Check for NVIDIA kernel modules
+    if lsmod 2>/dev/null | grep -q "^nvidia"; then
+        echo "nvidia"
+        return
+    fi
+    
+    # Method 4: Check common NVIDIA device paths
+    if [ -d /proc/driver/nvidia ] || [ -c /dev/nvidia0 ]; then
+        echo "nvidia"
+        return
+    fi
+    
+    # Fallback: CPU only
     echo "cpu"
 }
 
@@ -1265,6 +1289,25 @@ main() {
     fi
     
     print_success "Detected GPU: $gpu_name"
+    
+    # Warn if no GPU detected for speech services
+    if [ "$detected_gpu" = "cpu" ]; then
+        print_warning "⚠️  No GPU detected - speech services will run on CPU only"
+        print_warning "This will be significantly slower than GPU acceleration"
+        echo "" >&2
+        print_info "If you have an NVIDIA GPU (RTX 2060+ recommended):"
+        print_info "1. Ensure you're running on Ubuntu/Linux, not macOS"
+        print_info "2. Check NVIDIA GPU is properly installed: lspci | grep -i nvidia"
+        print_info "3. Install NVIDIA drivers: sudo ubuntu-drivers autoinstall"
+        echo "" >&2
+        
+        # Ask for confirmation to continue with CPU-only
+        if ! confirm "Continue with CPU-only installation (much slower)?"; then
+            print_info "Installation cancelled"
+            print_info "Please run on a system with NVIDIA GPU for GPU acceleration"
+            exit 0
+        fi
+    fi
     
     # Check dependencies
     if [ "${SKIP_DEPS:-}" != "true" ]; then
