@@ -186,6 +186,10 @@ while [[ $# -gt 0 ]]; do
             echo "  TTS_PORT           TTS port (default: 8101)"
             echo "  HF_TOKEN           HuggingFace token (optional)"
             echo "  SKIP_DEPS          Skip dependency checks (debug)"
+            echo ""
+            echo "Python Requirements:"
+            echo "  - Minimum: Python 3.11 (required by STT service)"
+            echo "  - Preferred: Python 3.12+ (better performance)"
             exit 0
             ;;
         *)
@@ -231,12 +235,13 @@ check_python() {
     local required="${1:-3.11}"
     print_step "Checking Python..."
     
-    # Check for available Python versions
+    # Check for available Python versions in order of preference
     local python_version=""
     local python_cmd=""
     
     # Try specific versions in order of preference
-    for version in "3.11" "3.12" "3.13"; do
+    # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
+    for version in "3.12" "3.13" "3.11"; do
         if command -v "python$version" &>/dev/null; then
             local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
             if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
@@ -261,7 +266,7 @@ check_python() {
         fi
     fi
     
-    print_warning "Python 3.11+ not found"
+    print_warning "Python 3.11+ not found (required by STT service)"
     if confirm "Install Python 3.11+?"; then
         print_step "Installing Python 3.11+..."
         if [ "$DRY_RUN" = "false" ]; then
@@ -274,14 +279,14 @@ check_python() {
                 sudo apt-get update
                 sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
             else
-                # Ubuntu 25.04+ has Python 3.12+ in main repos
+                # Ubuntu 25.04+ has Python 3.12+ in main repos (preferred over 3.11)
                 sudo apt-get update
                 sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
             fi
         fi
         
         # Check again after installation
-        for version in "3.11" "3.12" "3.13"; do
+        for version in "3.12" "3.13" "3.11"; do
             if command -v "python$version" &>/dev/null; then
                 local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
                 if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
@@ -297,7 +302,7 @@ check_python() {
         print_error "Python installation failed"
         exit 1
     else
-        print_error "Python 3.11+ is required"
+        print_error "Python 3.11+ is required for STT service compatibility"
         exit 1
     fi
 }
