@@ -716,7 +716,7 @@ create_venv() {
         
         # Ensure uv is available
         export PATH="$HOME/.local/bin:$PATH"
-        uv venv
+        uv venv --force
         source .venv/bin/activate
         
         # Install packages
