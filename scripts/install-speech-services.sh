@@ -165,6 +165,7 @@ print_banner() {
 # Parse arguments
 # ─────────────────────────────────────────────────────────────
 DRY_RUN=false
+PYTHON_CMD=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)
@@ -230,25 +231,73 @@ check_python() {
     local required="${1:-3.11}"
     print_step "Checking Python..."
     
-    # Check if python3.11 exists
-    if command -v python3.11 &>/dev/null; then
-        local ver="$(python3.11 --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+    # Check for available Python versions
+    local python_version=""
+    local python_cmd=""
+    
+    # Try specific versions in order of preference
+    for version in "3.11" "3.12" "3.13"; do
+        if command -v "python$version" &>/dev/null; then
+            local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+            if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
+                python_version="$(python$version --version)"
+                python_cmd="python$version"
+                print_success "$python_version detected"
+                PYTHON_CMD="$python_cmd"
+                return 0
+            fi
+        fi
+    done
+    
+    # Check if python3 is available and meets requirements
+    if command -v python3 &>/dev/null; then
+        local ver="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
         if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
-            print_success "Python $(python3.11 --version) detected"
+            python_version="$(python3 --version)"
+            python_cmd="python3"
+            print_success "$python_version detected"
+            PYTHON_CMD="$python_cmd"
             return 0
         fi
     fi
     
     print_warning "Python 3.11+ not found"
-    if confirm "Install Python 3.11?"; then
-        print_step "Installing Python 3.11..."
+    if confirm "Install Python 3.11+?"; then
+        print_step "Installing Python 3.11+..."
         if [ "$DRY_RUN" = "false" ]; then
-            sudo apt-get update
-            sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
+            # Add deadsnakes PPA for older Ubuntu versions
+            local ubuntu_version=$(lsb_release -rs)
+            if [[ $(echo "$ubuntu_version < 25.04" | bc -l) -eq 1 ]]; then
+                sudo apt-get update
+                sudo apt-get install -y software-properties-common
+                sudo add-apt-repository -y ppa:deadsnakes/ppa
+                sudo apt-get update
+                sudo apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip
+            else
+                # Ubuntu 25.04+ has Python 3.12+ in main repos
+                sudo apt-get update
+                sudo apt-get install -y python3.12 python3.12-venv python3.12-dev python3-pip
+            fi
         fi
-        print_success "Python 3.11 installed"
+        
+        # Check again after installation
+        for version in "3.11" "3.12" "3.13"; do
+            if command -v "python$version" &>/dev/null; then
+                local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+                if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
+                    python_version="$(python$version --version)"
+                    python_cmd="python$version"
+                    PYTHON_CMD="$python_cmd"
+                    print_success "$python_version installed"
+                    return 0
+                fi
+            fi
+        fi
+        
+        print_error "Python installation failed"
+        exit 1
     else
-        print_error "Python 3.11 is required"
+        print_error "Python 3.11+ is required"
         exit 1
     fi
 }
@@ -697,7 +746,7 @@ TTS_LOG_LEVEL=INFO
 $hf_token_line
 
 # CUDA library path (if using pip-installed cuDNN)
-# LD_LIBRARY_PATH=/opt/tiflis-code/speech/venv/lib/python3.11/site-packages/nvidia/cudnn/lib
+# LD_LIBRARY_PATH=/opt/tiflis-code/speech/venv/lib/$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")/site-packages/nvidia/cudnn/lib
 EOF
         
         chmod 600 "$SPEECH_DIR/.env"
