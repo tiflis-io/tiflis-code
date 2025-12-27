@@ -9,6 +9,9 @@
 #   curl -fsSL https://raw.githubusercontent.com/tiflis-io/tiflis-code/main/scripts/install-speech-services.sh | bash
 #   curl -fsSL https://raw.githubusercontent.com/tiflis-io/tiflis-code/main/scripts/install-speech-services.sh | bash -s -- --dry-run
 #
+
+# DEBUG: Script started!
+echo "DEBUG: Script execution started at $(date)" > /tmp/tiflis_debug.log
 # Environment variables:
 #   STT_MODEL          - Whisper model (default: large-v3)
 #   TTS_VOICE          - TTS voice (default: af_heart)
@@ -950,6 +953,7 @@ print_success_summary() {
 # Main Installation
 # ─────────────────────────────────────────────────────────────
 main() {
+    echo "DEBUG: Entering main() function at $(date)" >> /tmp/tiflis_debug.log
     print_banner
     
     # Pre-flight checks
@@ -1001,9 +1005,10 @@ main() {
     # Check dependencies
     if [ "${SKIP_DEPS:-}" != "true" ]; then
         check_sudo_access
-        echo "DEBUG: About to call check_python" > /tmp/tiflis_debug.log
+        echo "DEBUG: About to call check_python at $(date)" >> /tmp/tiflis_debug.log
+        print_step "Checking Python..." >> /tmp/tiflis_debug.log
         check_python
-        echo "DEBUG: Returned from check_python" >> /tmp/tiflis_debug.log
+        echo "DEBUG: Returned from check_python at $(date)" >> /tmp/tiflis_debug.log
         check_system_deps
         
         if [ "$detected_gpu" = "nvidia" ]; then
