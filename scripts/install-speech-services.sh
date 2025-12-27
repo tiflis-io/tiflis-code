@@ -419,27 +419,49 @@ check_system_deps() {
 check_nvidia_driver() {
     print_step "Checking NVIDIA driver..."
     
+    # Test if nvidia-smi actually works (not just exists)
+    local nvidia_smi_working=false
     if command -v nvidia-smi &>/dev/null; then
-        local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
-        local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
-        print_success "NVIDIA driver $driver_version detected ($gpu_name)"
-        
-        # Verify GPU is actually accessible
-        if ! nvidia-smi -L &>/dev/null; then
-            print_error "NVIDIA driver installed but GPU not accessible"
-            return 1
+        # Try running nvidia-smi with timeout to catch hanging/corrupted installations
+        if timeout 10 nvidia-smi &>/dev/null; then
+            local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
+            local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
+            print_success "NVIDIA driver $driver_version detected ($gpu_name)"
+            
+            # Additional verification - check if GPU list works
+            if nvidia-smi -L &>/dev/null; then
+                nvidia_smi_working=true
+            else
+                print_error "NVIDIA driver partially working but GPU list failed"
+            fi
+        else
+            local nvidia_error=$(nvidia-smi 2>&1 | head -3 || echo "Unknown error")
+            print_warning "nvidia-smi command failed: $nvidia_error"
+            print_error "NVIDIA driver installation is broken or incomplete"
+            
+            # Check what's actually wrong
+            if lsmod 2>/dev/null | grep -q "^nvidia"; then
+                print_info "NVIDIA kernel module is loaded but GPU communication fails"
+                print_info "This usually indicates driver corruption or version mismatch"
+            else
+                print_info "NVIDIA kernel module is NOT loaded"
+                print_info "Driver installation incomplete - need full reinstallation"
+            fi
         fi
+    fi
+    
+    # If nvidia-smi is working, we're done
+    if [ "$nvidia_smi_working" = "true" ]; then
         return 0
     fi
     
-    # Check if NVIDIA GPU hardware exists
+    # Check if we have NVIDIA GPU hardware
     if ! lspci 2>/dev/null | grep -i nvidia >/dev/null; then
         print_error "No NVIDIA GPU detected. GPU acceleration requires an NVIDIA graphics card."
-        print_info "If you have an NVIDIA GPU, it may not be detected properly."
         return 1
     fi
     
-    print_warning "NVIDIA GPU detected but driver not installed"
+    print_warning "NVIDIA GPU detected but working driver not installed"
     
     # Auto-install driver based on Ubuntu version
     local ubuntu_version=$(lsb_release -rs 2>/dev/null || echo "unknown")
@@ -447,6 +469,16 @@ check_nvidia_driver() {
     
     print_step "Installing NVIDIA drivers automatically..."
     if [ "$DRY_RUN" = "false" ]; then
+        print_info "Cleaning up any broken NVIDIA installations..."
+        
+        # Remove any broken NVIDIA packages first
+        sudo apt-get purge -y nvidia-* cuda-* 2>/dev/null || true
+        sudo apt-get autoremove -y 2>/dev/null || true
+        sudo apt-get autoclean
+        
+        # Unload broken modules
+        sudo modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia 2>/dev/null || true
+        
         # Add graphics drivers PPA for latest drivers if needed
         case "$ubuntu_version" in
             "25.04"|"24.10"|"24.04"|"22.04")
@@ -465,9 +497,6 @@ check_nvidia_driver() {
                 ;;
         esac
         
-        # Configure NVIDIA drivers
-        sudo modprobe nvidia 2>/dev/null || true
-        
         print_success "NVIDIA drivers installed"
     else
         print_warning "[DRY RUN] Would install NVIDIA drivers"
@@ -477,25 +506,41 @@ check_nvidia_driver() {
     if [ "$DRY_RUN" = "false" ]; then
         print_step "Verifying driver installation..."
         
-        # Try to load nvidia module
-        if sudo modprobe nvidia 2>/dev/null && sleep 2 && command -v nvidia-smi &>/dev/null; then
-            local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
-            local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
-            print_success "NVIDIA driver $driver_version successfully installed ($gpu_name)"
+        # Clean up any existing NVIDIA modules first
+        sudo modprobe -r nvidia_uvm nvidia_drm nvidia_modeset nvidia 2>/dev/null || true
+        sleep 2
+        
+        # Try to load nvidia module and test it
+        if sudo modprobe nvidia 2>/dev/null; then
+            sleep 3  # Give the module time to initialize
             
-            # Mark installation complete
-            NVIDIA_DRIVER_INSTALLED=1
-            return 0
-        else
-            print_warning "Driver installation requires system reboot to activate"
-            print_info "After reboot, NVIDIA GPU acceleration will be available"
-            print_success "Installation completed - please reboot and run:"
-            print_info "  curl -fsSL \"$INSTALL_URL\" | bash"
-            
-            # Create marker to indicate driver was installed
-            sudo touch /opt/tiflis-code/speech/.nvidia_driver_installed 2>/dev/null || true
-            exit 0
+            # Test if nvidia-smi actually works (not just exists)
+            if timeout 15 nvidia-smi &>/dev/null; then
+                local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
+                local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
+                print_success "NVIDIA driver $driver_version successfully installed and working ($gpu_name)"
+                
+                # Test GPU list to be sure
+                if nvidia-smi -L &>/dev/null; then
+                    # Mark installation complete
+                    NVIDIA_DRIVER_INSTALLED=1
+                    return 0
+                else
+                    print_warning "Driver installed but GPU list failed - may need reboot"
+                fi
+            fi
         fi
+        
+        # If we get here, installation didn't work properly
+        print_warning "Driver installation requires system reboot to activate"
+        print_info "This is normal for fresh NVIDIA driver installations."
+        print_info "After reboot, NVIDIA GPU acceleration will be available"
+        print_success "Installation completed - please reboot and run:"
+        print_info "  curl -fsSL \"$INSTALL_URL\" | bash"
+        
+        # Create marker to indicate driver was installed
+        sudo touch /opt/tiflis-code/speech/.nvidia_driver_installed 2>/dev/null || true
+        exit 0
     fi
     
     if [ "$DRY_RUN" != "false" ]; then
@@ -1177,13 +1222,25 @@ main() {
             print_info "Detected post-reboot scenario (NVIDIA driver was installed)"
             print_info "Verifying driver activation..."
             
-            if command -v nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; then
-                print_success "NVIDIA driver activated successfully!"
+            # Test nvidia-smi properly - it might exist but fail
+            if timeout 15 nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; then
+                local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
+                print_success "NVIDIA driver $driver_version activated successfully!"
                 # Remove the marker file
                 sudo rm -f "$SPEECH_DIR/.nvidia_driver_installed" 2>/dev/null || true
             else
+                # Get the actual error message
+                local nvidia_error=$(timeout 10 nvidia-smi 2>&1 | head -3 || echo " timeout or unknown error")
+                echo "" >&2
                 print_error "NVIDIA driver still not working after reboot"
-                print_info "Please run: nvidia-smi to verify driver installation"
+                print_error "Error details: $nvidia_error"
+                echo "" >&2
+                print_info "Troubleshooting steps:"
+                print_info "1. Run 'nvidia-smi' to see the full error"
+                print_info "2. Try: sudo ubuntu-drivers autoinstall && sudo reboot"
+                print_info "3. Or: sudo apt-get purge nvidia-* && sudo apt-get install nvidia-driver-535"
+                echo "" >&2
+                print_error "Cannot continue without working NVIDIA driver"
                 exit 1
             fi
         else
