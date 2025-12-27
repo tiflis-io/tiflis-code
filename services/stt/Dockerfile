@@ -38,6 +38,7 @@ FROM base AS cpu
 
 # Copy project files
 COPY pyproject.toml ./
+COPY README.md ./
 COPY src/ ./src/
 
 # Install dependencies with CPU extras
@@ -98,6 +99,7 @@ RUN useradd --create-home --shell /bin/bash app
 
 # Copy project files
 COPY pyproject.toml ./
+COPY README.md ./
 COPY src/ ./src/
 
 # Install dependencies with CUDA extras

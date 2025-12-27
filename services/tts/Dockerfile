@@ -40,6 +40,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Copy only dependency files first for better layer caching
 COPY pyproject.toml ./
+COPY README.md ./
 
 # Create virtual environment and install dependencies
 RUN python -m venv /opt/venv
@@ -127,6 +128,7 @@ RUN pip install torch --index-url https://download.pytorch.org/whl/cu121
 
 # Copy pyproject.toml and install dependencies
 COPY pyproject.toml ./
+COPY README.md ./
 RUN pip install .
 
 # Download spacy model required by Kokoro
