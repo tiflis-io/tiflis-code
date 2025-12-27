@@ -235,6 +235,8 @@ check_python() {
     local required="${1:-3.11}"
     print_step "Checking Python..."
     
+    echo "DEBUG: Starting Python detection..." >&2
+    
     # Check for available Python versions in order of preference
     local python_version=""
     local python_cmd=""
@@ -242,7 +244,9 @@ check_python() {
     # Try specific versions in order of preference
     # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
     for version in "3.13" "3.12" "3.11"; do
+        echo "DEBUG: Checking if command python$version exists..." >&2
         if command -v "python$version" &>/dev/null; then
+            echo "DEBUG: Found python$version command" >&2
             # Python --version outputs to stderr on some systems
             local full_version="$(python$version --version 2>&1)"
             local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
@@ -266,7 +270,9 @@ check_python() {
     done
     
     # Check if python3 is available and meets requirements
+    echo "DEBUG: Checking if command python3 exists..." >&2
     if command -v python3 &>/dev/null; then
+        echo "DEBUG: Found python3 command" >&2
         # Python --version outputs to stderr on some systems
         local full_version="$(python3 --version 2>&1)"
         local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
@@ -326,7 +332,9 @@ check_python() {
                         PYTHON_CMD="$python_cmd"
                         print_success "$python_version installed"
                         return 0
-                    fi
+fi
+    
+    echo "DEBUG: No suitable Python version found" >&2
                 fi
             fi
         done
