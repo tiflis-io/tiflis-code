@@ -235,7 +235,8 @@ check_python() {
     local required="${1:-3.11}"
     print_step "Checking Python..."
     
-    echo "DEBUG: Starting Python detection..." >&2
+    # Simple debug that doesn't rely on stderr redirection
+    echo "DEBUG: Python detection started" > /tmp/tiflis_debug.log
     
     # Check for available Python versions in order of preference
     local python_version=""
@@ -244,9 +245,9 @@ check_python() {
     # Try specific versions in order of preference
     # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
     for version in "3.13" "3.12" "3.11"; do
-        echo "DEBUG: Checking if command python$version exists..." >&2
+        echo "DEBUG: Checking python$version..." >> /tmp/tiflis_debug.log
         if command -v "python$version" &>/dev/null; then
-            echo "DEBUG: Found python$version command" >&2
+            echo "DEBUG: Found python$version command" >> /tmp/tiflis_debug.log
             # Python --version outputs to stderr on some systems
             local full_version="$(python$version --version 2>&1)"
             local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
@@ -270,9 +271,9 @@ check_python() {
     done
     
     # Check if python3 is available and meets requirements
-    echo "DEBUG: Checking if command python3 exists..." >&2
+    echo "DEBUG: Checking python3 command..." >> /tmp/tiflis_debug.log
     if command -v python3 &>/dev/null; then
-        echo "DEBUG: Found python3 command" >&2
+        echo "DEBUG: Found python3 command" >> /tmp/tiflis_debug.log
         # Python --version outputs to stderr on some systems
         local full_version="$(python3 --version 2>&1)"
         local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
@@ -1000,7 +1001,9 @@ main() {
     # Check dependencies
     if [ "${SKIP_DEPS:-}" != "true" ]; then
         check_sudo_access
+        echo "DEBUG: About to call check_python" > /tmp/tiflis_debug.log
         check_python
+        echo "DEBUG: Returned from check_python" >> /tmp/tiflis_debug.log
         check_system_deps
         
         if [ "$detected_gpu" = "nvidia" ]; then
