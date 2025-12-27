@@ -46,6 +46,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8100:8100 \
   -v stt-models:/app/models \
+  -e HF_TOKEN=your_huggingface_token_here \
   tiflis-code-stt:cpu
 
 # Run CUDA image (requires nvidia-container-toolkit)
@@ -55,6 +56,7 @@ docker run -d \
   --gpus all \
   -p 8100:8100 \
   -v stt-models:/app/models \
+  -e HF_TOKEN=your_huggingface_token_here \
   tiflis-code-stt:cuda
 ```
 

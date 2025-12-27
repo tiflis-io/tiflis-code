@@ -49,6 +49,7 @@ docker run -d \
   --restart unless-stopped \
   -p 8101:8101 \
   -v tts-models:/home/appuser/.cache/huggingface \
+  -e HF_TOKEN=your_huggingface_token_here \
   tiflis-code-tts:cpu
 
 # Run CUDA image (requires nvidia-container-toolkit)
@@ -58,6 +59,7 @@ docker run -d \
   --gpus all \
   -p 8101:8101 \
   -v tts-models:/home/appuser/.cache/huggingface \
+  -e HF_TOKEN=your_huggingface_token_here \
   tiflis-code-tts:cuda
 ```
 
