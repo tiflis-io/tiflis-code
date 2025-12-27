@@ -732,15 +732,19 @@ except Exception as e:
         sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
     else
         print_info "Installing cuDNN 9 meta-packages..."
+        # Install specific CUDA 12 versions
+        sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12 || \
+        # Try CUDA 13 versions
+        sudo apt-get install -y libcudnn9-cuda-13 libcudnn9-dev-cuda-13 || \
+        # Try legacy cuDNN 8 versions
         sudo apt-get install -y libcudnn8-cuda-12 libcudnn8-dev-cuda-12 || \
-        sudo apt-get install -y libcudnn9 libcudnn9-dev || \
-        sudo apt-get install -y libcudnn libcudnn-dev
-        
-        if [ $? -ne 0 ]; then
+        sudo apt-get install -y libcudnn8-cuda-11 libcudnn8-dev-cuda-11 || \
+        # Try meta-packages
+        sudo apt-get install -y libcudnn libcudnn-dev || (
             print_warning "cuDNN installation from repositories failed"
             print_info "faster-whisper may still work with reduced performance"
             return 0  # Don't fail the entire installation
-        fi
+        )
     fi
     
     # Update library cache
