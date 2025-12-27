@@ -356,13 +356,16 @@ check_python_dev_headers() {
             print_step "Installing Python development headers..."
             if [ "$DRY_RUN" = "false" ]; then
                 # Try to install the appropriate dev package
-                if command -v "python${major_minor}-dev" &>/dev/null; then
-                    sudo apt-get install -y "python${major_minor}-dev"
-                elif command -v "${PYTHON_CMD}-dev" &>/dev/null; then
-                    sudo apt-get install -y "${PYTHON_CMD}-dev"
+                if [ "$major_minor" = "3.13" ]; then
+                    # Ubuntu 25.04+ has python3.13-dev
+                    sudo apt-get install -y python3.13-dev
+                elif [ "$major_minor" = "3.12" ]; then
+                    sudo apt-get install -y python3.12-dev
+                elif [ "$major_minor" = "3.11" ]; then
+                    sudo apt-get install -y python3.11-dev
                 else
-                    # Fallback to common names
-                    sudo apt-get install -y python3-dev python3.13-dev python3.12-dev python3.11-dev
+                    # Generic fallback
+                    sudo apt-get install -y python3-dev
                 fi
             fi
             print_success "Python development headers installed"
