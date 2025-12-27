@@ -628,12 +628,16 @@ check_cuda() {
             if ! sudo apt-get install -y cuda-toolkit-12-4; then
                 print_info "Standard CUDA installation failed, trying with fixes..."
                 # Try with --fix-missing
-                sudo apt-get install -y cuda-toolkit-12-4 --fix-missing || (
-                    print_info "Attempting to install individual CUDA components..."
-                    # Install core components without problematic visual tools
-                    sudo apt-get install -y cuda-compiler-12-4 cuda-runtime-12-4 cuda-cudart-12-4 cuda-cufft-12-4 cuda-cublas-12-4 cuda-cusolver-12-4 cuda-cusparse-12-4 cuda-nvrtc-12-4 cuda-nvtx-12-4 || \
-                    print_error "CUDA installation failed, will try alternative approach"
-                )
+                if ! sudo apt-get install -y cuda-toolkit-12-4 --fix-missing; then
+                    print_info "Attempting to install core CUDA components without visual tools..."
+                    # Install minimal CUDA runtime and compiler without problematic dependencies
+                    sudo apt-get install -y cuda-cudart-12-4 cuda-compiler-12-4 cuda-runtime-12-4 cuda-nvrtc-12-4 || (
+                        print_info "Installing minimum CUDA toolkit from alternative source..."
+                        # Fallback: Install older CUDA version that doesn't have this issue
+                        sudo apt-get install -y cuda-11-8 cuda-compiler-11-8 cuda-cudart-11-8 || \
+                        print_error "CUDA installation failed, speech will run on CPU only"
+                    )
+                fi
             fi
             ;;
         *)
@@ -646,7 +650,7 @@ check_cuda() {
     
     # Add CUDA to environment for current session
     export PATH=/usr/local/cuda/bin:$PATH
-    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:${LD_LIBRARY_PATH:-}
     
     # Persist CUDA environment variables
     sudo bash -c 'cat > /etc/profile.d/cuda.sh << "EOF"
