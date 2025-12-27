@@ -328,6 +328,51 @@ check_python() {
     fi
 }
 
+check_python_dev_headers() {
+    print_step "Checking Python development headers..."
+    
+    local python_version="$($PYTHON_CMD --version 2>&1)"
+    local major_minor="$(echo "$python_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+    
+    # Check for Python.h
+    local python_paths=(
+        "/usr/include/python${major_minor}/Python.h"
+        "/usr/include/${PYTHON_CMD}/Python.h"
+        "/usr/local/include/python${major_minor}/Python.h"
+    )
+    
+    local found=false
+    for path in "${python_paths[@]}"; do
+        if [ -f "$path" ]; then
+            print_success "Python development headers found ($path)"
+            found=true
+            break
+        fi
+    done
+    
+    if [ "$found" = false ]; then
+        print_warning "Python development headers not found"
+        if confirm "Install Python development headers?"; then
+            print_step "Installing Python development headers..."
+            if [ "$DRY_RUN" = "false" ]; then
+                # Try to install the appropriate dev package
+                if command -v "python${major_minor}-dev" &>/dev/null; then
+                    sudo apt-get install -y "python${major_minor}-dev"
+                elif command -v "${PYTHON_CMD}-dev" &>/dev/null; then
+                    sudo apt-get install -y "${PYTHON_CMD}-dev"
+                else
+                    # Fallback to common names
+                    sudo apt-get install -y python3-dev python3.13-dev python3.12-dev python3.11-dev
+                fi
+            fi
+            print_success "Python development headers installed"
+        else
+            print_error "Python development headers are required for some speech service dependencies"
+            exit 1
+        fi
+    fi
+}
+
 check_system_deps() {
     print_step "Checking system dependencies..."
     
@@ -988,6 +1033,7 @@ main() {
     if [ "${SKIP_DEPS:-}" != "true" ]; then
         check_sudo_access
         check_python
+        check_python_dev_headers
         check_system_deps
         
         if [ "$detected_gpu" = "nvidia" ]; then
