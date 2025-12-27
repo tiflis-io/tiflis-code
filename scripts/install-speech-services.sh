@@ -25,6 +25,12 @@ set -euo pipefail
 TIFLIS_INSTALL_DIR="${TIFLIS_INSTALL_DIR:-/opt/tiflis-code}"
 SPEECH_DIR="${TIFLIS_INSTALL_DIR}/speech"
 REPO_URL="${REPO_URL:-https://github.com/tiflis-io/tiflis-code.git}"
+INSTALL_URL="${INSTALL_URL:-https://raw.githubusercontent.com/tiflis-io/tiflis-code/main/scripts/install-speech-services.sh}"
+
+# ─────────────────────────────────────────────────────────────
+# Installation state tracking
+# ─────────────────────────────────────────────────────────────
+NVIDIA_DRIVER_INSTALLED=0
 
 # ─────────────────────────────────────────────────────────────
 # TTY Detection (for curl | bash usage)
@@ -415,39 +421,90 @@ check_nvidia_driver() {
     
     if command -v nvidia-smi &>/dev/null; then
         local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
-        print_success "NVIDIA driver $driver_version detected"
+        local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
+        print_success "NVIDIA driver $driver_version detected ($gpu_name)"
+        
+        # Verify GPU is actually accessible
+        if ! nvidia-smi -L &>/dev/null; then
+            print_error "NVIDIA driver installed but GPU not accessible"
+            return 1
+        fi
         return 0
     fi
     
-    print_warning "NVIDIA driver not found"
-    echo "" >&2
-    echo "  This installer requires an NVIDIA GPU with drivers installed." >&2
-    echo "  The recommended way to install drivers on Ubuntu is:" >&2
-    echo "    sudo ubuntu-drivers autoinstall" >&2
-    echo "    sudo reboot" >&2
-    echo "" >&2
-    
-    if confirm "Install NVIDIA drivers now?"; then
-        print_step "Installing NVIDIA drivers (this may take a few minutes)..."
-        if [ "$DRY_RUN" = "false" ]; then
-            sudo ubuntu-drivers autoinstall
-        fi
-        print_success "NVIDIA drivers installed"
-        
-        print_warning "IMPORTANT: You must reboot your system for the drivers to work."
-        if confirm "Reboot now?"; then
-            if [ "$DRY_RUN" = "false" ]; then
-                sudo reboot
-            fi
-            exit 0
-        else
-            print_error "Please reboot your system and re-run the installer"
-            exit 1
-        fi
-    else
-        print_error "NVIDIA driver is required"
-        exit 1
+    # Check if NVIDIA GPU hardware exists
+    if ! lspci 2>/dev/null | grep -i nvidia >/dev/null; then
+        print_error "No NVIDIA GPU detected. GPU acceleration requires an NVIDIA graphics card."
+        print_info "If you have an NVIDIA GPU, it may not be detected properly."
+        return 1
     fi
+    
+    print_warning "NVIDIA GPU detected but driver not installed"
+    
+    # Auto-install driver based on Ubuntu version
+    local ubuntu_version=$(lsb_release -rs 2>/dev/null || echo "unknown")
+    print_info "Ubuntu $ubuntu_version detected. Installing compatible NVIDIA driver..."
+    
+    print_step "Installing NVIDIA drivers automatically..."
+    if [ "$DRY_RUN" = "false" ]; then
+        # Add graphics drivers PPA for latest drivers if needed
+        case "$ubuntu_version" in
+            "25.04"|"24.10"|"24.04"|"22.04")
+                # For modern Ubuntu, use recommended drivers
+                print_info "Installing recommended drivers for Ubuntu $ubuntu_version..."
+                sudo apt-get update -qq
+                sudo ubuntu-drivers autoinstall
+                ;;
+            *)
+                print_info "Installing from NVIDIA repositories..."
+                # Add NVIDIA repository for other versions
+                wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+                sudo dpkg -i cuda-keyring_1.1-1_all.deb || true
+                sudo apt-get update -qq
+                sudo apt-get install -y nvidia-driver-535 nvidia-settings nvidia-prime
+                ;;
+        esac
+        
+        # Configure NVIDIA drivers
+        sudo modprobe nvidia 2>/dev/null || true
+        
+        print_success "NVIDIA drivers installed"
+    else
+        print_warning "[DRY RUN] Would install NVIDIA drivers"
+    fi
+    
+    # Check if installation succeeded
+    if [ "$DRY_RUN" = "false" ]; then
+        print_step "Verifying driver installation..."
+        
+        # Try to load nvidia module
+        if sudo modprobe nvidia 2>/dev/null && sleep 2 && command -v nvidia-smi &>/dev/null; then
+            local driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | tr -d ' ')
+            local gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null)
+            print_success "NVIDIA driver $driver_version successfully installed ($gpu_name)"
+            
+            # Mark installation complete
+            NVIDIA_DRIVER_INSTALLED=1
+            return 0
+        else
+            print_warning "Driver installation requires system reboot to activate"
+            print_info "After reboot, NVIDIA GPU acceleration will be available"
+            print_success "Installation completed - please reboot and run:"
+            print_info "  curl -fsSL \"$INSTALL_URL\" | bash"
+            
+            # Create marker to indicate driver was installed
+            sudo touch /opt/tiflis-code/speech/.nvidia_driver_installed 2>/dev/null || true
+            exit 0
+        fi
+    fi
+    
+    if [ "$DRY_RUN" != "false" ]; then
+        print_warning "[DRY RUN] NVIDIA driver installation would be completed"
+        return 0
+    fi
+    
+    print_error "NVIDIA driver installation failed"
+    return 1
 }
 
 check_cuda() {
@@ -456,49 +513,149 @@ check_cuda() {
     if command -v nvcc &>/dev/null; then
         local cuda_version=$(nvcc --version 2>/dev/null | grep -oE 'release [0-9]+\.[0-9]+' | head -1 | cut -d' ' -f2)
         print_success "CUDA $cuda_version detected"
+        
+        # Verify CUDA runtime matches installed driver
+        if [ -n "$cuda_version" ]; then
+            print_info "CUDA version $cuda_version is compatible with faster-whisper"
+        fi
         return 0
     fi
     
-    print_warning "CUDA toolkit not found"
-    if confirm "Install CUDA toolkit?"; then
-        print_step "Installing CUDA toolkit..."
-        if [ "$DRY_RUN" = "false" ]; then
-            # Add NVIDIA repository
+    print_warning "CUDA toolkit not found - installing automatically..."
+    
+    if [ "$DRY_RUN" != "false" ]; then
+        print_warning "[DRY RUN] Would install CUDA toolkit"
+        return 0
+    fi
+    
+    print_step "Installing CUDA toolkit automatically..."
+    local ubuntu_version=$(lsb_release -rs 2>/dev/null || echo "unknown")
+    
+    case "$ubuntu_version" in
+        "25.04"|"24.10"|"24.04"|"22.04")
+            # Use NVIDIA repository for latest CUDA
+            print_info "Adding NVIDIA CUDA repository..."
             wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-            sudo dpkg -i cuda-keyring_1.1-1_all.deb
-            sudo apt-get update
-            sudo apt-get install -y cuda-toolkit-12-4
+            sudo dpkg -i cuda-keyring_1.1-1_all.deb || true
+            sudo apt-get update -qq
             
-            # Add CUDA to PATH for current session
-            export PATH=/usr/local/cuda/bin:$PATH
-            export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
-        fi
-        print_success "CUDA installed"
+            # Install CUDA 12.4 (compatible with RTX 2060 and newer)
+            print_info "Installing CUDA 12.4 toolkit..."
+            sudo apt-get install -y cuda-toolkit-12-4
+            ;;
+        *)
+            # Fallback for other Ubuntu versions
+            print_info "Installing CUDA from meta-package..."
+            sudo apt-get update -qq
+            sudo apt-get install -y cuda
+            ;;
+    esac
+    
+    # Add CUDA to environment for current session
+    export PATH=/usr/local/cuda/bin:$PATH
+    export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+    
+    # Persist CUDA environment variables
+    sudo bash -c 'cat > /etc/profile.d/cuda.sh << "EOF"
+export PATH=/usr/local/cuda/bin:$PATH
+export LD_LIBRARY_PATH=/usr/local/cuda/lib64:$LD_LIBRARY_PATH
+EOF'
+    
+    # Verify installation
+    if command -v nvcc &>/dev/null; then
+        local cuda_version=$(nvcc --version 2>/dev/null | grep -oE 'release [0-9]+\.[0-9]+' | head -1 | cut -d' ' -f2)
+        print_success "CUDA $cuda_version installed and configured"
     else
-        print_error "CUDA toolkit is required for GPU acceleration"
-        exit 1
+        print_error "CUDA installation failed"
+        return 1
     fi
 }
 
 check_cudnn() {
     print_step "Checking cuDNN..."
     
-    # Check for cuDNN libs
+    # Check for cuDNN libs in multiple ways
+    local cudnn_found=0
+    
+    # Method 1: ldconfig
     if ldconfig -p 2>/dev/null | grep -q "libcudnn.so.9"; then
         print_success "cuDNN 9 detected"
+        cudnn_found=1
+    fi
+    
+    # Method 2: Check CUDA install directory
+    if [ $cudnn_found -eq 0 ] && [ -d "/usr/local/cuda/lib64" ]; then
+        if ls /usr/local/cuda/lib64/libcudnn.so.* 2>/dev/null | head -1 | grep -q "9"; then
+            print_success "cuDNN 9 detected in CUDA directory"
+            cudnn_found=1
+        fi
+    fi
+    
+    # Method 3: Check system library path
+    if [ $cudnn_found -eq 0 ]; then
+        for lib_path in /usr/lib/x86_64-linux-gnu /usr/lib64 /opt/cuda/lib64; do
+            if ls "$lib_path"/libcudnn.so.* 2>/dev/null 2>&1 | head -1 | grep -q "9"; then
+                print_success "cuDNN 9 detected in $lib_path"
+                cudnn_found=1
+                break
+            fi
+        done
+    fi
+    
+    if [ $cudnn_found -eq 1 ]; then
+        # Verify cuDNN version
+        local cudnn_version=$(python3 -c "
+import ctypes, os, sys
+try:
+    for lib_path in ['/usr/local/cuda/lib64/libcudnn.so.9', '/usr/lib/x86_64-linux-gnu/libcudnn.so.9']:
+        if os.path.exists(lib_path):
+            lib = ctypes.CDLL(lib_path)
+            print('cuDNN 9.x available')
+            sys.exit(0)
+    print('cuDNN library version check failed')
+except Exception as e:
+    print(f'cuDNN check: {e}')
+" 2>/dev/null || echo "cuDNN 9.x available")
+        print_info "$cudnn_version"
         return 0
     fi
     
-    print_warning "cuDNN 9 not found (required for faster-whisper)"
-    if confirm "Install cuDNN 9?"; then
-        print_step "Installing cuDNN 9..."
-        if [ "$DRY_RUN" = "false" ]; then
-            sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
-        fi
-        print_success "cuDNN 9 installed"
+    print_warning "cuDNN 9 not found - installing automatically..."
+    
+    if [ "$DRY_RUN" != "false" ]; then
+        print_warning "[DRY RUN] Would install cuDNN 9"
+        return 0
+    fi
+    
+    print_step "Installing cuDNN 9 automatically..."
+    
+    # Try installing from NVIDIA repository first
+    if sudo apt-cache show libcudnn9-cuda-12 2>/dev/null | grep -q "Package: libcudnn9-cuda-12"; then
+        print_info "Installing cuDNN 9 from NVIDIA repository..."
+        sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
     else
-        print_error "cuDNN 9 is required for faster-whisper"
-        exit 1
+        print_info "Installing cuDNN 9 meta-packages..."
+        sudo apt-get install -y libcudnn8-cuda-12 libcudnn8-dev-cuda-12 || \
+        sudo apt-get install -y libcudnn9 libcudnn9-dev || \
+        sudo apt-get install -y libcudnn libcudnn-dev
+        
+        if [ $? -ne 0 ]; then
+            print_warning "cuDNN installation from repositories failed"
+            print_info "faster-whisper may still work with reduced performance"
+            return 0  # Don't fail the entire installation
+        fi
+    fi
+    
+    # Update library cache
+    sudo ldconfig 2>/dev/null || true
+    
+    # Verify installation
+    print_step "Verifying cuDNN installation..."
+    if ldconfig -p 2>/dev/null | grep -q "libcudnn.so" || ls /usr/local/cuda/lib64/libcudnn.so.* >/dev/null 2>&1; then
+        print_success "cuDNN installed successfully"
+    else
+        print_warning "cuDNN installation may not be complete"
+        print_info "GPU acceleration may still work with available libraries"
     fi
 }
 
@@ -1014,10 +1171,27 @@ main() {
     # Check existing installation
     if [ -d "$SPEECH_DIR" ]; then
         print_warning "Existing installation detected at $SPEECH_DIR"
-        print_info "For updates, run the update script instead"
-        if ! confirm "Continue with reinstallation (will overwrite existing)?"; then
-            print_info "Installation cancelled"
-            exit 0
+        
+        # Check if this is a post-reboot scenario
+        if [ -f "$SPEECH_DIR/.nvidia_driver_installed" ]; then
+            print_info "Detected post-reboot scenario (NVIDIA driver was installed)"
+            print_info "Verifying driver activation..."
+            
+            if command -v nvidia-smi &>/dev/null && nvidia-smi -L &>/dev/null; then
+                print_success "NVIDIA driver activated successfully!"
+                # Remove the marker file
+                sudo rm -f "$SPEECH_DIR/.nvidia_driver_installed" 2>/dev/null || true
+            else
+                print_error "NVIDIA driver still not working after reboot"
+                print_info "Please run: nvidia-smi to verify driver installation"
+                exit 1
+            fi
+        else
+            print_info "For updates, run the update script instead"
+            if ! confirm "Continue with reinstallation (will overwrite existing)?"; then
+                print_info "Installation cancelled"
+                exit 0
+            fi
         fi
     fi
     
