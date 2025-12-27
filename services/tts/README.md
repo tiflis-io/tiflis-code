@@ -16,6 +16,9 @@ OpenAI-compatible Text-to-Speech API using [Kokoro](https://github.com/hexgrad/k
 ### Local Development
 
 ```bash
+# Upgrade pip first (required on Ubuntu/older systems to fix dependency resolution)
+pip install --upgrade pip
+
 # Install dependencies
 pip install -e .
 
@@ -177,8 +180,8 @@ services/tts/
 │   ├── config.py            # Pydantic Settings
 │   ├── api/
 │   │   └── routes.py        # API endpoints
-│   ├── models/
-│   │   └── schemas.py       # Pydantic models
+│   ├── schemas/
+│   │   └── tts.py           # Pydantic models
 │   └── services/
 │       └── kokoro_service.py # Kokoro TTS wrapper
 ├── tests/

@@ -9,7 +9,14 @@ from fastapi.responses import StreamingResponse
 from loguru import logger
 
 from src.config import get_settings
-from src.models.schemas import ErrorResponse, OpenAITTSRequest, TTSRequest, TTSResponse, VoiceInfo, VoicesResponse
+from src.schemas import (
+    ErrorResponse,
+    OpenAITTSRequest,
+    TTSRequest,
+    TTSResponse,
+    VoiceInfo,
+    VoicesResponse,
+)
 from src.services.kokoro_service import get_kokoro_service
 
 router = APIRouter(
@@ -21,7 +28,7 @@ router = APIRouter(
 def get_wav_duration(audio_data: bytes) -> float:
     """Get duration of WAV audio in seconds."""
     try:
-        with wave.open(BytesIO(audio_data), 'rb') as wav_file:
+        with wave.open(BytesIO(audio_data), "rb") as wav_file:
             frames = wav_file.getnframes()
             rate = wav_file.getframerate()
             return frames / float(rate)
@@ -61,7 +68,7 @@ async def create_speech(
     start_time = time.time()
     text_preview = request.input[:50] + "..." if len(request.input) > 50 else request.input
 
-    logger.info(f"TTS Request | voice: {request.voice} | text: \"{text_preview}\"")
+    logger.info(f'TTS Request | voice: {request.voice} | text: "{text_preview}"')
 
     try:
         audio_io, content_type = await service.synthesize(
@@ -137,7 +144,7 @@ async def text_to_speech(
     start_time = time.time()
     text_preview = request.text[:50] + "..." if len(request.text) > 50 else request.text
 
-    logger.info(f"TTS Request | voice: {request.voice} | text: \"{text_preview}\"")
+    logger.info(f'TTS Request | voice: {request.voice} | text: "{text_preview}"')
 
     try:
         audio_io, content_type = await service.synthesize(
