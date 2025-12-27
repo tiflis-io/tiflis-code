@@ -243,10 +243,14 @@ check_python() {
     # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
     for version in "3.13" "3.12" "3.11"; do
         if command -v "python$version" &>/dev/null; then
-            local full_version="$(python$version --version 2>/dev/null)"
-            local major_minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
-            local major="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-            local minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+            # Python --version outputs to stderr on some systems
+            local full_version="$(python$version --version 2>&1)"
+            local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+            local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
+            local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
+            
+            # Debug info
+            echo "DEBUG: Checking python$version -> $full_version (major=$major, minor=$minor)" >&2
             
             # Check if version >= 3.11
             if [ -n "$major" ] && [ -n "$minor" ]; then
@@ -263,10 +267,14 @@ check_python() {
     
     # Check if python3 is available and meets requirements
     if command -v python3 &>/dev/null; then
-        local full_version="$(python3 --version 2>/dev/null)"
-        local major_minor="$(python3 --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
-        local major="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-        local minor="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+        # Python --version outputs to stderr on some systems
+        local full_version="$(python3 --version 2>&1)"
+        local major_minor="$(echo "$full_version" | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+        local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
+        local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
+        
+        # Debug info
+        echo "DEBUG: Checking python3 -> $full_version (major=$major, minor=$minor)" >&2
         
         # Check if version >= 3.11
         if [ -n "$major" ] && [ -n "$minor" ]; then
@@ -302,9 +310,13 @@ check_python() {
         # Check again after installation
         for version in "3.13" "3.12" "3.11"; do
             if command -v "python$version" &>/dev/null; then
-                local full_version="$(python$version --version 2>/dev/null)"
-                local major="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-                local minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+                # Python --version outputs to stderr on some systems
+                local full_version="$(python$version --version 2>&1)"
+                local major="$(echo "$full_version" | grep -oE '[0-9]+' | head -1)"
+                local minor="$(echo "$full_version" | grep -oE '[0-9]+' | head -2 | tail -1)"
+                
+                # Debug info
+                echo "DEBUG: Post-install check python$version -> $full_version (major=$major, minor=$minor)" >&2
                 
                 # Check if version >= 3.11
                 if [ -n "$major" ] && [ -n "$minor" ]; then
