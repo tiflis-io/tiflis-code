@@ -4,11 +4,15 @@
 import { cn } from '@/lib/utils';
 import type { Message, ContentBlock } from '@/types';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
-import { User, Bot, Loader2 } from 'lucide-react';
+import { TypingIndicator } from './TypingIndicator';
+import { User, Brain, Terminal, RefreshCw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface MessageBubbleProps {
   message: Message;
   isCurrentDevice?: boolean;
+  onRetry?: () => void;
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
 }
 
 interface SegmentBubbleProps {
@@ -20,6 +24,23 @@ interface SegmentBubbleProps {
   sendStatus?: Message['sendStatus'];
   isCurrentDevice: boolean;
   fromDeviceId?: string;
+  onRetry?: () => void;
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+}
+
+/**
+ * Get agent icon based on type
+ */
+function AgentAvatar({ agentType }: { agentType?: string }) {
+  // For now, use Brain icon for all AI agents (like iOS SF Symbol fallback)
+  // In the future, we can add custom SVG logos for each agent
+  const Icon = agentType === 'terminal' ? Terminal : Brain;
+
+  return (
+    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
+      <Icon className="w-[18px] h-[18px] text-foreground" />
+    </div>
+  );
 }
 
 /**
@@ -34,7 +55,14 @@ function SegmentBubble({
   sendStatus,
   isCurrentDevice,
   fromDeviceId,
+  onRetry,
+  agentType,
 }: SegmentBubbleProps) {
+  // Check if we have any content to display
+  const hasContent = contentBlocks.length > 0 && contentBlocks.some(
+    block => block.content || block.blockType === 'tool' || block.blockType === 'voice_output'
+  );
+
   return (
     <div
       className={cn(
@@ -43,18 +71,16 @@ function SegmentBubble({
         isUser && 'flex-row-reverse'
       )}
     >
-      {/* Avatar - only show for first segment or always for user */}
+      {/* Avatar */}
       {showAvatar ? (
-        <div
-          className={cn(
-            'flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center',
-            isUser ? 'bg-primary text-primary-foreground' : 'bg-muted'
-          )}
-        >
-          {isUser ? <User className="w-4 h-4" /> : <Bot className="w-4 h-4" />}
-        </div>
+        isUser ? (
+          <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+            <User className="w-4 h-4" />
+          </div>
+        ) : (
+          <AgentAvatar agentType={agentType} />
+        )
       ) : (
-        // Spacer to maintain alignment for continuation segments
         <div className="flex-shrink-0 w-8" />
       )}
 
@@ -67,31 +93,56 @@ function SegmentBubble({
       >
         <div
           className={cn(
-            'rounded-2xl px-4 py-2',
+            'rounded-2xl px-4 py-3',
             isUser
               ? 'bg-primary text-primary-foreground rounded-br-sm'
               : 'bg-muted rounded-bl-sm',
             isContinuation && !isUser && 'rounded-tl-sm'
           )}
         >
-          {contentBlocks.map((block) => (
-            <ContentBlockRenderer key={block.id} block={block} isUserMessage={isUser} />
-          ))}
+          {/* Show typing indicator when streaming with no content yet */}
+          {isStreaming && !hasContent ? (
+            <TypingIndicator />
+          ) : (
+            <>
+              {contentBlocks.map((block) => (
+                <ContentBlockRenderer key={block.id} block={block} isUserMessage={isUser} />
+              ))}
 
-          {isStreaming && (
-            <div className="flex items-center gap-2 mt-2 text-muted-foreground">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              <span className="text-xs">Generating...</span>
-            </div>
+              {/* Show typing indicator at the end while still streaming */}
+              {isStreaming && hasContent && (
+                <div className="mt-2">
+                  <TypingIndicator />
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* Message status - only show on last segment */}
+        {/* Message status */}
         {sendStatus === 'pending' && (
-          <span className="text-xs text-muted-foreground mt-1">Sending...</span>
+          <span className="text-xs text-muted-foreground mt-1" role="status">
+            Sending...
+          </span>
         )}
         {sendStatus === 'failed' && (
-          <span className="text-xs text-destructive mt-1">Failed to send</span>
+          <div className="flex items-center gap-2 mt-1">
+            <span className="text-xs text-destructive" role="alert">
+              Failed to send
+            </span>
+            {onRetry && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onRetry}
+                className="h-6 px-2 text-xs"
+                aria-label="Retry sending message"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
+                Retry
+              </Button>
+            )}
+          </div>
         )}
         {!isCurrentDevice && fromDeviceId && (
           <span className="text-xs text-muted-foreground mt-1">
@@ -103,7 +154,7 @@ function SegmentBubble({
   );
 }
 
-export function MessageBubble({ message, isCurrentDevice = true }: MessageBubbleProps) {
+export function MessageBubble({ message, isCurrentDevice = true, agentType }: MessageBubbleProps) {
   const isUser = message.role === 'user';
 
   return (
@@ -116,6 +167,7 @@ export function MessageBubble({ message, isCurrentDevice = true }: MessageBubble
       sendStatus={message.sendStatus}
       isCurrentDevice={isCurrentDevice}
       fromDeviceId={message.fromDeviceId}
+      agentType={agentType}
     />
   );
 }

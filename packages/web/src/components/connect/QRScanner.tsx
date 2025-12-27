@@ -5,6 +5,7 @@ import { useState, useCallback } from 'react';
 import { Scanner, type IDetectedBarcode } from '@yudiel/react-qr-scanner';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Camera, CameraOff } from 'lucide-react';
+import { logger } from '@/utils/logger';
 
 interface QRScannerProps {
   onScan: (data: string) => void;
@@ -28,7 +29,7 @@ export function QRScanner({ onScan, onBack }: QRScannerProps) {
   );
 
   const handleError = useCallback((err: unknown) => {
-    console.error('QR Scanner error:', err);
+    logger.error('QR Scanner error:', err);
     if (err instanceof Error) {
       if (err.name === 'NotAllowedError') {
         setHasPermission(false);

@@ -2,6 +2,7 @@
 // Licensed under the FSL-1.1-NC.
 
 import type { Credentials } from '@/types';
+import { logger } from '@/utils/logger';
 
 const STORAGE_KEY = 'tiflis_credentials';
 const DEVICE_ID_KEY = 'tiflis_device_id';
@@ -67,7 +68,7 @@ class CredentialStoreImpl {
         deviceId: this.getDeviceId(),
       };
     } catch (error) {
-      console.error('Failed to decrypt credentials:', error);
+      logger.error('Failed to decrypt credentials:', error);
       return null;
     }
   }
@@ -91,7 +92,7 @@ class CredentialStoreImpl {
     try {
       await this.deleteEncryptionKey();
     } catch (error) {
-      console.error('Failed to delete encryption key:', error);
+      logger.error('Failed to delete encryption key:', error);
     }
 
     // Reset in-memory key
@@ -258,6 +259,13 @@ class CredentialStoreImpl {
   private deleteEncryptionKey(): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase(DB_NAME);
+
+      // Handle blocked event (when other connections are open)
+      request.onblocked = () => {
+        logger.warn('IndexedDB delete blocked by open connections, resolving anyway');
+        resolve();
+      };
+
       request.onerror = () => reject(request.error);
       request.onsuccess = () => resolve();
     });

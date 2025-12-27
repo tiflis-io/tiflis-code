@@ -93,3 +93,28 @@
 .xterm-viewport {
   overflow-y: auto !important;
 }
+
+/* Voice recording pulsing ring animation (matches iOS PulsingRing) */
+@keyframes pulse-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(2.5);
+    opacity: 0;
+  }
+}
+
+/* Typing indicator dot animation (matches iOS TypingIndicator) */
+@keyframes typing-dot {
+  0%,
+  100% {
+    transform: scale(0.6);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}

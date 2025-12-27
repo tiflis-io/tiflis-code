@@ -1,11 +1,12 @@
 // Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { devLog } from '@/utils/logger';
 import type { ContentBlock } from '@/types';
 import { AudioPlayer } from '@/components/voice/AudioPlayer';
-import { Code, Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Code, Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, Volume2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
 
 interface ContentBlockRendererProps {
   block: ContentBlock;
@@ -65,7 +66,7 @@ export function ContentBlockRenderer({ block, isUserMessage = false }: ContentBl
 
 function TextBlock({ content, isUserMessage }: { content: string; isUserMessage: boolean }) {
   // Simple markdown-like rendering for bold, italic, code
-  const rendered = content
+  const rendered = (content || '')
     .split(/(`[^`]+`)/)
     .map((part, i) => {
       if (part.startsWith('`') && part.endsWith('`')) {
@@ -90,18 +91,40 @@ function TextBlock({ content, isUserMessage }: { content: string; isUserMessage:
 }
 
 function CodeBlock({ content, language }: { content: string; language?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [content]);
+
   return (
     <div className="my-2 rounded-lg overflow-hidden bg-zinc-900 text-zinc-100">
       <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800 text-xs text-zinc-400">
         <div className="flex items-center gap-2">
-          <Code className="w-3 h-3" />
+          <Code className="w-3 h-3" aria-hidden="true" />
           <span>{language ?? 'code'}</span>
         </div>
         <button
-          className="hover:text-zinc-200 transition-colors"
-          onClick={() => navigator.clipboard.writeText(content)}
+          className={cn(
+            'flex items-center gap-1 transition-colors',
+            copied ? 'text-green-400' : 'hover:text-zinc-200'
+          )}
+          onClick={handleCopy}
+          aria-label={copied ? 'Copied to clipboard' : 'Copy code'}
         >
-          Copy
+          {copied ? (
+            <>
+              <Check className="w-3 h-3" aria-hidden="true" />
+              <span>Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" aria-hidden="true" />
+              <span>Copy</span>
+            </>
+          )}
         </button>
       </div>
       <pre className="p-3 overflow-x-auto text-sm">
@@ -300,7 +323,7 @@ function VoiceOutputBlock({
   // Always show voice output block if hasAudio is true
   const shouldShowAudioPlayer = audioAvailable || hasAudio;
 
-  console.log('🔊 VoiceOutputBlock render:', {
+  devLog.audio('VoiceOutputBlock render:', {
     content: content?.slice(0, 50),
     audioUrl: !!audioUrl,
     audioBase64: !!audioBase64,

@@ -1,15 +1,18 @@
 // Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
+import { logger } from '@/utils/logger';
+
 /**
  * Audio player service with caching support
  * Matches iOS AudioPlayerService behavior
  */
 class AudioPlayerServiceClass {
-  private audioCache = new Map<string, { audio: HTMLAudioElement; expiresAt: number }>();
+  private audioCache = new Map<string, { audio: HTMLAudioElement; expiresAt: number; accessedAt: number }>();
   private currentAudio: HTMLAudioElement | null = null;
   private currentMessageId: string | null = null;
   private readonly CACHE_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+  private readonly MAX_CACHE_SIZE = 50; // Maximum number of cached audio elements
 
   /**
    * Play audio from base64 data
@@ -24,11 +27,13 @@ class AudioPlayerServiceClass {
     // Check cache first
     const cached = this.audioCache.get(messageId);
     if (cached && Date.now() < cached.expiresAt) {
+      // Update access time for LRU tracking
+      cached.accessedAt = Date.now();
       this.currentAudio = cached.audio;
       this.currentMessageId = messageId;
       if (autoPlay) {
         this.currentAudio.play().catch((e) => {
-          console.warn('Failed to auto-play audio:', e);
+          logger.warn('Failed to auto-play audio:', e);
         });
       }
       return;
@@ -41,10 +46,17 @@ class AudioPlayerServiceClass {
       this.currentMessageId = null;
     });
 
+    // Evict LRU entries if cache is full
+    if (this.audioCache.size >= this.MAX_CACHE_SIZE) {
+      this.evictLRU();
+    }
+
     // Cache the audio
+    const now = Date.now();
     this.audioCache.set(messageId, {
       audio,
-      expiresAt: Date.now() + this.CACHE_DURATION_MS,
+      expiresAt: now + this.CACHE_DURATION_MS,
+      accessedAt: now,
     });
 
     this.currentAudio = audio;
@@ -52,7 +64,7 @@ class AudioPlayerServiceClass {
 
     if (autoPlay) {
       audio.play().catch((e) => {
-        console.warn('Failed to auto-play audio:', e);
+        logger.warn('Failed to auto-play audio:', e);
       });
     }
 
@@ -80,6 +92,27 @@ class AudioPlayerServiceClass {
   }
 
   /**
+   * Register an audio element as the current playing audio
+   * This allows external audio elements to be stopped via stop()
+   */
+  registerAudio(audio: HTMLAudioElement, messageId?: string): void {
+    // Stop any currently playing audio first
+    this.stop();
+    this.currentAudio = audio;
+    this.currentMessageId = messageId ?? null;
+  }
+
+  /**
+   * Unregister the current audio (call when audio ends or component unmounts)
+   */
+  unregisterAudio(audio: HTMLAudioElement): void {
+    if (this.currentAudio === audio) {
+      this.currentAudio = null;
+      this.currentMessageId = null;
+    }
+  }
+
+  /**
    * Stop currently playing audio
    */
   stop(): void {
@@ -88,6 +121,22 @@ class AudioPlayerServiceClass {
       this.currentAudio.currentTime = 0;
       this.currentAudio = null;
       this.currentMessageId = null;
+    }
+  }
+
+  /**
+   * Stop all audio including cached entries
+   */
+  stopAll(): void {
+    // Stop current
+    this.stop();
+
+    // Pause all cached audio
+    for (const [, entry] of this.audioCache.entries()) {
+      if (!entry.audio.paused) {
+        entry.audio.pause();
+        entry.audio.currentTime = 0;
+      }
     }
   }
 
@@ -114,6 +163,31 @@ class AudioPlayerServiceClass {
       if (now >= value.expiresAt) {
         this.audioCache.delete(key);
       }
+    }
+  }
+
+  /**
+   * Evict least recently used cache entry
+   */
+  private evictLRU(): void {
+    let oldestKey: string | null = null;
+    let oldestAccess = Infinity;
+
+    for (const [key, value] of this.audioCache.entries()) {
+      if (value.accessedAt < oldestAccess) {
+        oldestAccess = value.accessedAt;
+        oldestKey = key;
+      }
+    }
+
+    if (oldestKey) {
+      const entry = this.audioCache.get(oldestKey);
+      if (entry) {
+        // Stop audio if it's currently playing
+        entry.audio.pause();
+        entry.audio.src = '';
+      }
+      this.audioCache.delete(oldestKey);
     }
   }
 }

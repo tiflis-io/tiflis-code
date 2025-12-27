@@ -8,6 +8,7 @@ import type {
   HeartbeatMessage,
   SyncMessage,
 } from '@/types/protocol';
+import { logger, devLog } from '@/utils/logger';
 
 export interface WebSocketServiceCallbacks {
   onConnectionStateChange: (state: ConnectionState) => void;
@@ -42,8 +43,11 @@ class WebSocketServiceImpl {
 
   private pendingRequests = new Map<
     string,
-    { resolve: (value: unknown) => void; reject: (error: Error) => void }
+    { resolve: (value: unknown) => void; reject: (error: Error) => void; timestamp: number }
   >();
+
+  // Maximum pending requests to prevent memory leaks
+  private static readonly MAX_PENDING_REQUESTS = 100;
 
   /**
    * Initialize the WebSocket service with callbacks
@@ -96,6 +100,11 @@ class WebSocketServiceImpl {
         return;
       }
 
+      // Cleanup stale requests if we've hit the limit
+      if (this.pendingRequests.size >= WebSocketServiceImpl.MAX_PENDING_REQUESTS) {
+        this.cleanupStaleRequests();
+      }
+
       const timeout = setTimeout(() => {
         this.pendingRequests.delete(message.id);
         reject(new Error('Request timeout'));
@@ -110,6 +119,7 @@ class WebSocketServiceImpl {
           clearTimeout(timeout);
           reject(error);
         },
+        timestamp: Date.now(),
       });
 
       this.send(message);
@@ -130,6 +140,27 @@ class WebSocketServiceImpl {
    */
   isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN && this.isAuthenticated;
+  }
+
+  /**
+   * Manually trigger reconnection
+   */
+  reconnect(): void {
+    if (this.credentials && !this.isConnecting) {
+      this.intentionalDisconnect = false;
+      this.reconnectAttempts = 0;
+      this.cleanup();
+      this.connect(this.credentials).catch((error) => {
+        logger.error('Manual reconnection failed:', error);
+      });
+    }
+  }
+
+  /**
+   * Get current reconnection attempt count
+   */
+  getReconnectAttempts(): number {
+    return this.reconnectAttempts;
   }
 
   private async establishConnection(): Promise<void> {
@@ -167,7 +198,7 @@ class WebSocketServiceImpl {
 
       this.ws.onerror = (event) => {
         clearTimeout(connectionTimeout);
-        console.error('WebSocket error:', event);
+        logger.error('WebSocket error:', event);
         this.callbacks?.onConnectionStateChange('error');
       };
 
@@ -176,7 +207,7 @@ class WebSocketServiceImpl {
           const message = JSON.parse(event.data as string);
           this.handleMessage(message, resolve, reject);
         } catch (error) {
-          console.error('Failed to parse message:', error);
+          logger.error('Failed to parse message:', error);
         }
       };
     });
@@ -319,7 +350,7 @@ class WebSocketServiceImpl {
     this.send({ type: 'ping', timestamp: Date.now() });
 
     this.pongTimeout = setTimeout(() => {
-      console.warn('Pong timeout - connection may be stale');
+      logger.warn('Pong timeout - connection may be stale');
       this.callbacks?.onConnectionStateChange('degraded');
     }, PONG_TIMEOUT);
   }
@@ -341,7 +372,7 @@ class WebSocketServiceImpl {
     this.send(message);
 
     this.heartbeatTimeout = setTimeout(() => {
-      console.warn('Heartbeat timeout - connection may be stale');
+      logger.warn('Heartbeat timeout - connection may be stale');
       this.callbacks?.onConnectionStateChange('degraded');
     }, HEARTBEAT_TIMEOUT);
   }
@@ -371,7 +402,7 @@ class WebSocketServiceImpl {
       return;
     }
 
-    console.log('WebSocket closed:', event.code, event.reason);
+    devLog.ws('WebSocket closed:', event.code, event.reason);
     this.callbacks?.onConnectionStateChange('disconnected');
 
     // Attempt to reconnect
@@ -389,15 +420,30 @@ class WebSocketServiceImpl {
     );
 
     this.reconnectAttempts++;
-    console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+    devLog.ws(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
     this.reconnectTimeout = setTimeout(() => {
       if (this.credentials && !this.intentionalDisconnect) {
         this.connect(this.credentials).catch((error) => {
-          console.error('Reconnection failed:', error);
+          logger.error('Reconnection failed:', error);
         });
       }
     }, delay);
+  }
+
+  /**
+   * Cleanup stale pending requests (older than 60 seconds)
+   */
+  private cleanupStaleRequests(): void {
+    const now = Date.now();
+    const staleThreshold = 60000; // 60 seconds
+
+    for (const [id, pending] of this.pendingRequests) {
+      if (now - pending.timestamp > staleThreshold) {
+        pending.reject(new Error('Request expired'));
+        this.pendingRequests.delete(id);
+      }
+    }
   }
 
   private cleanup(): void {

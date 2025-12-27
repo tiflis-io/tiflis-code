@@ -5,6 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { AudioPlayerService } from '@/services/audio';
+import { logger, devLog } from '@/utils/logger';
 import type {
   SyncStateMessage,
   SessionCreatedMessage,
@@ -29,7 +30,7 @@ function parseContentBlocks(blocks: ServerContentBlock[]): ContentBlock[] {
   // Log voice blocks for debugging
   const voiceBlocks = blocks.filter((b) => b.block_type === 'voice_output' || b.block_type === 'voice_input');
   if (voiceBlocks.length > 0) {
-    console.log('🎵 parseContentBlocks - voice blocks from server:', voiceBlocks);
+    devLog.audio('parseContentBlocks - voice blocks from server:', voiceBlocks);
   }
 
   return blocks.map((block) => ({
@@ -127,11 +128,11 @@ export function handleWebSocketMessage(message: unknown): void {
       break;
 
     case 'error':
-      console.error('Server error:', msg.payload);
+      logger.error('Server error:', msg.payload);
       break;
 
     default:
-      console.log('Unhandled message type:', msg.type);
+      logger.log('Unhandled message type:', msg.type);
   }
 }
 
@@ -315,10 +316,13 @@ function handleSupervisorOutput(msg: SupervisorOutputMessage): void {
   const streamingId = chatStore.supervisorStreamingMessageId;
 
   const contentBlocks = parseContentBlocks(msg.payload.content_blocks);
+  const hasContent = contentBlocks.length > 0 && contentBlocks.some(b => b.content || b.blockType === 'tool' || b.blockType === 'voice_output');
 
   if (streamingId) {
-    // Update existing streaming message
-    chatStore.updateSupervisorStreamingBlocks(streamingId, contentBlocks);
+    // Only update blocks if we have content (don't replace with empty on completion)
+    if (hasContent) {
+      chatStore.updateSupervisorStreamingBlocks(streamingId, contentBlocks);
+    }
 
     if (msg.payload.is_complete) {
       chatStore.updateSupervisorMessage(streamingId, { isStreaming: false });
@@ -326,7 +330,12 @@ function handleSupervisorOutput(msg: SupervisorOutputMessage): void {
       chatStore.setSupervisorIsLoading(false);
     }
   } else {
-    // Create new message
+    // Create new message (only if we have content or still streaming)
+    if (!hasContent && msg.payload.is_complete) {
+      // Empty completed message - skip creating it
+      return;
+    }
+
     const message: Message = {
       id: crypto.randomUUID(),
       sessionId: 'supervisor',
@@ -397,10 +406,13 @@ function handleSessionOutput(msg: SessionOutputMessage): void {
   const contentBlocks = msg.payload.content_blocks
     ? parseContentBlocks(msg.payload.content_blocks)
     : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: msg.payload.content }];
+  const hasContent = contentBlocks.length > 0 && contentBlocks.some(b => b.content || b.blockType === 'tool' || b.blockType === 'voice_output');
 
   if (streamingId) {
-    // Update existing streaming message
-    chatStore.updateAgentStreamingBlocks(sessionId, streamingId, contentBlocks);
+    // Only update blocks if we have content (don't replace with empty on completion)
+    if (hasContent) {
+      chatStore.updateAgentStreamingBlocks(sessionId, streamingId, contentBlocks);
+    }
 
     if (msg.payload.is_complete) {
       chatStore.updateAgentMessage(sessionId, streamingId, { isStreaming: false });
@@ -408,7 +420,12 @@ function handleSessionOutput(msg: SessionOutputMessage): void {
       chatStore.setAgentIsLoading(sessionId, false);
     }
   } else {
-    // Create new message
+    // Create new message (only if we have content or still streaming)
+    if (!hasContent && msg.payload.is_complete) {
+      // Empty completed message - skip creating it
+      return;
+    }
+
     const message: Message = {
       id: crypto.randomUUID(),
       sessionId,
@@ -469,7 +486,7 @@ function handleMessageAck(msg: MessageAckMessage): void {
 }
 
 function handleSupervisorVoiceOutput(msg: SupervisorVoiceOutputMessage): void {
-  console.log('🔊 Received supervisor.voice_output:', msg);
+  devLog.audio('Received supervisor.voice_output:', msg);
 
   const appStore = useAppStore.getState();
   const settingsStore = useSettingsStore.getState();
@@ -483,8 +500,8 @@ function handleSupervisorVoiceOutput(msg: SupervisorVoiceOutputMessage): void {
   const isFromThisDevice = from_device_id !== undefined && from_device_id === credentials?.deviceId;
   const shouldAutoPlay = ttsEnabled && isFromThisDevice;
 
-  console.log(
-    `🔊 TTS: from=${from_device_id ?? 'nil'} me=${credentials?.deviceId} match=${isFromThisDevice} ttsEnabled=${ttsEnabled} autoPlay=${shouldAutoPlay}`
+  devLog.audio(
+    `TTS: from=${from_device_id ?? 'nil'} me=${credentials?.deviceId} match=${isFromThisDevice} ttsEnabled=${ttsEnabled} autoPlay=${shouldAutoPlay}`
   );
 
   // Play audio (and cache it)
@@ -524,7 +541,7 @@ function handleSupervisorVoiceOutput(msg: SupervisorVoiceOutputMessage): void {
 }
 
 function handleSessionVoiceOutput(msg: SessionVoiceOutputMessage): void {
-  console.log('🔊 Received session.voice_output:', msg);
+  devLog.audio('Received session.voice_output:', msg);
 
   const appStore = useAppStore.getState();
   const settingsStore = useSettingsStore.getState();
@@ -539,8 +556,8 @@ function handleSessionVoiceOutput(msg: SessionVoiceOutputMessage): void {
   const isFromThisDevice = from_device_id !== undefined && from_device_id === credentials?.deviceId;
   const shouldAutoPlay = ttsEnabled && isFromThisDevice;
 
-  console.log(
-    `🔊 TTS(agent): from=${from_device_id ?? 'nil'} me=${credentials?.deviceId} match=${isFromThisDevice} autoPlay=${shouldAutoPlay}`
+  devLog.audio(
+    `TTS(agent): from=${from_device_id ?? 'nil'} me=${credentials?.deviceId} match=${isFromThisDevice} autoPlay=${shouldAutoPlay}`
   );
 
   // Play audio (and cache it)

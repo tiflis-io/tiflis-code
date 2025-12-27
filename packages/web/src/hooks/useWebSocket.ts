@@ -7,6 +7,7 @@ import { useChatStore } from '@/store/useChatStore';
 import { WebSocketService } from '@/services/websocket/WebSocketService';
 import { handleWebSocketMessage } from '@/services/websocket/MessageHandler';
 import { CredentialStore } from '@/services/security/CredentialStore';
+import { logger, devLog } from '@/utils/logger';
 import type { ConnectionState, Credentials } from '@/types';
 import type {
   SupervisorCommandMessage,
@@ -20,6 +21,8 @@ import type {
 
 export function useWebSocket() {
   const isInitialized = useRef(false);
+  // Track pending ACK timeouts for cleanup on unmount
+  const pendingAckTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const setConnectionState = useAppStore((state) => state.setConnectionState);
   const setWorkstationOnline = useAppStore((state) => state.setWorkstationOnline);
@@ -61,10 +64,20 @@ export function useWebSocket() {
         try {
           await WebSocketService.connect(storedCredentials);
         } catch (error) {
-          console.error('Auto-connect failed:', error);
+          logger.error('Auto-connect failed:', error);
         }
       }
     })();
+
+    // Cleanup function to clear all pending ACK timeouts on unmount
+    // Copy ref value to variable for cleanup function per React hooks rules
+    const pendingTimeouts = pendingAckTimeoutsRef.current;
+    return () => {
+      pendingTimeouts.forEach((timeoutId) => {
+        clearTimeout(timeoutId);
+      });
+      pendingTimeouts.clear();
+    };
   }, [setConnectionState, setWorkstationOnline, setAuthenticated, setCredentials]);
 
   // Connect with credentials
@@ -137,14 +150,16 @@ export function useWebSocket() {
 
       WebSocketService.send(message);
 
-      // Set timeout for ack
-      setTimeout(() => {
+      // Set timeout for ack with cleanup tracking
+      const timeoutId = setTimeout(() => {
+        pendingAckTimeoutsRef.current.delete(messageId);
         const chatStore = useChatStore.getState();
         if (chatStore.pendingMessageAcks.has(messageId)) {
           chatStore.removePendingAck(messageId);
           setMessageSendStatus(messageId, 'failed');
         }
       }, 5000);
+      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
   );
@@ -187,14 +202,16 @@ export function useWebSocket() {
 
       WebSocketService.send(message);
 
-      // Set timeout for ack
-      setTimeout(() => {
+      // Set timeout for ack with cleanup tracking
+      const timeoutId = setTimeout(() => {
+        pendingAckTimeoutsRef.current.delete(messageId);
         const state = useChatStore.getState();
         if (state.pendingMessageAcks.has(messageId)) {
           state.removePendingAck(messageId);
           state.setMessageSendStatus(messageId, 'failed');
         }
       }, 5000);
+      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials]
   );
@@ -286,7 +303,7 @@ export function useWebSocket() {
     async (audioBase64: string, format: string) => {
       const messageId = crypto.randomUUID();
 
-      console.log(`🎤 Sending supervisor voice command: format=${format}, audioSize=${audioBase64.length}, messageId=${messageId}`);
+      devLog.voice(`Sending supervisor voice command: format=${format}, audioSize=${audioBase64.length}, messageId=${messageId}`);
 
       // Add user message with voice_input block
       addSupervisorMessage({
@@ -323,18 +340,20 @@ export function useWebSocket() {
         },
       };
 
-      console.log(`🎤 WebSocket sending supervisor voice:`, message);
+      devLog.voice(`WebSocket sending supervisor voice:`, message);
       WebSocketService.send(message);
 
-      // Set timeout for ack
-      setTimeout(() => {
+      // Set timeout for ack with cleanup tracking
+      const timeoutId = setTimeout(() => {
+        pendingAckTimeoutsRef.current.delete(messageId);
         const chatStore = useChatStore.getState();
         if (chatStore.pendingMessageAcks.has(messageId)) {
-          console.warn(`🎤 Voice message ACK timeout: ${messageId}`);
+          logger.warn(`Voice message ACK timeout: ${messageId}`);
           chatStore.removePendingAck(messageId);
           setMessageSendStatus(messageId, 'failed');
         }
       }, 10000); // Longer timeout for voice (STT processing)
+      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
   );
@@ -345,7 +364,7 @@ export function useWebSocket() {
       const messageId = crypto.randomUUID();
       const chatStore = useChatStore.getState();
 
-      console.log(`🎤 Sending agent voice command: sessionId=${sessionId}, format=${format}, audioSize=${audioBase64.length}, messageId=${messageId}`);
+      devLog.voice(`Sending agent voice command: sessionId=${sessionId}, format=${format}, audioSize=${audioBase64.length}, messageId=${messageId}`);
 
       // Add user message with voice_input block
       chatStore.addAgentMessage(sessionId, {
@@ -385,14 +404,16 @@ export function useWebSocket() {
 
       WebSocketService.send(message);
 
-      // Set timeout for ack
-      setTimeout(() => {
+      // Set timeout for ack with cleanup tracking
+      const timeoutId = setTimeout(() => {
+        pendingAckTimeoutsRef.current.delete(messageId);
         const state = useChatStore.getState();
         if (state.pendingMessageAcks.has(messageId)) {
           state.removePendingAck(messageId);
           state.setMessageSendStatus(messageId, 'failed');
         }
       }, 10000); // Longer timeout for voice (STT processing)
+      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials]
   );

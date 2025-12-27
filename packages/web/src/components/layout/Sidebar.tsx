@@ -21,7 +21,37 @@ import {
   TerminalIcon,
   AgentIcon,
 } from '@/components/icons';
-import type { Session } from '@/types';
+import type { Session, SessionStatus } from '@/types';
+
+/**
+ * Session status indicator dot
+ */
+function StatusIndicator({ status }: { status: SessionStatus }) {
+  const statusConfig = {
+    active: {
+      className: 'bg-green-500',
+      label: 'Active',
+    },
+    busy: {
+      className: 'bg-blue-500 animate-pulse',
+      label: 'Processing',
+    },
+    idle: {
+      className: 'bg-yellow-500',
+      label: 'Idle',
+    },
+  };
+
+  const config = statusConfig[status] || statusConfig.idle;
+
+  return (
+    <span
+      className={cn('w-2 h-2 rounded-full shrink-0', config.className)}
+      title={config.label}
+      aria-label={`Status: ${config.label}`}
+    />
+  );
+}
 
 export function Sidebar() {
   const navigate = useNavigate();
@@ -142,7 +172,7 @@ export function Sidebar() {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <aside className="flex flex-col h-full" aria-label="Session navigation">
       {/* Header */}
       <div className="p-4 border-b flex items-center justify-between">
         {!sidebarCollapsed && (
@@ -153,17 +183,19 @@ export function Sidebar() {
           size="icon"
           onClick={toggleSidebar}
           className={cn(sidebarCollapsed && 'mx-auto')}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!sidebarCollapsed}
         >
           {sidebarCollapsed ? (
-            <ChevronRight className="w-4 h-4" />
+            <ChevronRight className="w-4 h-4" aria-hidden="true" />
           ) : (
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
           )}
         </Button>
       </div>
 
       {/* Navigation */}
-      <div className="flex-1 overflow-auto p-2 space-y-1">
+      <nav className="flex-1 overflow-auto p-2 space-y-1" aria-label="Sessions">
         {/* Supervisor */}
         <Button
           variant={supervisorActive ? 'secondary' : 'ghost'}
@@ -172,85 +204,110 @@ export function Sidebar() {
             sidebarCollapsed && 'justify-center px-2'
           )}
           onClick={handleSupervisorClick}
+          aria-current={supervisorActive ? 'page' : undefined}
+          aria-label={sidebarCollapsed ? 'Supervisor' : undefined}
         >
-          <SupervisorIcon className="w-4 h-4" />
+          <SupervisorIcon className="w-4 h-4" aria-hidden="true" />
           {!sidebarCollapsed && <span className="ml-2">Supervisor</span>}
         </Button>
 
         {/* Agent Sessions */}
         {agentSessions.length > 0 && (
-          <div className="pt-4">
+          <section className="pt-4" aria-label="Agent sessions">
             {!sidebarCollapsed && (
-              <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
                 Agent Sessions
-              </p>
+              </h2>
             )}
-            {agentSessions.map((session) => {
-              const subtitle = getSessionSubtitle(session);
-              return (
-                <Button
-                  key={session.id}
-                  variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'w-full justify-start h-auto py-2',
-                    sidebarCollapsed && 'justify-center px-2'
-                  )}
-                  onClick={() => handleSessionClick(session)}
-                >
-                  {getSessionIcon(session)}
-                  {!sidebarCollapsed && (
-                    <div className="ml-2 flex flex-col items-start min-w-0">
-                      <span className="truncate text-sm font-medium">
-                        {getSessionDisplayName(session)}
-                      </span>
-                      {subtitle && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {subtitle}
-                        </span>
+            <ul role="list" className="space-y-1">
+              {agentSessions.map((session) => {
+                const subtitle = getSessionSubtitle(session);
+                const displayName = getSessionDisplayName(session);
+                return (
+                  <li key={session.id}>
+                    <Button
+                      variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full justify-start h-auto py-2',
+                        sidebarCollapsed && 'justify-center px-2'
                       )}
-                    </div>
-                  )}
-                </Button>
-              );
-            })}
-          </div>
+                      onClick={() => handleSessionClick(session)}
+                      aria-current={selectedSessionId === session.id ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? `${displayName}${subtitle ? ` - ${subtitle}` : ''}` : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <span aria-hidden="true">{getSessionIcon(session)}</span>
+                        {/* Status indicator overlay */}
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={session.status} />
+                        </span>
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium">
+                            {displayName}
+                          </span>
+                          {subtitle && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {subtitle}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         )}
 
         {/* Terminal Sessions */}
         {terminalSessions.length > 0 && (
-          <div className="pt-4">
+          <section className="pt-4" aria-label="Terminal sessions">
             {!sidebarCollapsed && (
-              <p className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
                 Terminals
-              </p>
+              </h2>
             )}
-            {terminalSessions.map((session) => {
-              const subtitle = getSessionSubtitle(session);
-              return (
-                <Button
-                  key={session.id}
-                  variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
-                  className={cn(
-                    'w-full justify-start h-auto py-2',
-                    sidebarCollapsed && 'justify-center px-2'
-                  )}
-                  onClick={() => handleSessionClick(session)}
-                >
-                  {getSessionIcon(session)}
-                  {!sidebarCollapsed && (
-                    <div className="ml-2 flex flex-col items-start min-w-0">
-                      <span className="truncate text-sm font-medium">Terminal</span>
-                      {subtitle && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {subtitle}
-                        </span>
+            <ul role="list" className="space-y-1">
+              {terminalSessions.map((session) => {
+                const subtitle = getSessionSubtitle(session);
+                return (
+                  <li key={session.id}>
+                    <Button
+                      variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full justify-start h-auto py-2',
+                        sidebarCollapsed && 'justify-center px-2'
                       )}
-                    </div>
-                  )}
-                </Button>
-              );
-            })}
-          </div>
+                      onClick={() => handleSessionClick(session)}
+                      aria-current={selectedSessionId === session.id ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? `Terminal${subtitle ? ` - ${subtitle}` : ''}` : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <span aria-hidden="true">{getSessionIcon(session)}</span>
+                        {/* Status indicator overlay */}
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={session.status} />
+                        </span>
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium">Terminal</span>
+                          {subtitle && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {subtitle}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
         )}
 
         {/* New Session Button */}
@@ -262,13 +319,14 @@ export function Sidebar() {
                 'w-full justify-start',
                 sidebarCollapsed && 'justify-center px-2'
               )}
+              aria-label={sidebarCollapsed ? 'Create new session' : undefined}
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-4 h-4" aria-hidden="true" />
               {!sidebarCollapsed && <span className="ml-2">New Session</span>}
             </Button>
           </CreateSessionDialog>
         </div>
-      </div>
+      </nav>
 
       {/* Footer */}
       <div className="p-2 border-t">
@@ -279,11 +337,13 @@ export function Sidebar() {
             sidebarCollapsed && 'justify-center px-2'
           )}
           onClick={handleSettingsClick}
+          aria-current={settingsActive ? 'page' : undefined}
+          aria-label={sidebarCollapsed ? 'Settings' : undefined}
         >
-          <Settings className="w-4 h-4" />
+          <Settings className="w-4 h-4" aria-hidden="true" />
           {!sidebarCollapsed && <span className="ml-2">Settings</span>}
         </Button>
       </div>
-    </div>
+    </aside>
   );
 }

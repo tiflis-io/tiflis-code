@@ -3,7 +3,7 @@
 
 import { useState, useRef, useCallback, type KeyboardEvent } from 'react';
 import { VoiceRecordButton } from '@/components/voice';
-import { Send, StopCircle } from 'lucide-react';
+import { ArrowUp, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ChatInputProps {
@@ -21,7 +21,7 @@ export function ChatInput({
   onSendAudio,
   onCancel,
   isLoading = false,
-  placeholder = 'Type a message...',
+  placeholder = 'Message...',
   disabled = false,
   showVoice = true,
 }: ChatInputProps) {
@@ -55,9 +55,12 @@ export function ChatInput({
   const handleInput = useCallback(() => {
     const textarea = textareaRef.current;
     if (textarea) {
-      // Auto-resize textarea
+      // Auto-resize textarea (1-6 lines like iOS)
       textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
+      const lineHeight = 24; // Approximate line height
+      const maxLines = 6;
+      const maxHeight = lineHeight * maxLines;
+      textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
     }
   }, []);
 
@@ -68,13 +71,27 @@ export function ChatInput({
     [onSendAudio]
   );
 
+  const canSend = text.trim() && !isLoading && !disabled;
+
   return (
-    <div className="border-t bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 py-3">
+    <footer className="border-t bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60 px-3 py-3">
       <div className="max-w-3xl mx-auto">
-        <div className="flex gap-3 items-end">
-          {/* Text input */}
-          <div className="flex-1">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleSubmit();
+          }}
+          className="flex items-end gap-3"
+          role="form"
+          aria-label="Message input"
+        >
+          {/* Text input - pill shape like iOS */}
+          <div className="flex-1 min-w-0">
+            <label htmlFor="chat-input" className="sr-only">
+              Message input
+            </label>
             <textarea
+              id="chat-input"
               ref={textareaRef}
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -83,61 +100,64 @@ export function ChatInput({
               placeholder={placeholder}
               disabled={disabled}
               rows={1}
+              aria-label="Type your message"
               className={cn(
-                'w-full resize-none rounded-2xl border-0 bg-muted px-4 py-3',
-                'focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-                'placeholder:text-muted-foreground',
-                'min-h-[48px] max-h-[200px]',
+                'w-full resize-none rounded-[20px] bg-muted px-4 py-3',
+                'text-base leading-6',
+                'border-0 focus:outline-none focus:ring-2 focus:ring-primary/50',
+                'placeholder:text-muted-foreground/60',
+                'min-h-[48px]',
                 disabled && 'opacity-50 cursor-not-allowed'
               )}
             />
           </div>
 
-          {/* Voice Record Button - matches iOS layout */}
+          {/* Voice Record Button - 36x36 like iOS */}
           {showVoice && onSendAudio && (
-            <div className="flex items-center justify-center h-12 w-12">
-              <VoiceRecordButton
-                onRecordingComplete={handleRecordingComplete}
-                disabled={disabled || isLoading}
-              />
-            </div>
+            <VoiceRecordButton
+              onRecordingComplete={handleRecordingComplete}
+              disabled={disabled || isLoading}
+            />
           )}
 
-          {/* Send or Stop button - matches iOS SendStopButton */}
+          {/* Send or Stop button - circular filled like iOS */}
           {isLoading && onCancel ? (
             <button
               type="button"
               onClick={onCancel}
-              className="flex items-center justify-center h-9 w-9 shrink-0"
-              title="Stop generation"
+              className={cn(
+                'flex items-center justify-center shrink-0',
+                'w-9 h-9 rounded-full',
+                'bg-destructive text-destructive-foreground',
+                'transition-transform active:scale-95'
+              )}
+              aria-label="Stop generation"
             >
-              <StopCircle className="w-9 h-9 text-red-500" fill="currentColor" />
+              <Square className="w-4 h-4" fill="currentColor" aria-hidden="true" />
             </button>
           ) : (
             <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!text.trim() || isLoading || disabled}
+              type="submit"
+              disabled={!canSend}
               className={cn(
-                'flex items-center justify-center h-9 w-9 shrink-0',
-                !text.trim() || isLoading || disabled ? 'opacity-50 cursor-not-allowed' : ''
+                'flex items-center justify-center shrink-0',
+                'w-9 h-9 rounded-full',
+                'transition-all active:scale-95',
+                canSend
+                  ? 'bg-primary text-primary-foreground'
+                  : 'bg-muted text-muted-foreground/50 cursor-not-allowed'
               )}
-              title="Send message"
+              aria-label="Send message"
             >
-              <Send
-                className={cn(
-                  'w-9 h-9',
-                  text.trim() && !isLoading && !disabled ? 'text-primary' : 'text-gray-400'
-                )}
-              />
+              <ArrowUp className="w-5 h-5" strokeWidth={2.5} aria-hidden="true" />
             </button>
           )}
-        </div>
+        </form>
 
-        <p className="text-xs text-muted-foreground mt-2 text-center">
-          Press Enter to send, Shift+Enter for new line
+        <p className="text-[11px] text-muted-foreground/60 mt-2 text-center">
+          Return to send · Shift+Return for new line
         </p>
       </div>
-    </div>
+    </footer>
   );
 }
