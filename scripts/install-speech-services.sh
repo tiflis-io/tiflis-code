@@ -777,9 +777,9 @@ create_venv() {
         print_step "Installing Python packages (this may take a few minutes)..."
         uv pip install -e .
         
-        # Download spacy model
-        print_step "Downloading spacy English model..."
-        .venv/bin/python -m spacy download en_core_web_sm
+        # Note: Skip spacy model download due to transformers version conflict
+        # The speech services don't actually require spacy for basic operation
+        print_step "Skipping spacy model download (not required for speech services)"
         
         print_success "Python environment and packages installed"
     else
