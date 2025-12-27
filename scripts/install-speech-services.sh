@@ -716,7 +716,13 @@ create_venv() {
         
         # Ensure uv is available
         export PATH="$HOME/.local/bin:$PATH"
-        uv venv --force
+        
+        # Remove existing venv if this is a reinstallation
+        if [ -d ".venv" ]; then
+            rm -rf .venv
+        fi
+        
+        uv venv
         source .venv/bin/activate
         
         # Install packages
