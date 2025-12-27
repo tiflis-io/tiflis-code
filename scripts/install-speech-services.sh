@@ -969,6 +969,9 @@ create_venv() {
         
         # Remove existing venv if this is a reinstallation
         if [ -d ".venv" ]; then
+            # Fix permission issues before removal
+            sudo find .venv -type f -name "*.pyc" -exec rm -f {} \; 2>/dev/null || true
+            sudo find .venv -type d -name "__pycache__" -exec rm -rf {} \; 2>/dev/null || true
             rm -rf .venv
         fi
         
