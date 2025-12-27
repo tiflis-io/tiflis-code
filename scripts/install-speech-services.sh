@@ -241,28 +241,42 @@ check_python() {
     
     # Try specific versions in order of preference
     # STT requires >=3.11, TTS requires >=3.10, so we need 3.11 minimum
-    for version in "3.12" "3.13" "3.11"; do
+    for version in "3.13" "3.12" "3.11"; do
         if command -v "python$version" &>/dev/null; then
-            local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-            if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
-                python_version="$(python$version --version)"
-                python_cmd="python$version"
-                print_success "$python_version detected"
-                PYTHON_CMD="$python_cmd"
-                return 0
+            local full_version="$(python$version --version 2>/dev/null)"
+            local major_minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+            local major="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+            local minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+            
+            # Check if version >= 3.11
+            if [ -n "$major" ] && [ -n "$minor" ]; then
+                if [ "$major" -gt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -ge 11 ]); then
+                    python_version="$full_version"
+                    python_cmd="python$version"
+                    print_success "$python_version detected"
+                    PYTHON_CMD="$python_cmd"
+                    return 0
+                fi
             fi
         fi
     done
     
     # Check if python3 is available and meets requirements
     if command -v python3 &>/dev/null; then
-        local ver="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-        if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
-            python_version="$(python3 --version)"
-            python_cmd="python3"
-            print_success "$python_version detected"
-            PYTHON_CMD="$python_cmd"
-            return 0
+        local full_version="$(python3 --version 2>/dev/null)"
+        local major_minor="$(python3 --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+' | head -1)"
+        local major="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+        local minor="$(python3 --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+        
+        # Check if version >= 3.11
+        if [ -n "$major" ] && [ -n "$minor" ]; then
+            if [ "$major" -gt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -ge 11 ]); then
+                python_version="$full_version"
+                python_cmd="python3"
+                print_success "$python_version detected"
+                PYTHON_CMD="$python_cmd"
+                return 0
+            fi
         fi
     fi
     
@@ -286,18 +300,24 @@ check_python() {
         fi
         
         # Check again after installation
-        for version in "3.12" "3.13" "3.11"; do
+        for version in "3.13" "3.12" "3.11"; do
             if command -v "python$version" &>/dev/null; then
-                local ver="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
-                if [ -n "$ver" ] && [ "$ver" -ge "$required" ]; then
-                    python_version="$(python$version --version)"
-                    python_cmd="python$version"
-                    PYTHON_CMD="$python_cmd"
-                    print_success "$python_version installed"
-                    return 0
+                local full_version="$(python$version --version 2>/dev/null)"
+                local major="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -1)"
+                local minor="$(python$version --version 2>/dev/null | grep -oE '[0-9]+' | head -2 | tail -1)"
+                
+                # Check if version >= 3.11
+                if [ -n "$major" ] && [ -n "$minor" ]; then
+                    if [ "$major" -gt 3 ] || ([ "$major" -eq 3 ] && [ "$minor" -ge 11 ]); then
+                        python_version="$full_version"
+                        python_cmd="python$version"
+                        PYTHON_CMD="$python_cmd"
+                        print_success "$python_version installed"
+                        return 0
+                    fi
                 fi
             fi
-        fi
+        done
         
         print_error "Python installation failed"
         exit 1
