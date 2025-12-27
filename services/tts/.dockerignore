@@ -31,7 +31,6 @@ tests/
 pytest.ini
 
 # Documentation
-*.md
 docs/
 
 # OS
