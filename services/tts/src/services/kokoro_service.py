@@ -8,12 +8,13 @@ from loguru import logger
 
 try:
     from kokoro import KPipeline
+
     KOKORO_AVAILABLE = True
 except ImportError:
     KOKORO_AVAILABLE = False
 
 from src.config import Settings, get_settings
-from src.models.schemas import VoiceInfo
+from src.schemas import VoiceInfo
 
 
 class KokoroService:
@@ -23,12 +24,12 @@ class KokoroService:
     AVAILABLE_VOICES = [
         "af_heart",  # American Female Heart
         "af_bella",  # American Female Bella
-        "af_nicole", # American Female Nicole
+        "af_nicole",  # American Female Nicole
         "af_sarah",  # American Female Sarah
-        "af_sky",    # American Female Sky
-        "am_michael", # American Male Michael
-        "am_adam",   # American Male Adam
-        "am_echo",   # American Male Echo
+        "af_sky",  # American Female Sky
+        "am_michael",  # American Male Michael
+        "am_adam",  # American Male Adam
+        "am_echo",  # American Male Echo
     ]
 
     def __init__(self, settings: Settings | None = None) -> None:
@@ -46,9 +47,7 @@ class KokoroService:
     async def initialize(self) -> None:
         """Initialize the Kokoro pipeline (lazy loading)."""
         if not KOKORO_AVAILABLE:
-            raise RuntimeError(
-                "Kokoro is not installed. Install with: pip install kokoro"
-            )
+            raise RuntimeError("Kokoro is not installed. Install with: pip install kokoro")
 
         if self._pipeline is None:
             # Determine device
@@ -71,12 +70,37 @@ class KokoroService:
     def _load_voices(self) -> None:
         """Load available voices from the model."""
         default_voices = [
-            {"id": "af_heart", "name": "Heart (American Female)", "language": "en", "gender": "female"},
-            {"id": "af_bella", "name": "Bella (American Female)", "language": "en", "gender": "female"},
-            {"id": "af_nicole", "name": "Nicole (American Female)", "language": "en", "gender": "female"},
-            {"id": "af_sarah", "name": "Sarah (American Female)", "language": "en", "gender": "female"},
+            {
+                "id": "af_heart",
+                "name": "Heart (American Female)",
+                "language": "en",
+                "gender": "female",
+            },
+            {
+                "id": "af_bella",
+                "name": "Bella (American Female)",
+                "language": "en",
+                "gender": "female",
+            },
+            {
+                "id": "af_nicole",
+                "name": "Nicole (American Female)",
+                "language": "en",
+                "gender": "female",
+            },
+            {
+                "id": "af_sarah",
+                "name": "Sarah (American Female)",
+                "language": "en",
+                "gender": "female",
+            },
             {"id": "af_sky", "name": "Sky (American Female)", "language": "en", "gender": "female"},
-            {"id": "am_michael", "name": "Michael (American Male)", "language": "en", "gender": "male"},
+            {
+                "id": "am_michael",
+                "name": "Michael (American Male)",
+                "language": "en",
+                "gender": "male",
+            },
             {"id": "am_adam", "name": "Adam (American Male)", "language": "en", "gender": "male"},
             {"id": "am_echo", "name": "Echo (American Male)", "language": "en", "gender": "male"},
         ]
@@ -107,11 +131,12 @@ class KokoroService:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
-            lambda: list(self._pipeline(text, voice=voice_id, speed=speed, split_pattern=r'\n'))[0],
+            lambda: list(self._pipeline(text, voice=voice_id, speed=speed, split_pattern=r"\n"))[0],
         )
 
         # Get audio from result (result is (graphemes, phonemes, audio))
         import torch
+
         audio_data = result.audio  # type: ignore
 
         # Convert to WAV bytes
