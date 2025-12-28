@@ -6,6 +6,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { ConnectPage } from '@/pages/ConnectPage';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ChatPage } from '@/pages/ChatPage';
+import { ChatPageWithAssistantUI } from '@/pages/ChatPageWithAssistantUI';
 import { TerminalPage } from '@/pages/TerminalPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 
@@ -26,6 +27,8 @@ export function App() {
               <Route path="/" element={<Navigate to="/chat" replace />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/chat/:sessionId" element={<ChatPage />} />
+              <Route path="/assistant-ui" element={<ChatPageWithAssistantUI />} />
+              <Route path="/assistant-ui/:sessionId" element={<ChatPageWithAssistantUI />} />
               <Route path="/terminal/:sessionId" element={<TerminalPage />} />
               <Route path="/settings" element={<SettingsPage />} />
             </Route>

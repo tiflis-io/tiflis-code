@@ -196,7 +196,6 @@ export function useTiflisRuntime(sessionId: string = "supervisor") {
     setMessages,
     setIsLoading,
     setIsRunning,
-    isReady,
   ]);
 
   // Send new message

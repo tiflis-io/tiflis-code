@@ -12,6 +12,8 @@ import {
   X,
   Settings,
   Plus,
+  Bot,
+  MessageSquare,
 } from 'lucide-react';
 import {
   SupervisorIcon,
@@ -64,7 +66,13 @@ export function MobileHeader() {
 
   const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
 
-  const supervisorActive = location.pathname === '/chat' && !selectedSessionId;
+  // Check if we're on an assistant-ui route
+  const isAssistantUIRoute = location.pathname.startsWith('/assistant-ui');
+  
+  const supervisorActive = !selectedSessionId && (
+    (location.pathname === '/chat' && !isAssistantUIRoute) || 
+    (location.pathname === '/assistant-ui' && isAssistantUIRoute)
+  );
   const settingsActive = location.pathname === '/settings';
 
   const agentSessions = sessions.filter((s) => s.type !== 'terminal');
@@ -79,6 +87,23 @@ export function MobileHeader() {
     navigate(path);
     setIsOpen(false);
   };
+
+  // Helper functions to navigate to the correct interface
+  const getCurrentPathBase = () => {
+    if (isAssistantUIRoute) {
+      return '/assistant-ui';
+    }
+    return '/chat';
+  };
+  
+  const getSessionPath = (sessionId: string) => {
+    if (isAssistantUIRoute) {
+      return `/assistant-ui/${sessionId}`;
+    }
+    return `/chat/${sessionId}`;
+  };
+
+  
 
   const getSessionIcon = (session: Session) => {
     switch (session.type) {
@@ -158,7 +183,8 @@ export function MobileHeader() {
     if (selectedSessionId) {
       const session = sessions.find((s) => s.id === selectedSessionId);
       if (session) {
-        return session.type === 'terminal' ? 'Terminal' : getSessionDisplayName(session);
+        const displayName = session.type === 'terminal' ? 'Terminal' : getSessionDisplayName(session);
+        return displayName;
       }
     }
     return 'Supervisor';
@@ -192,11 +218,56 @@ export function MobileHeader() {
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-4 border-b flex items-center justify-between">
-            <h1 className="font-semibold text-lg">Tiflis Code</h1>
-            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-              <X className="w-4 h-4" />
-            </Button>
+          <div className="p-4 border-b space-y-3">
+            <div className="flex items-center justify-between">
+              <h1 className="font-semibold text-lg">Tiflis Code</h1>
+              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            
+            {/* Interface Toggle */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                <span>Interface</span>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant={!isAssistantUIRoute ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      if (selectedSessionId) {
+                        handleNavigation(`/chat/${selectedSessionId}`, selectedSessionId);
+                      } else {
+                        handleNavigation('/chat');
+                      }
+                    }}
+                    aria-pressed={!isAssistantUIRoute}
+                    title="Classic chat interface"
+                  >
+                    <MessageSquare className="w-3 h-3 mr-1" aria-hidden="true" />
+                    Classic
+                  </Button>
+                  <Button
+                    variant={isAssistantUIRoute ? "secondary" : "ghost"}
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => {
+                      if (selectedSessionId) {
+                        handleNavigation(`/assistant-ui/${selectedSessionId}`, selectedSessionId);
+                      } else {
+                        handleNavigation('/assistant-ui');
+                      }
+                    }}
+                    aria-pressed={isAssistantUIRoute}
+                    title="New AI assistant interface with enhanced features"
+                  >
+                    <Bot className="w-3 h-3 mr-1" aria-hidden="true" />
+                    Assistant
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {/* Navigation */}
@@ -205,11 +276,12 @@ export function MobileHeader() {
             <Button
               variant={supervisorActive ? 'secondary' : 'ghost'}
               className="w-full justify-start"
-              onClick={() => handleNavigation('/chat')}
+              onClick={() => handleNavigation(getCurrentPathBase())}
               aria-current={supervisorActive ? 'page' : undefined}
             >
               <SupervisorIcon className="w-4 h-4" aria-hidden="true" />
               <span className="ml-2">Supervisor</span>
+              {isAssistantUIRoute && <Bot className="w-3 h-3 ml-1 text-primary" aria-hidden="true" />}
             </Button>
 
             {/* Agent Sessions */}
@@ -224,11 +296,11 @@ export function MobileHeader() {
                     const displayName = getSessionDisplayName(session);
                     return (
                       <li key={session.id}>
-                        <Button
-                          variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
-                          className="w-full justify-start h-auto py-2"
-                          onClick={() => handleNavigation(`/chat/${session.id}`, session.id)}
-                          aria-current={selectedSessionId === session.id ? 'page' : undefined}
+<Button
+                           variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
+                           className="w-full justify-start h-auto py-2"
+                           onClick={() => handleNavigation(getSessionPath(session.id), session.id)}
+                           aria-current={selectedSessionId === session.id ? 'page' : undefined}
                         >
                           <div className="relative shrink-0">
                             <span aria-hidden="true">{getSessionIcon(session)}</span>
@@ -236,10 +308,11 @@ export function MobileHeader() {
                               <StatusIndicator status={session.status} />
                             </span>
                           </div>
-                          <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
-                            <span className="truncate text-sm font-medium">
-                              {displayName}
-                            </span>
+<div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                             <span className="truncate text-sm font-medium flex items-center">
+                               {displayName}
+                               {isAssistantUIRoute && <Bot className="w-3 h-3 ml-1 text-primary" aria-hidden="true" />}
+                             </span>
                             {subtitle && (
                               <span className="truncate text-xs text-muted-foreground">
                                 {subtitle}

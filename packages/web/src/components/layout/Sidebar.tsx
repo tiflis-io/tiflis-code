@@ -12,6 +12,8 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
+  Bot,
+  MessageSquare,
 } from 'lucide-react';
 import {
   SupervisorIcon,
@@ -65,15 +67,46 @@ export function Sidebar() {
 
   const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
 
-  const supervisorActive = location.pathname === '/chat' && !selectedSessionId;
+  // Check if we're on an assistant-ui route
+  const isAssistantUIRoute = location.pathname.startsWith('/assistant-ui');
+  const isCurrentRouteAssistantUI = isAssistantUIRoute;
+
+  const supervisorActive = !selectedSessionId && (
+    (location.pathname === '/chat' && !isAssistantUIRoute) || 
+    (location.pathname === '/assistant-ui' && isAssistantUIRoute)
+  );
+  
   const settingsActive = location.pathname === '/settings';
+  
+  // Check if the current session is active (handles both interfaces)
+  const isSessionActive = (sessionId: string) => {
+    if (isAssistantUIRoute) {
+      return selectedSessionId === sessionId && location.pathname === `/assistant-ui/${sessionId}`;
+    }
+    return selectedSessionId === sessionId && location.pathname === `/chat/${sessionId}`;
+  };
+  
+  // Get the base path and session ID for navigation
+  const getCurrentPathBase = () => {
+    if (isAssistantUIRoute) {
+      return '/assistant-ui';
+    }
+    return '/chat';
+  };
+  
+  const getSessionPath = (sessionId: string) => {
+    if (isAssistantUIRoute) {
+      return `/assistant-ui/${sessionId}`;
+    }
+    return `/chat/${sessionId}`;
+  };
 
   const agentSessions = sessions.filter((s) => s.type !== 'terminal');
   const terminalSessions = sessions.filter((s) => s.type === 'terminal');
 
   const handleSupervisorClick = () => {
     selectSession(null);
-    navigate('/chat');
+    navigate(getCurrentPathBase());
   };
 
   const handleSessionClick = (session: Session) => {
@@ -81,12 +114,30 @@ export function Sidebar() {
     if (session.type === 'terminal') {
       navigate(`/terminal/${session.id}`);
     } else {
-      navigate(`/chat/${session.id}`);
+      navigate(getSessionPath(session.id));
     }
   };
 
   const handleSettingsClick = () => {
     navigate('/settings');
+  };
+  
+  const handleInterfaceToggle = () => {
+    if (selectedSessionId) {
+      // If we have a selected session, toggle between interfaces for that session
+      if (isAssistantUIRoute) {
+        navigate(`/chat/${selectedSessionId}`);
+      } else {
+        navigate(`/assistant-ui/${selectedSessionId}`);
+      }
+    } else {
+      // Otherwise toggle the supervisor view
+      if (isAssistantUIRoute) {
+        navigate('/chat');
+      } else {
+        navigate('/assistant-ui');
+      }
+    }
   };
 
   const getSessionIcon = (session: Session) => {
@@ -174,24 +225,92 @@ export function Sidebar() {
   return (
     <aside className="flex flex-col h-full" aria-label="Session navigation">
       {/* Header */}
-      <div className="p-4 border-b flex items-center justify-between">
-        {!sidebarCollapsed && (
-          <h1 className="font-semibold text-lg">Tiflis Code</h1>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={toggleSidebar}
-          className={cn(sidebarCollapsed && 'mx-auto')}
-          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          aria-expanded={!sidebarCollapsed}
-        >
-          {sidebarCollapsed ? (
-            <ChevronRight className="w-4 h-4" aria-hidden="true" />
-          ) : (
-            <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+      <div className="p-4 border-b space-y-2">
+        <div className="flex items-center justify-between">
+          {!sidebarCollapsed && (
+            <h1 className="font-semibold text-lg">Tiflis Code</h1>
           )}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className={cn(sidebarCollapsed && 'mx-auto')}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            )}
+          </Button>
+        </div>
+        
+        {/* Interface Toggle */}
+        {!sidebarCollapsed && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+              <span>Interface</span>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant={!isCurrentRouteAssistantUI ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    if (selectedSessionId) {
+                      navigate(`/chat/${selectedSessionId}`);
+                    } else {
+                      navigate('/chat');
+                    }
+                  }}
+                  aria-pressed={!isCurrentRouteAssistantUI}
+                  title="Classic chat interface"
+                >
+                  <MessageSquare className="w-3 h-3 mr-1" aria-hidden="true" />
+                  Classic
+                </Button>
+                <Button
+                  variant={isCurrentRouteAssistantUI ? "secondary" : "ghost"}
+                  size="sm"
+                  className="h-6 px-2 text-xs"
+                  onClick={() => {
+                    if (selectedSessionId) {
+                      navigate(`/assistant-ui/${selectedSessionId}`);
+                    } else {
+                      navigate('/assistant-ui');
+                    }
+                  }}
+                  aria-pressed={isCurrentRouteAssistantUI}
+                  title="New AI assistant interface with enhanced features"
+                >
+                  <Bot className="w-3 h-3 mr-1" aria-hidden="true" />
+                  Assistant
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Collapsed state toggle */}
+        {sidebarCollapsed && (
+          <div className="flex justify-center">
+            <Button
+              variant={isCurrentRouteAssistantUI ? "secondary" : "ghost"}
+              size="icon"
+              className="h-8 w-8"
+              onClick={handleInterfaceToggle}
+              aria-label={isCurrentRouteAssistantUI ? 'Switch to Classic interface' : 'Switch to Assistant UI interface'}
+              title={isCurrentRouteAssistantUI ? 'Switch to Classic chat interface' : 'Switch to Assistant UI interface'}
+              aria-pressed={isCurrentRouteAssistantUI}
+            >
+              {isCurrentRouteAssistantUI ? (
+                <MessageSquare className="w-3 h-3" aria-hidden="true" />
+              ) : (
+                <Bot className="w-3 h-3" aria-hidden="true" />
+              )}
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Navigation */}
@@ -226,13 +345,13 @@ export function Sidebar() {
                 return (
                   <li key={session.id}>
                     <Button
-                      variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
+                      variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
                       className={cn(
                         'w-full justify-start h-auto py-2',
                         sidebarCollapsed && 'justify-center px-2'
                       )}
                       onClick={() => handleSessionClick(session)}
-                      aria-current={selectedSessionId === session.id ? 'page' : undefined}
+                      aria-current={isSessionActive(session.id) ? 'page' : undefined}
                       aria-label={sidebarCollapsed ? `${displayName}${subtitle ? ` - ${subtitle}` : ''}` : undefined}
                     >
                       <div className="relative shrink-0">
@@ -276,13 +395,13 @@ export function Sidebar() {
                 return (
                   <li key={session.id}>
                     <Button
-                      variant={selectedSessionId === session.id ? 'secondary' : 'ghost'}
+                      variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
                       className={cn(
                         'w-full justify-start h-auto py-2',
                         sidebarCollapsed && 'justify-center px-2'
                       )}
                       onClick={() => handleSessionClick(session)}
-                      aria-current={selectedSessionId === session.id ? 'page' : undefined}
+                      aria-current={isSessionActive(session.id) ? 'page' : undefined}
                       aria-label={sidebarCollapsed ? `Terminal${subtitle ? ` - ${subtitle}` : ''}` : undefined}
                     >
                       <div className="relative shrink-0">
