@@ -2,6 +2,7 @@
 // Licensed under the FSL-1.1-NC.
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { DARK_MODE_QUERY, LS_THEME_KEY } from './theme-constants';
 
 type Theme = 'dark' | 'light' | 'system';
 
@@ -13,36 +14,36 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_STORAGE_KEY = 'tiflis-code-theme';
-
 function getSystemTheme(): 'dark' | 'light' {
   if (typeof window === 'undefined') return 'dark';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  return window.matchMedia(DARK_MODE_QUERY).matches ? 'dark' : 'light';
 }
 
-interface ThemeProviderProps {
+export interface ThemeProviderProps {
   children: ReactNode;
   defaultTheme?: Theme;
+  storageKey?: string;
 }
 
-export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProviderProps) {
-  const [theme, setThemeState] = useState<Theme>(() => {
-    if (typeof window === 'undefined') return defaultTheme;
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    return (stored as Theme) || defaultTheme;
-  });
-
+export function ThemeProvider({
+  children,
+  defaultTheme = 'system',
+  storageKey = LS_THEME_KEY,
+}: ThemeProviderProps) {
+  const [theme, setTheme] = useState<Theme>(
+    () => (localStorage.getItem(storageKey) as Theme) || defaultTheme
+  );
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() => {
-    if (theme === 'system') return getSystemTheme();
+    if (theme === 'system') {
+      return getSystemTheme();
+    }
     return theme;
   });
 
   useEffect(() => {
     const root = window.document.documentElement;
-
-    // Remove both classes first
     root.classList.remove('light', 'dark');
-
+    
     // Determine the actual theme to apply
     const effectiveTheme = theme === 'system' ? getSystemTheme() : theme;
     root.classList.add(effectiveTheme);
@@ -51,7 +52,7 @@ export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProvid
 
   useEffect(() => {
     // Listen for system theme changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const mediaQuery = window.matchMedia(DARK_MODE_QUERY);
 
     const handleChange = () => {
       if (theme === 'system') {
@@ -67,13 +68,13 @@ export function ThemeProvider({ children, defaultTheme = 'system' }: ThemeProvid
     return () => mediaQuery.removeEventListener('change', handleChange);
   }, [theme]);
 
-  const setTheme = (newTheme: Theme) => {
-    localStorage.setItem(THEME_STORAGE_KEY, newTheme);
-    setThemeState(newTheme);
+  const handleSetTheme = (newTheme: Theme) => {
+    localStorage.setItem(storageKey, newTheme);
+    setTheme(newTheme);
   };
 
   return (
-    <ThemeContext.Provider value={{ theme, setTheme, resolvedTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme: handleSetTheme, resolvedTheme }}>
       {children}
     </ThemeContext.Provider>
   );

@@ -11,7 +11,7 @@ import type { Message, ContentBlock } from "@/types";
 import { logger } from "@/utils/logger";
 
 // Helper function to convert Tiflis ContentBlock to assistant-ui message parts
-const convertContentBlockToPart = (block: ContentBlock): any => {
+const convertContentBlockToPart = (block: ContentBlock) => {
   switch (block.blockType) {
     case "text":
       return {
@@ -66,15 +66,16 @@ const convertContentBlockToPart = (block: ContentBlock): any => {
 };
 
 // Helper function to check if message is a user message
-const isUserMessage = (message: any): message is { role: "user"; content: any[] } => {
-  return message.role === "user";
+const isUserMessage = (message: unknown): message is { role: "user"; content: Record<string, unknown>[] } => {
+  const msg = message as Record<string, unknown>;
+  return msg.role === "user";
 };
 
 // Helper function to convert Tiflis Message to assistant-ui ThreadMessage
-const convertTiflisMessageToThreadMessage = (message: Message): any => {
+const convertTiflisMessageToThreadMessage = (message: Message) => {
   const parts = message.contentBlocks.map(convertContentBlockToPart);
   
-  const baseMessage: any = {
+  const baseMessage: Record<string, unknown> = {
     id: message.id,
     content: parts,
     createdAt: message.createdAt,
@@ -95,16 +96,16 @@ const convertTiflisMessageToThreadMessage = (message: Message): any => {
   return baseMessage;
 };
 
-// Zustand store for assistant-ui runtime state - use any to avoid complex type checking
+// Zustand store for assistant-ui runtime state
 interface AssistantUIState {
-  messages: any[];
+  messages: Record<string, unknown>[];
   isLoading: boolean;
   isRunning: boolean;
   
   // Actions
-  addMessage: (message: any) => void;
-  updateMessage: (messageId: string, updates: Partial<any>) => void;
-  setMessages: (messages: any[]) => void;
+  addMessage: (message: Record<string, unknown>) => void;
+  updateMessage: (messageId: string, updates: Partial<Record<string, unknown>>) => void;
+  setMessages: (messages: Record<string, unknown>[]) => void;
   setIsLoading: (isLoading: boolean) => void;
   setIsRunning: (isRunning: boolean) => void;
   reset: () => void;
@@ -199,7 +200,7 @@ export function useTiflisRuntime(sessionId: string = "supervisor") {
   ]);
 
   // Send new message
-  const append = useCallback(async (message: { role: string; content: any[] }) => {
+  const append = useCallback(async (message: { role: string; content: Record<string, unknown>[] }) => {
     if (!isUserMessage(message)) {
       logger.warn("Only user messages can be appended");
       return;

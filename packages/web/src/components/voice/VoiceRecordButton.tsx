@@ -5,7 +5,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Mic, Square, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logger } from '@/utils/logger';
-import { toast } from '@/components/ui/toast';
+import { toastFunctions as toast } from '@/components/ui/toast';
 
 interface VoiceRecordButtonProps {
   onRecordingComplete: (audioBlob: Blob, format: string) => void;

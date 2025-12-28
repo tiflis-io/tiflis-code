@@ -18,7 +18,7 @@ import {
 import type { Session } from '@/types';
 
 interface ChatViewProps {
-  messages: any[];
+  messages: unknown[];
   isLoading: boolean;
   isSubscribing?: boolean;
   onSend: (text: string) => void;

@@ -9,6 +9,7 @@ import { useAppStore } from "@/store/useAppStore";
 import { useChatStore } from "@/store/useChatStore";
 import { useWebSocket } from "@/hooks/useWebSocket";
 import { type Message } from "@/types";
+import { VoiceRecordButton } from "./voice-record-button";
 
 interface ThreadProps {
   sessionId: string;
@@ -32,6 +33,8 @@ export const Thread: FC<ThreadProps> = ({ sessionId, isSupervisor = false }) => 
   const {
     sendSupervisorCommand,
     sendAgentCommand,
+    sendSupervisorVoiceCommand,
+    sendAgentVoiceCommand,
     cancelSupervisor,
     cancelAgent,
   } = useWebSocket();
@@ -64,6 +67,30 @@ export const Thread: FC<ThreadProps> = ({ sessionId, isSupervisor = false }) => 
       }
     } catch (error) {
       console.error("Failed to send message:", error);
+    }
+  };
+
+  // Handle voice recording completion
+  const handleVoiceRecordingComplete = async (audioBlob: Blob, format: string) => {
+    if (!isConnected) return;
+
+    try {
+      // Convert blob to base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        const base64 = result.split(',')[1];
+        if (base64) {
+          if (isSupervisor) {
+            sendSupervisorVoiceCommand(base64, format);
+          } else {
+            sendAgentVoiceCommand(sessionId, base64, format);
+          }
+        }
+      };
+      reader.readAsDataURL(audioBlob);
+    } catch (error) {
+      console.error("Failed to send voice message:", error);
     }
   };
 
@@ -220,6 +247,11 @@ export const Thread: FC<ThreadProps> = ({ sessionId, isSupervisor = false }) => 
             onKeyDown={handleKeyDown}
             className="flex-1 min-h-[40px] max-h-[200px] rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
             rows={1}
+          />
+          
+          <VoiceRecordButton
+            onRecordingComplete={handleVoiceRecordingComplete}
+            disabled={!isConnected || isLoading}
           />
           
           <div className="flex gap-1">

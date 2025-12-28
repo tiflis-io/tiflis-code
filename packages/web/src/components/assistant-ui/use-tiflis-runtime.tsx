@@ -7,7 +7,7 @@ export interface TiflisRuntimeOptions {
   sessionId?: string;
 }
 
-export function useTiflisAssistantRuntime({ sessionId = "supervisor" }: TiflisRuntimeOptions = {}): any {
+export function useTiflisAssistantRuntime({ sessionId = "supervisor" }: TiflisRuntimeOptions = {}): unknown {
   const _runtime = useTiflisRuntime(sessionId);
 
   // Simple runtime object that assistant-ui can use

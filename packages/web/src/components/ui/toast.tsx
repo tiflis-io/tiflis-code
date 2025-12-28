@@ -196,7 +196,7 @@ export function useToasts(): Toast[] {
 }
 
 // Convenience function for showing toasts
-export const toast = {
+export const toastFunctions = {
   show: (toast: Omit<Toast, 'id'>) => toastManager.show(toast),
   success: (title: string, description?: string) =>
     toastManager.success(title, description),
