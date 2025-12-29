@@ -74,9 +74,16 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // Supervisor messages
   addSupervisorMessage: (message) =>
-    set((state) => ({
-      supervisorMessages: [...state.supervisorMessages, message],
-    })),
+    set((state) => {
+      // Deduplicate by message ID
+      if (state.supervisorMessages.some((m) => m.id === message.id)) {
+        console.debug('[ChatStore] Skipping duplicate supervisor message:', message.id);
+        return state;
+      }
+      return {
+        supervisorMessages: [...state.supervisorMessages, message],
+      };
+    }),
 
   updateSupervisorMessage: (messageId, updates) =>
     set((state) => ({
@@ -101,12 +108,20 @@ export const useChatStore = create<ChatState>((set) => ({
 
   // Agent messages
   addAgentMessage: (sessionId, message) =>
-    set((state) => ({
-      agentMessages: {
-        ...state.agentMessages,
-        [sessionId]: [...(state.agentMessages[sessionId] ?? []), message],
-      },
-    })),
+    set((state) => {
+      const existingMessages = state.agentMessages[sessionId] ?? [];
+      // Deduplicate by message ID
+      if (existingMessages.some((m) => m.id === message.id)) {
+        console.debug('[ChatStore] Skipping duplicate agent message:', message.id, 'session:', sessionId);
+        return state;
+      }
+      return {
+        agentMessages: {
+          ...state.agentMessages,
+          [sessionId]: [...existingMessages, message],
+        },
+      };
+    }),
 
   updateAgentMessage: (sessionId, messageId, updates) =>
     set((state) => ({
@@ -205,17 +220,34 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
 
   prependSupervisorMessages: (messages) =>
-    set((state) => ({
-      supervisorMessages: [...messages, ...state.supervisorMessages],
-    })),
+    set((state) => {
+      // Filter out messages that already exist (deduplicate)
+      const existingIds = new Set(state.supervisorMessages.map((m) => m.id));
+      const newMessages = messages.filter((m) => !existingIds.has(m.id));
+      if (newMessages.length < messages.length) {
+        console.debug('[ChatStore] Filtered', messages.length - newMessages.length, 'duplicate supervisor messages during prepend');
+      }
+      return {
+        supervisorMessages: [...newMessages, ...state.supervisorMessages],
+      };
+    }),
 
   prependAgentMessages: (sessionId, messages) =>
-    set((state) => ({
-      agentMessages: {
-        ...state.agentMessages,
-        [sessionId]: [...messages, ...(state.agentMessages[sessionId] ?? [])],
-      },
-    })),
+    set((state) => {
+      const existingMessages = state.agentMessages[sessionId] ?? [];
+      // Filter out messages that already exist (deduplicate)
+      const existingIds = new Set(existingMessages.map((m) => m.id));
+      const newMessages = messages.filter((m) => !existingIds.has(m.id));
+      if (newMessages.length < messages.length) {
+        console.debug('[ChatStore] Filtered', messages.length - newMessages.length, 'duplicate agent messages during prepend for session:', sessionId);
+      }
+      return {
+        agentMessages: {
+          ...state.agentMessages,
+          [sessionId]: [...newMessages, ...existingMessages],
+        },
+      };
+    }),
 
   // Reset
   reset: () => set(initialState),

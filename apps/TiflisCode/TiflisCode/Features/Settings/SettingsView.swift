@@ -100,7 +100,7 @@ struct SettingsView: View {
                     Spacer()
                     
                     if appState.connectionState.isConnected {
-                        Button("Disconnect") {
+                        Button("Disconnect & Forget") {
                             showDisconnectConfirmation = true
                         }
                         .buttonStyle(.borderedProminent)
@@ -177,11 +177,6 @@ struct SettingsView: View {
             // Voice & Speech Section
             Section("Voice & Speech") {
                 Toggle("Text-to-Speech", isOn: $ttsEnabled)
-                
-                Picker("Speech Language", selection: $sttLanguage) {
-                    Text("English").tag("en")
-                    Text("Russian").tag("ru")
-                }
             }
             
             // About Section
@@ -302,13 +297,23 @@ struct SettingsView: View {
         } message: {
             Text("Paste the connection link from your workstation")
         }
-        .alert("Disconnect", isPresented: $showDisconnectConfirmation) {
-            Button("Disconnect", role: .destructive) {
+        .alert("Disconnect & Forget All Data", isPresented: $showDisconnectConfirmation) {
+            Button("Disconnect & Delete", role: .destructive) {
+                // Clear stored credentials
+                tunnelURL = ""
+                tunnelId = ""
+                try? keychainManager.deleteAuthKey()
+                UserDefaults.standard.removeObject(forKey: "debug_auth_key")
+                
+                // Disconnect from server
                 appState.disconnect()
+                
+                // Sync cleared credentials to Watch
+                WatchConnectivityManager.shared.updateApplicationContext()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Are you sure you want to disconnect from the workstation?")
+            Text("This will disconnect and delete all stored connection data. You will need to scan a QR code or paste a magic link again to reconnect.")
         }
         .sheet(isPresented: $showCrashLog) {
             CrashLogView()

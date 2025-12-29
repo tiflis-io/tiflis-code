@@ -103,10 +103,14 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
       const agentConfig = agents.find((a) => a.name === selectedAgent);
       const sessionType = isTerminal ? 'terminal' : (agentConfig?.baseType ?? 'claude');
 
+      // For terminal sessions, use defaults if not provided (matches iOS/Android behavior)
+      const finalWorkspace = isTerminal ? (selectedWorkspace || 'home') : selectedWorkspace;
+      const finalProject = isTerminal ? (selectedProject || 'default') : selectedProject;
+
       const result = await createSession(
         sessionType as 'claude' | 'cursor' | 'opencode' | 'terminal',
-        selectedWorkspace || '',
-        selectedProject || '',
+        finalWorkspace,
+        finalProject,
         undefined,
         isTerminal ? undefined : selectedAgent
       );
@@ -229,62 +233,65 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
             </div>
           )}
 
-          {/* Workspace */}
-          <div className="grid gap-2">
-            <Label htmlFor="workspace">Workspace</Label>
-            <Select value={selectedWorkspace} onValueChange={setSelectedWorkspace}>
-              <SelectTrigger id="workspace">
-                <SelectValue placeholder="Select workspace" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspaces.length > 0 ? (
-                  workspaces.map((ws) => (
-                    <SelectItem key={ws.name} value={ws.name}>
-                      {ws.name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="_empty" disabled>
-                    No workspaces available
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Workspace & Project (only for agent sessions) */}
+          {!isTerminal && (
+            <>
+              <div className="grid gap-2">
+                <Label htmlFor="workspace">Workspace</Label>
+                <Select value={selectedWorkspace} onValueChange={setSelectedWorkspace}>
+                  <SelectTrigger id="workspace">
+                    <SelectValue placeholder="Select workspace" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {workspaces.length > 0 ? (
+                      workspaces.map((ws) => (
+                        <SelectItem key={ws.name} value={ws.name}>
+                          {ws.name}
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="_empty" disabled>
+                        No workspaces available
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
 
-          {/* Project */}
-          <div className="grid gap-2">
-            <Label htmlFor="project">Project</Label>
-            <Select
-              value={selectedProject}
-              onValueChange={setSelectedProject}
-              disabled={!selectedWorkspace}
-            >
-              <SelectTrigger id="project">
-                <SelectValue placeholder={selectedWorkspace ? 'Select project' : 'Select workspace first'} />
-              </SelectTrigger>
-              <SelectContent>
-                {projects.length > 0 ? (
-                  projects.map((proj) => (
-                    <SelectItem key={proj.name} value={proj.name}>
-                      <div className="flex items-center gap-2">
-                        <span>{proj.name}</span>
-                        {proj.isGitRepo && (
-                          <span className="text-xs text-muted-foreground">
-                            ({proj.defaultBranch ?? 'git'})
-                          </span>
-                        )}
-                      </div>
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="_empty" disabled>
-                    {selectedWorkspace ? 'No projects in workspace' : 'Select workspace first'}
-                  </SelectItem>
-                )}
-              </SelectContent>
-            </Select>
-          </div>
+              <div className="grid gap-2">
+                <Label htmlFor="project">Project</Label>
+                <Select
+                  value={selectedProject}
+                  onValueChange={setSelectedProject}
+                  disabled={!selectedWorkspace}
+                >
+                  <SelectTrigger id="project">
+                    <SelectValue placeholder={selectedWorkspace ? 'Select project' : 'Select workspace first'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.length > 0 ? (
+                      projects.map((proj) => (
+                        <SelectItem key={proj.name} value={proj.name}>
+                          <div className="flex items-center gap-2">
+                            <span>{proj.name}</span>
+                            {proj.isGitRepo && (
+                              <span className="text-xs text-muted-foreground">
+                                ({proj.defaultBranch ?? 'git'})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))
+                    ) : (
+                      <SelectItem value="_empty" disabled>
+                        {selectedWorkspace ? 'No projects in workspace' : 'Select workspace first'}
+                      </SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
 
           {error && <p className="text-sm text-destructive">{error}</p>}
         </div>

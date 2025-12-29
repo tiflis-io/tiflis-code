@@ -184,6 +184,7 @@ export interface SyncSession {
 }
 
 export interface HistoryEntry {
+  message_id?: string; // Unique message ID for deduplication
   sequence: number;
   role: 'user' | 'assistant';
   content: string;

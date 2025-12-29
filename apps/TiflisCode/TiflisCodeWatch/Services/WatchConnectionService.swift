@@ -350,17 +350,18 @@ final class WatchConnectionService {
         }
     }
 
-    /// Requests state sync from workstation (lightweight mode - no chat histories)
+    /// Requests state sync from workstation
+    /// Note: Protocol v1.13 - all syncs are lightweight by default (no chat histories)
+    /// Clients must use history.request for lazy loading of chat messages
     func requestSync() async {
         let message: [String: Any] = [
             "type": "sync",
-            "id": UUID().uuidString,
-            "lightweight": true  // watchOS: skip message histories to reduce data transfer
+            "id": UUID().uuidString
         ]
 
         do {
             try await sendHTTPMessage(message)
-            print("⌚️ WatchConnectionService: Sent lightweight sync request via HTTP")
+            print("⌚️ WatchConnectionService: Sent sync request via HTTP")
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to send sync request: %@", error.localizedDescription)
         }
@@ -368,10 +369,20 @@ final class WatchConnectionService {
 
     /// Requests chat history for a specific session (or supervisor if sessionId is nil)
     /// Called when user opens a chat detail view
-    func requestHistory(sessionId: String?) async {
-        var payload: [String: Any] = [:]
+    /// Protocol v1.13: Uses pagination with limit parameter for efficient loading
+    /// - Parameters:
+    ///   - sessionId: Target session ID, or nil for supervisor
+    ///   - limit: Maximum messages to load (default: 10 for watchOS performance)
+    ///   - beforeSequence: Load messages before this sequence (for pagination)
+    func requestHistory(sessionId: String?, limit: Int = 10, beforeSequence: Int? = nil) async {
+        var payload: [String: Any] = [
+            "limit": limit  // watchOS: limit to 10 messages for performance
+        ]
         if let sessionId = sessionId {
             payload["session_id"] = sessionId
+        }
+        if let beforeSequence = beforeSequence {
+            payload["before_sequence"] = beforeSequence
         }
 
         let message: [String: Any] = [
@@ -383,7 +394,7 @@ final class WatchConnectionService {
         do {
             try await sendHTTPMessage(message)
             let target = sessionId ?? "supervisor"
-            print("⌚️ WatchConnectionService: Sent history request for \(target) via HTTP")
+            print("⌚️ WatchConnectionService: Sent history request for \(target) with limit=\(limit) via HTTP")
         } catch {
             NSLog("⌚️ WatchConnectionService: Failed to send history request: %@", error.localizedDescription)
         }
@@ -601,31 +612,50 @@ final class WatchConnectionService {
             return
         }
 
-        // Limit to last 10 messages (5 request-response pairs) for watchOS performance
-        let limitedHistory = history.suffix(10)
-        NSLog("⌚️ WatchConnectionService: history.response for %@ loading %d of %d messages",
-              sessionId ?? "supervisor", limitedHistory.count, history.count)
+        // Protocol v1.13: Server already respects our limit parameter
+        // No need to limit client-side - we requested only what we need
+        let hasMore = payload["has_more"] as? Bool ?? false
+        let oldestSequence = payload["oldest_sequence"] as? Int
+        let newestSequence = payload["newest_sequence"] as? Int
+
+        NSLog("⌚️ WatchConnectionService: history.response for %@ - %d messages, hasMore=%d, oldest=%d, newest=%d",
+              sessionId ?? "supervisor",
+              history.count,
+              hasMore ? 1 : 0,
+              oldestSequence ?? -1,
+              newestSequence ?? -1)
 
         // Parse and add messages
         if isSupervisor {
-            // Save ALL recent user messages to preserve those from other devices
-            // (transcription messages won't be in history yet since they were just sent)
-            let recentUserMessages = appState?.supervisorMessages.filter { $0.role == .user } ?? []
+            // Save pending user messages:
+            // 1. Those with voiceInput blocks waiting for transcription
+            // 2. Those with sendStatus == .pending (just sent, not yet in server history)
+            let pendingUserMessages = appState?.supervisorMessages.filter { message in
+                guard message.role == .user else { return false }
+                // Keep messages waiting for transcription
+                let hasVoiceInput = message.contentBlocks.contains { block in
+                    if case .voiceInput = block { return true }
+                    return false
+                }
+                // Keep messages with pending send status
+                let isPending = message.sendStatus == .pending
+                return hasVoiceInput || isPending
+            } ?? []
 
             // Clear existing supervisor messages before loading history
             appState?.clearSupervisorMessages()
-            for msgData in limitedHistory {
+            for msgData in history {
                 if let msg = parseHistoryMessage(msgData, sessionId: "supervisor") {
                     appState?.addSupervisorMessage(msg)
                 }
             }
 
-            // Re-add recent user messages that weren't in history (e.g., just sent from another device)
-            for recentMsg in recentUserMessages {
-                let alreadyExists = appState?.supervisorMessages.contains { $0.id == recentMsg.id } ?? false
+            // Re-add pending user messages that weren't in history
+            for pendingMsg in pendingUserMessages {
+                let alreadyExists = appState?.supervisorMessages.contains { $0.id == pendingMsg.id } ?? false
                 if !alreadyExists {
-                    appState?.addSupervisorMessage(recentMsg)
-                    NSLog("⌚️ WatchConnectionService: Preserved recent supervisor user message %@", recentMsg.id)
+                    appState?.addSupervisorMessage(pendingMsg)
+                    NSLog("⌚️ WatchConnectionService: Preserved pending supervisor user message %@", pendingMsg.id)
                 }
             }
 
@@ -634,24 +664,35 @@ final class WatchConnectionService {
                 updateLoadingStateFromServer(sessionId: "supervisor", isExecuting: isExecuting)
             }
         } else if let sessionId = sessionId {
-            // Save ALL recent user messages to preserve those from other devices
-            // (transcription messages won't be in history yet since they were just sent)
-            let recentUserMessages = appState?.agentMessages[sessionId]?.filter { $0.role == .user } ?? []
+            // Save pending user messages:
+            // 1. Those with voiceInput blocks waiting for transcription
+            // 2. Those with sendStatus == .pending (just sent, not yet in server history)
+            let pendingUserMessages = appState?.agentMessages[sessionId]?.filter { message in
+                guard message.role == .user else { return false }
+                // Keep messages waiting for transcription
+                let hasVoiceInput = message.contentBlocks.contains { block in
+                    if case .voiceInput = block { return true }
+                    return false
+                }
+                // Keep messages with pending send status
+                let isPending = message.sendStatus == .pending
+                return hasVoiceInput || isPending
+            } ?? []
 
             // Clear existing messages for this session before loading history
             appState?.clearAgentMessages(for: sessionId)
-            for msgData in limitedHistory {
+            for msgData in history {
                 if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
                     appState?.addAgentMessage(msg, for: sessionId)
                 }
             }
 
-            // Re-add recent user messages that weren't in history (e.g., just sent from another device)
-            for recentMsg in recentUserMessages {
-                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == recentMsg.id } ?? false
+            // Re-add pending user messages that weren't in history
+            for pendingMsg in pendingUserMessages {
+                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == pendingMsg.id } ?? false
                 if !alreadyExists {
-                    appState?.addAgentMessage(recentMsg, for: sessionId)
-                    NSLog("⌚️ WatchConnectionService: Preserved recent agent user message %@", recentMsg.id)
+                    appState?.addAgentMessage(pendingMsg, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: Preserved pending agent user message %@", pendingMsg.id)
                 }
             }
 
@@ -673,7 +714,7 @@ final class WatchConnectionService {
             }
         }
 
-        NSLog("⌚️ WatchConnectionService: history.response processed")
+        NSLog("⌚️ WatchConnectionService: history.response processed - %d messages loaded", history.count)
     }
 
     private func handleSyncState(_ message: [String: Any]) {
@@ -721,46 +762,10 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: sync.state has NO sessions array!")
         }
 
-        // Handle supervisor history (only present in non-lightweight mode)
-        // In lightweight mode, history is loaded on-demand via history.request
-        if let history = payload["supervisorHistory"] as? [[String: Any]] {
-            // Limit to last 10 messages (5 request-response pairs) for watchOS performance
-            let limitedHistory = history.suffix(10)
-            NSLog("⌚️ WatchConnectionService: sync.state loading %d of %d supervisor messages",
-                  limitedHistory.count, history.count)
-            var parsedCount = 0
-            for msgData in limitedHistory {
-                if let msg = parseHistoryMessage(msgData, sessionId: "supervisor") {
-                    appState?.addSupervisorMessage(msg)
-                    parsedCount += 1
-                }
-            }
-            appState?.debugLastSyncState += ", SupervisorMsgs: \(parsedCount)"
-            NSLog("⌚️ WatchConnectionService: parsed %d supervisor messages", parsedCount)
-        } else {
-            // Lightweight mode - histories will be loaded on-demand
-            appState?.debugLastSyncState += ", Lightweight (no histories)"
-            NSLog("⌚️ WatchConnectionService: sync.state is lightweight (no histories)")
-        }
-
-        // Handle agent histories (only present in non-lightweight mode)
-        if let agentHistories = payload["agentHistories"] as? [String: [[String: Any]]] {
-            NSLog("⌚️ WatchConnectionService: sync.state has %d agent histories", agentHistories.count)
-            for (sessionId, history) in agentHistories {
-                // Limit to last 10 messages (5 request-response pairs) for watchOS performance
-                let limitedHistory = history.suffix(10)
-                NSLog("⌚️ WatchConnectionService: agent %@ loading %d of %d messages",
-                      sessionId, limitedHistory.count, history.count)
-                for msgData in limitedHistory {
-                    if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
-                        appState?.addAgentMessage(msg, for: sessionId)
-                    }
-                }
-            }
-        }
-
-        NSLog("⌚️ WatchConnectionService: sync.state processed, supervisorMessages=%d",
-              appState?.supervisorMessages.count ?? 0)
+        // Protocol v1.13: sync.state no longer includes supervisorHistory or agentHistories
+        // Clients must use history.request for lazy loading when user opens a chat
+        appState?.debugLastSyncState += ", v1.13 (lazy history)"
+        NSLog("⌚️ WatchConnectionService: sync.state processed (v1.13 - no histories, use history.request)")
         print("⌚️ WatchConnectionService: Sync state received")
     }
 
@@ -1224,14 +1229,15 @@ final class WatchConnectionService {
         setLocalLoadingState(sessionId: "supervisor", isLoading: true)
     }
 
-    /// Handle session.subscribed response with session history
+    /// Handle session.subscribed response
+    /// Protocol v1.13: session.subscribed no longer includes history - use history.request
     private func handleSessionSubscribed(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String else {
             NSLog("⌚️ WatchConnectionService: session.subscribed missing session_id")
             return
         }
 
-        // Remove from pending subscriptions - we now have the official history
+        // Remove from pending subscriptions
         // After this, session.output messages will be processed normally
         let wasPending = pendingSubscriptions.remove(sessionId) != nil
 
@@ -1247,42 +1253,10 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: session.subscribed is_executing=%d", isExecuting ? 1 : 0)
         }
 
-        // Load history if present (at root level, not in payload)
-        if let history = message["history"] as? [[String: Any]] {
-            // Save pending user messages (those with voiceInput blocks waiting for transcription)
-            // These are locally-sent messages that haven't been confirmed by server yet
-            let pendingUserMessages = appState?.agentMessages[sessionId]?.filter { message in
-                message.role == .user && message.contentBlocks.contains { block in
-                    if case .voiceInput = block { return true }
-                    return false
-                }
-            } ?? []
-
-            // Clear existing messages before loading history
-            appState?.clearAgentMessages(for: sessionId)
-
-            // Limit to last 10 messages (5 request-response pairs) for watchOS performance
-            let limitedHistory = history.suffix(10)
-            NSLog("⌚️ WatchConnectionService: session.subscribed loading %d of %d history messages, preserving %d pending user messages",
-                  limitedHistory.count, history.count, pendingUserMessages.count)
-
-            for msgData in limitedHistory {
-                if let msg = parseHistoryMessage(msgData, sessionId: sessionId) {
-                    appState?.addAgentMessage(msg, for: sessionId)
-                }
-            }
-
-            // Re-add pending user messages that weren't in history
-            for pendingMsg in pendingUserMessages {
-                // Check if this message ID is already in the loaded history
-                let alreadyExists = appState?.agentMessages[sessionId]?.contains { $0.id == pendingMsg.id } ?? false
-                if !alreadyExists {
-                    appState?.addAgentMessage(pendingMsg, for: sessionId)
-                    NSLog("⌚️ WatchConnectionService: Preserved pending user message %@", pendingMsg.id)
-                }
-            }
-        } else {
-            NSLog("⌚️ WatchConnectionService: session.subscribed has no history array")
+        // Protocol v1.13: history removed from session.subscribed
+        // Request history via history.request for lazy loading
+        Task {
+            await requestHistory(sessionId: sessionId)
         }
 
         // Handle current streaming blocks if joining mid-stream (at root level)
@@ -1350,20 +1324,26 @@ final class WatchConnectionService {
             return nil
         }
 
+        // IMPORTANT: Use message_id from server for deduplication
+        // Without this, each history load creates new UUIDs and duplicates appear
+        let messageId = data["message_id"] as? String ?? UUID().uuidString
+
         var blocks: [MessageContentBlock] = []
         if let contentBlocks = data["content_blocks"] as? [[String: Any]] {
             blocks = parseContentBlocks(contentBlocks)
-            NSLog("⌚️ WatchConnectionService: parseHistoryMessage role=%@, content_blocks=%d, parsed=%d",
-                  roleStr, contentBlocks.count, blocks.count)
+            NSLog("⌚️ WatchConnectionService: parseHistoryMessage id=%@, role=%@, content_blocks=%d, parsed=%d",
+                  messageId, roleStr, contentBlocks.count, blocks.count)
         } else if let content = data["content"] as? String {
             blocks = [.text(id: UUID().uuidString, text: content)]
-            NSLog("⌚️ WatchConnectionService: parseHistoryMessage role=%@, content length=%d",
-                  roleStr, content.count)
+            NSLog("⌚️ WatchConnectionService: parseHistoryMessage id=%@, role=%@, content length=%d",
+                  messageId, roleStr, content.count)
         } else {
-            NSLog("⌚️ WatchConnectionService: parseHistoryMessage role=%@, no content or blocks", roleStr)
+            NSLog("⌚️ WatchConnectionService: parseHistoryMessage id=%@, role=%@, no content or blocks",
+                  messageId, roleStr)
         }
 
         return Message(
+            id: messageId,
             sessionId: sessionId,
             role: role,
             contentBlocks: blocks

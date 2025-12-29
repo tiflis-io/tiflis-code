@@ -203,10 +203,36 @@ export function VoiceRecordButton({
   return (
     <div
       className={cn(
-        'relative flex items-center gap-2 shrink-0',
+        'relative flex items-center justify-center gap-2 shrink-0',
         className
       )}
     >
+      {/* Pulsing rings when recording */}
+      {isRecording && (
+        <>
+          <span
+            className="absolute w-14 h-14 rounded-full bg-red-500/40"
+            style={{
+              animation: 'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }}
+          />
+          <span
+            className="absolute w-14 h-14 rounded-full bg-red-500/40"
+            style={{
+              animation: 'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              animationDelay: '0.5s',
+            }}
+          />
+          <span
+            className="absolute w-14 h-14 rounded-full bg-red-500/40"
+            style={{
+              animation: 'pulse-ring 1.5s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+              animationDelay: '1s',
+            }}
+          />
+        </>
+      )}
+
       {/* Main button */}
       <button
         type="button"

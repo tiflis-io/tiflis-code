@@ -19,7 +19,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useTheme } from '@/components/theme-provider';
-import { LogOut, Trash2, Monitor, Server, Info, Wifi, WifiOff, Sun, Moon, Laptop, Volume2 } from 'lucide-react';
+import { Trash2, Monitor, Server, Info, Wifi, WifiOff, Sun, Moon, Laptop, Volume2 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
@@ -29,16 +29,12 @@ export function SettingsPage() {
   const workstationInfo = useAppStore((state) => state.workstationInfo);
   const tunnelInfo = useAppStore((state) => state.tunnelInfo);
   const connectionState = useAppStore((state) => state.connectionState);
-  const { disconnect, disconnectAndForget } = useWebSocket();
+  const { disconnectAndForget } = useWebSocket();
   const resetSettings = useSettingsStore((state) => state.reset);
   const ttsEnabled = useSettingsStore((state) => state.ttsEnabled);
   const setTtsEnabled = useSettingsStore((state) => state.setTtsEnabled);
   const { theme, setTheme } = useTheme();
   const [isForgetDialogOpen, setIsForgetDialogOpen] = useState(false);
-
-  const handleDisconnect = () => {
-    disconnect();
-  };
 
   const handleDisconnectAndForget = async () => {
     await disconnectAndForget();
@@ -79,8 +75,8 @@ export function SettingsPage() {
   };
 
   return (
-    <div className="flex-1 overflow-auto p-4">
-      <div className="max-w-2xl mx-auto space-y-6">
+    <div className="h-full overflow-y-auto p-4">
+      <div className="max-w-2xl mx-auto space-y-6 pb-8">
         <h1 className="text-2xl font-bold">Settings</h1>
 
         {/* Appearance */}
@@ -274,6 +270,10 @@ export function SettingsPage() {
               <span className="font-mono">0.1.0</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-muted-foreground">Author:</span>
+              <span>Roman Barinov</span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-muted-foreground">Repository:</span>
               <a
                 href="https://github.com/tiflis-io/tiflis-code"
@@ -284,6 +284,41 @@ export function SettingsPage() {
                 tiflis-io/tiflis-code
               </a>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">License:</span>
+              <span>FSL-1.1-NC</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Legal */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Legal</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Privacy Policy</span>
+              <a
+                href="https://github.com/tiflis-io/tiflis-code/blob/main/PRIVACY.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                View
+              </a>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Terms of Service</span>
+              <a
+                href="https://github.com/tiflis-io/tiflis-code/blob/main/TERMS.md"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                View
+              </a>
+            </div>
           </CardContent>
         </Card>
 
@@ -292,20 +327,10 @@ export function SettingsPage() {
           <CardHeader>
             <CardTitle className="text-destructive">Danger Zone</CardTitle>
             <CardDescription>
-              Disconnect from workstation or clear all data
+              Disconnect and clear all stored data
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <Button
-              variant="outline"
-              className="w-full"
-              onClick={handleDisconnect}
-              disabled={!isConnected}
-            >
-              <LogOut className="w-4 h-4" />
-              Disconnect
-            </Button>
-
+          <CardContent>
             <AlertDialog open={isForgetDialogOpen} onOpenChange={setIsForgetDialogOpen}>
               <AlertDialogTrigger asChild>
                 <Button variant="destructive" className="w-full">

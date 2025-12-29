@@ -241,6 +241,17 @@ export function MobileHeader() {
     setShowTerminateDialog(false);
   };
 
+  const handleClearTerminal = () => {
+    if (!selectedSessionId) return;
+    window.dispatchEvent(
+      new CustomEvent('terminal-clear', { detail: { sessionId: selectedSessionId } })
+    );
+    toast.success('Terminal Cleared', 'Terminal output has been cleared.');
+  };
+
+  const currentSession = getCurrentSession();
+  const isTerminalSession = currentSession?.type === 'terminal';
+
   const getPageIcon = () => {
     if (settingsActive) return <Settings className="w-4 h-4" />;
     const session = getCurrentSession();
@@ -330,6 +341,12 @@ export function MobileHeader() {
                   Clear Context
                 </DropdownMenuItem>
               )}
+              {isTerminalSession && (
+                <DropdownMenuItem onClick={handleClearTerminal}>
+                  <Eraser className="w-4 h-4" />
+                  Clear Terminal
+                </DropdownMenuItem>
+              )}
               {selectedSessionId && (
                 <DropdownMenuItem
                   onClick={() => setShowTerminateDialog(true)}
@@ -399,6 +416,12 @@ export function MobileHeader() {
                 >
                   <Eraser className="w-4 h-4" />
                   Clear Context
+                </DropdownMenuItem>
+              )}
+              {isTerminalSession && (
+                <DropdownMenuItem onClick={handleClearTerminal}>
+                  <Eraser className="w-4 h-4" />
+                  Clear Terminal
                 </DropdownMenuItem>
               )}
               {selectedSessionId && (

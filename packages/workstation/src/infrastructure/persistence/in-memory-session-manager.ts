@@ -268,21 +268,43 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   }
 
   /**
-   * Terminates all sessions.
+   * Terminates all sessions with individual timeouts.
+   * Each session has a 3-second timeout to prevent hanging.
    */
   async terminateAll(): Promise<void> {
-    // Cleanup agent sessions first
+    // Cleanup agent sessions first (synchronous, kills processes immediately)
     this.agentSessionManager.cleanup();
 
     const sessions = Array.from(this.sessions.values());
+    const sessionCount = sessions.length;
+
+    if (sessionCount === 0) {
+      this.logger.info('No sessions to terminate');
+      return;
+    }
+
+    this.logger.info({ count: sessionCount }, 'Terminating all sessions...');
+
+    // Terminate each session with individual timeout
+    const INDIVIDUAL_TIMEOUT_MS = 3000;
 
     await Promise.all(
       sessions.map(async (session) => {
+        const sessionId = session.id.value;
         try {
-          await session.terminate();
+          const terminatePromise = session.terminate();
+          const timeoutPromise = new Promise<void>((resolve) => {
+            setTimeout(() => {
+              this.logger.warn({ sessionId }, 'Session termination timed out, skipping');
+              resolve();
+            }, INDIVIDUAL_TIMEOUT_MS);
+          });
+
+          await Promise.race([terminatePromise, timeoutPromise]);
+          this.logger.debug({ sessionId }, 'Session terminated');
         } catch (error) {
           this.logger.error(
-            { sessionId: session.id.value, error },
+            { sessionId, error },
             'Error terminating session'
           );
         }
@@ -292,7 +314,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.sessions.clear();
     this.supervisorSession = null;
 
-    this.logger.info({ count: sessions.length }, 'All sessions terminated');
+    this.logger.info({ count: sessionCount }, 'All sessions terminated');
   }
 
   /**

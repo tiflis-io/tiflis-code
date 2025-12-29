@@ -435,16 +435,21 @@ struct VoiceOutputButton: View {
             forName: NSNotification.Name("WatchAudioResponseReceived"),
             object: nil,
             queue: .main
-        ) { [audioId] notification in
+        ) { [weak audioService, audioId] notification in
             guard let userInfo = notification.userInfo,
                   let messageId = userInfo["messageId"] as? String,
                   messageId == audioId else { return }
 
-            isLoading = false
+            // Extract data before entering Task to avoid data race
+            let audioData = userInfo["audioData"] as? Data
 
-            // If audio data was received, play it with audioId for tracking
-            if let audioData = userInfo["audioData"] as? Data {
-                audioService.playAudio(audioData, audioId: audioId)
+            Task { @MainActor in
+                self.isLoading = false
+
+                // If audio data was received, play it with audioId for tracking
+                if let audioData {
+                    audioService?.playAudio(audioData, audioId: audioId)
+                }
             }
         }
     }
@@ -546,16 +551,21 @@ struct VoicePlaybackButton: View {
             forName: NSNotification.Name("WatchAudioResponseReceived"),
             object: nil,
             queue: .main
-        ) { [audioId] notification in
+        ) { [weak audioService, audioId] notification in
             guard let userInfo = notification.userInfo,
                   let messageId = userInfo["messageId"] as? String,
                   messageId == audioId else { return }
 
-            isLoading = false
+            // Extract data before entering Task to avoid data race
+            let audioData = userInfo["audioData"] as? Data
 
-            // If audio data was received, play it with the audioId for tracking
-            if let audioData = userInfo["audioData"] as? Data {
-                audioService.playAudio(audioData, audioId: audioId)
+            Task { @MainActor in
+                self.isLoading = false
+
+                // If audio data was received, play it with the audioId for tracking
+                if let audioData {
+                    audioService?.playAudio(audioData, audioId: audioId)
+                }
             }
         }
     }

@@ -9,7 +9,6 @@ import '@xterm/xterm/css/xterm.css';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAppStore } from '@/store/useAppStore';
 import { useTheme } from '@/components/theme-provider';
-import { TerminalToolbar } from './TerminalToolbar';
 import type { ITheme } from '@xterm/xterm';
 
 // Terminal themes for light and dark modes
@@ -73,10 +72,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
   const { sendTerminalInput, resizeTerminal, subscribeToSession } = useWebSocket();
   const connectionState = useAppStore((state) => state.connectionState);
-  const sessions = useAppStore((state) => state.sessions);
   const { resolvedTheme } = useTheme();
 
-  const session = sessions.find((s) => s.id === sessionId);
   const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
 
   // Memoize the theme to avoid recalculating on every render
@@ -187,20 +184,25 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     };
   }, [sessionId]);
 
-  const handleClear = useCallback(() => {
-    terminalRef.current?.clear();
-  }, []);
+  // Expose clear function via custom event for external control (e.g., from header menu)
+  useEffect(() => {
+    const handleClearTerminal = (event: CustomEvent<{ sessionId: string }>) => {
+      if (event.detail.sessionId === sessionId && terminalRef.current) {
+        terminalRef.current.clear();
+      }
+    };
+
+    window.addEventListener('terminal-clear', handleClearTerminal as EventListener);
+
+    return () => {
+      window.removeEventListener('terminal-clear', handleClearTerminal as EventListener);
+    };
+  }, [sessionId]);
 
   const containerBg = resolvedTheme === 'dark' ? 'bg-[#1a1a1a]' : 'bg-white';
 
   return (
     <div className={`flex flex-col h-full ${containerBg}`}>
-      <TerminalToolbar
-        sessionId={sessionId}
-        title={session?.project ?? 'Terminal'}
-        subtitle={session?.workspace}
-        onClear={handleClear}
-      />
       <div ref={containerRef} className="flex-1 p-2" />
     </div>
   );

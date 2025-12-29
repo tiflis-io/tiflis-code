@@ -235,8 +235,10 @@ function handleHistoryResponse(msg: HistoryResponseMessage): void {
 
   const sortedHistory = [...history].sort((a, b) => a.sequence - b.sequence);
 
+  // IMPORTANT: Use message_id from server for deduplication
+  // Without this, each history load creates new UUIDs and duplicates appear
   const messages: Message[] = sortedHistory.map((entry) => ({
-    id: crypto.randomUUID(),
+    id: entry.message_id ?? crypto.randomUUID(),
     sessionId: sessionKey,
     role: entry.role,
     contentBlocks: entry.content_blocks

@@ -2999,35 +2999,72 @@ async function bootstrap(): Promise<void> {
     // Tunnel client will automatically retry
   }
 
-  // Graceful shutdown
+  // Graceful shutdown with timeout
+  const SHUTDOWN_TIMEOUT_MS = 10000; // 10 seconds max for graceful shutdown
+  let isShuttingDown = false;
+
   const shutdown = async (signal: string): Promise<void> => {
+    // Prevent multiple shutdown attempts
+    if (isShuttingDown) {
+      logger.warn({ signal }, "Shutdown already in progress, forcing exit");
+      process.exit(1);
+    }
+    isShuttingDown = true;
+
     logger.info({ signal }, "Shutdown signal received");
 
+    // Set up force exit timeout
+    const forceExitTimeout = setTimeout(() => {
+      logger.error("Graceful shutdown timeout exceeded, forcing exit");
+      process.exit(1);
+    }, SHUTDOWN_TIMEOUT_MS);
+
     try {
-      // Disconnect from tunnel
+      // Disconnect from tunnel (fast, non-blocking)
       logger.info("Disconnecting from tunnel...");
       tunnelClient.disconnect();
 
-      // Cleanup agent sessions
+      // Cleanup agent sessions (kills all agent processes)
       logger.info("Cleaning up agent sessions...");
       agentSessionManager.cleanup();
 
-      // Terminate all sessions (waits for all PTY processes to terminate gracefully)
+      // Terminate all sessions with timeout
+      // Each terminal session has its own 2s timeout, but we wrap in overall timeout
       logger.info("Terminating all sessions...");
-      await sessionManager.terminateAll();
-      logger.info("All sessions terminated");
+      const terminatePromise = sessionManager.terminateAll();
+      const sessionTimeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error("Session termination timeout")), 5000);
+      });
 
-      // Close HTTP server
+      try {
+        await Promise.race([terminatePromise, sessionTimeoutPromise]);
+        logger.info("All sessions terminated");
+      } catch (error) {
+        logger.warn({ error }, "Session termination timed out, continuing shutdown");
+      }
+
+      // Close HTTP server with timeout
       logger.info("Closing HTTP server...");
-      await app.close();
+      const closePromise = app.close();
+      const closeTimeoutPromise = new Promise<void>((_, reject) => {
+        setTimeout(() => reject(new Error("HTTP server close timeout")), 2000);
+      });
 
-      // Close database
+      try {
+        await Promise.race([closePromise, closeTimeoutPromise]);
+      } catch (error) {
+        logger.warn({ error }, "HTTP server close timed out, continuing shutdown");
+      }
+
+      // Close database (should be fast)
       logger.info("Closing database...");
       closeDatabase();
 
+      clearTimeout(forceExitTimeout);
       logger.info("Shutdown complete");
       process.exit(0);
     } catch (error) {
+      clearTimeout(forceExitTimeout);
       logger.error({ error }, "Error during shutdown");
       process.exit(1);
     }
