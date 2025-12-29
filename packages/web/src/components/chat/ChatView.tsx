@@ -125,8 +125,8 @@ export function ChatView({
 
   return (
     <div className="flex flex-col h-full" role="main">
-      {/* Header */}
-      <header className="border-b px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      {/* Header - hidden on mobile (MobileHeader handles it) */}
+      <header className="hidden md:block border-b px-4 py-3 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="max-w-3xl mx-auto flex items-center justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
