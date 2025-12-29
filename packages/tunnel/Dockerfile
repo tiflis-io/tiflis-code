@@ -6,9 +6,9 @@
 # Licensed under the FSL-1.1-NC. See LICENSE file for details.
 
 # ============================================================================
-# Stage 1: Builder
+# Stage 1: Tunnel Builder
 # ============================================================================
-FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
+FROM --platform=$BUILDPLATFORM node:24-alpine AS tunnel-builder
 
 # Build arguments
 ARG TARGETPLATFORM
@@ -40,7 +40,33 @@ RUN pnpm build
 RUN echo "$VERSION" > /app/packages/tunnel/VERSION
 
 # ============================================================================
-# Stage 2: Production Runner
+# Stage 2: Web Client Builder
+# ============================================================================
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web-builder
+
+WORKDIR /app
+
+# Install pnpm
+RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
+
+# Copy root package files for monorepo (pnpm workspace)
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+
+# Copy web package.json
+COPY packages/web/package.json ./packages/web/
+
+# Install all dependencies (including dev dependencies for building)
+RUN pnpm install --frozen-lockfile
+
+# Copy web source code
+COPY packages/web ./packages/web
+
+# Build the web client
+WORKDIR /app/packages/web
+RUN pnpm build
+
+# ============================================================================
+# Stage 3: Production Runner
 # ============================================================================
 FROM node:24-alpine AS runner
 
@@ -56,10 +82,13 @@ WORKDIR /app
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 tiflis
 
-# Copy built application from builder stage
-COPY --from=builder /app/packages/tunnel/dist ./dist
-COPY --from=builder /app/packages/tunnel/VERSION ./VERSION
-COPY --from=builder /app/packages/tunnel/package.json ./package.json
+# Copy built tunnel application from builder stage
+COPY --from=tunnel-builder /app/packages/tunnel/dist ./dist
+COPY --from=tunnel-builder /app/packages/tunnel/VERSION ./VERSION
+COPY --from=tunnel-builder /app/packages/tunnel/package.json ./package.json
+
+# Copy built web client from web-builder stage
+COPY --from=web-builder /app/packages/web/dist ./web
 
 # Install production dependencies only (simpler than pnpm workspace filtering)
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate && \
@@ -75,6 +104,8 @@ USER tiflis
 ENV NODE_ENV=production
 ENV PORT=3001
 ENV HOST=0.0.0.0
+# Enable web client serving from bundled static files
+ENV WEB_CLIENT_PATH=./web
 
 # Expose the port
 EXPOSE 3001
