@@ -49,14 +49,11 @@ export function ClaudeIcon({ className, ...props }: ImageIconProps) {
   );
 }
 
-// OpenCode icon - changes based on theme (light/dark)
 export function OpenCodeIcon({ className, ...props }: ImageIconProps) {
   const { resolvedTheme } = useTheme();
-  // In dark mode, use the light logo (visible on dark background)
-  // In light mode, use the dark logo (visible on light background)
   const logoSrc = resolvedTheme === 'dark'
-    ? '/icons/opencode-logo-light.png'
-    : '/icons/opencode-logo-dark.png';
+    ? '/icons/opencode-logo-dark.png'
+    : '/icons/opencode-logo-light.png';
 
   return (
     <img

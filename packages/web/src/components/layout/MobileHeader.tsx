@@ -176,16 +176,30 @@ export function MobileHeader() {
     return session.workingDir;
   };
 
+  const getCurrentSession = () => {
+    if (selectedSessionId) {
+      return sessions.find((s) => s.id === selectedSessionId);
+    }
+    return null;
+  };
+
   const getPageTitle = () => {
     if (settingsActive) return 'Settings';
-    if (selectedSessionId) {
-      const session = sessions.find((s) => s.id === selectedSessionId);
-      if (session) {
-        const displayName = session.type === 'terminal' ? 'Terminal' : getSessionDisplayName(session);
-        return displayName;
-      }
+    const session = getCurrentSession();
+    if (session) {
+      const displayName = session.type === 'terminal' ? 'Terminal' : getSessionDisplayName(session);
+      return displayName;
     }
     return 'Supervisor';
+  };
+
+  const getPageIcon = () => {
+    if (settingsActive) return <Settings className="w-4 h-4" />;
+    const session = getCurrentSession();
+    if (session) {
+      return getSessionIcon(session);
+    }
+    return <SupervisorIcon className="w-4 h-4" />;
   };
 
   const getConnectionStatus = () => {
@@ -209,14 +223,17 @@ export function MobileHeader() {
   return (
     <>
       {/* Mobile Header */}
-      <header className="md:hidden flex items-center justify-between p-4 border-b bg-card">
+      <header className="md:hidden flex items-center gap-3 p-4 border-b bg-card">
         <Button variant="ghost" size="icon" onClick={() => setIsOpen(true)}>
           <Menu className="w-5 h-5" />
         </Button>
-        <h1 className="font-semibold">{getPageTitle()}</h1>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {getPageIcon()}
+          <h1 className="font-semibold truncate">{getPageTitle()}</h1>
+        </div>
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="icon" className="relative">
+            <Button variant="ghost" size="icon" className="relative shrink-0">
               <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
             </Button>
           </PopoverTrigger>
@@ -246,19 +263,17 @@ export function MobileHeader() {
       {/* Mobile Drawer */}
       <div
         className={cn(
-          'md:hidden fixed inset-y-0 left-0 w-72 bg-card border-r z-50 transform transition-transform duration-300',
+          'md:hidden fixed inset-y-0 left-0 w-full bg-card z-50 transform transition-transform duration-300',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="p-4 border-b space-y-3">
-            <div className="flex items-center justify-between">
-              <h1 className="font-semibold text-lg">Tiflis Code</h1>
-              <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
-                <X className="w-4 h-4" />
-              </Button>
-            </div>
+          <div className="flex items-center justify-between p-4 border-b">
+            <h1 className="font-semibold text-lg">Tiflis Code</h1>
+            <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}>
+              <X className="w-5 h-5" />
+            </Button>
           </div>
 
           {/* Navigation */}

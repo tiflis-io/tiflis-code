@@ -85,7 +85,12 @@ export const useAppStore = create<AppState>((set) => ({
   // Sessions
   setSessions: (sessions) => set({ sessions }),
   addSession: (session) =>
-    set((state) => ({ sessions: [...state.sessions, session] })),
+    set((state) => {
+      if (state.sessions.some((s) => s.id === session.id)) {
+        return state;
+      }
+      return { sessions: [...state.sessions, session] };
+    }),
   removeSession: (sessionId) =>
     set((state) => ({
       sessions: state.sessions.filter((s) => s.id !== sessionId),
