@@ -64,7 +64,17 @@ export function createApp(config: AppConfig) {
     });
   });
 
-  // 404 handler
+  // Note: 404 handler is set later, either by web-client-route (for SPA fallback)
+  // or by setDefaultNotFoundHandler() if web client is not configured
+
+  return app;
+}
+
+/**
+ * Sets the default 404 handler for API-only mode (no web client).
+ * Call this only if web client is NOT configured.
+ */
+export function setDefaultNotFoundHandler(app: ReturnType<typeof createApp>): void {
   app.setNotFoundHandler((request, reply) => {
     request.log.warn({ url: request.url }, 'Route not found');
     reply.status(404).send({
@@ -72,7 +82,5 @@ export function createApp(config: AppConfig) {
       code: 'NOT_FOUND',
     });
   });
-
-  return app;
 }
 

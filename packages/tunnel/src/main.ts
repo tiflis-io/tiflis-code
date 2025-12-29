@@ -5,7 +5,7 @@
  */
 
 import { nanoid } from "nanoid";
-import { createApp } from "./app.js";
+import { createApp, setDefaultNotFoundHandler } from "./app.js";
 import { getEnv, generatePublicUrl } from "./config/env.js";
 import {
   CONNECTION_TIMING,
@@ -183,6 +183,9 @@ async function bootstrap(): Promise<void> {
       webClientPath: env.WEB_CLIENT_PATH,
       logger,
     });
+  } else {
+    // Set default 404 handler for API-only mode
+    setDefaultNotFoundHandler(app);
   }
 
   // Create WebSocket server
