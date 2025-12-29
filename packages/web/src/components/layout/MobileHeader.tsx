@@ -17,12 +17,33 @@ import {
   Loader2,
   AlertTriangle,
   Check,
+  MoreVertical,
+  Trash2,
+  Eraser,
 } from 'lucide-react';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { toastFunctions as toast } from '@/components/ui/toast';
 import {
   SupervisorIcon,
   ClaudeIcon,
@@ -65,14 +86,18 @@ function StatusIndicator({ status }: { status: SessionStatus }) {
 
 export function MobileHeader() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showClearDialog, setShowClearDialog] = useState(false);
+  const [showTerminateDialog, setShowTerminateDialog] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const sessions = useAppStore((state) => state.sessions);
   const selectedSessionId = useAppStore((state) => state.selectedSessionId);
   const selectSession = useAppStore((state) => state.selectSession);
+  const removeSession = useAppStore((state) => state.removeSession);
   const workstationInfo = useAppStore((state) => state.workstationInfo);
   const connectionState = useAppStore((state) => state.connectionState);
   const workstationOnline = useAppStore((state) => state.workstationOnline);
+  const { clearSupervisorContext, terminateSession } = useWebSocket();
 
   const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
 
@@ -193,6 +218,30 @@ export function MobileHeader() {
     return 'Supervisor';
   };
 
+  const getPageSubtitle = () => {
+    if (settingsActive) return null;
+    const session = getCurrentSession();
+    if (session) {
+      return getSessionSubtitle(session);
+    }
+    return null;
+  };
+
+  const handleClearContext = () => {
+    clearSupervisorContext();
+    toast.success('Context Cleared', 'Supervisor conversation has been reset.');
+    setShowClearDialog(false);
+  };
+
+  const handleTerminateSession = () => {
+    if (!selectedSessionId) return;
+    terminateSession(selectedSessionId);
+    removeSession(selectedSessionId);
+    navigate('/chat');
+    toast.success('Session Terminated', 'The session has been closed.');
+    setShowTerminateDialog(false);
+  };
+
   const getPageIcon = () => {
     if (settingsActive) return <Settings className="w-4 h-4" />;
     const session = getCurrentSession();
@@ -229,8 +278,44 @@ export function MobileHeader() {
         </Button>
         <div className="flex items-center gap-2 flex-1 min-w-0">
           {getPageIcon()}
-          <h1 className="font-semibold truncate">{getPageTitle()}</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="font-semibold truncate text-sm">{getPageTitle()}</h1>
+            {getPageSubtitle() && (
+              <p className="text-xs text-muted-foreground truncate">{getPageSubtitle()}</p>
+            )}
+          </div>
         </div>
+        
+        {(supervisorActive || selectedSessionId) && !settingsActive && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="shrink-0">
+                <MoreVertical className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {supervisorActive && (
+                <DropdownMenuItem
+                  onClick={() => setShowClearDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Eraser className="w-4 h-4" />
+                  Clear Context
+                </DropdownMenuItem>
+              )}
+              {selectedSessionId && (
+                <DropdownMenuItem
+                  onClick={() => setShowTerminateDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Terminate Session
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="relative shrink-0">
@@ -251,6 +336,50 @@ export function MobileHeader() {
           </PopoverContent>
         </Popover>
       </header>
+
+      {/* Clear Context Confirmation Dialog */}
+      <AlertDialog open={showClearDialog} onOpenChange={setShowClearDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear Conversation?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear the entire conversation history with the Supervisor.
+              This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearContext}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear Context
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Terminate Session Confirmation Dialog */}
+      <AlertDialog open={showTerminateDialog} onOpenChange={setShowTerminateDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Terminate Session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will end the current session and close the connection to the agent.
+              You will need to create a new session to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleTerminateSession}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Terminate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Mobile Drawer Overlay */}
       {isOpen && (
