@@ -660,9 +660,54 @@ export class ChatHistoryService {
     });
   }
 
-  /**
-   * Clears supervisor chat history (global).
-   */
+  getSupervisorHistoryPaginated(options: {
+    beforeSequence?: number;
+    limit?: number;
+  } = {}): {
+    messages: StoredMessage[];
+    hasMore: boolean;
+    oldestSequence?: number;
+    newestSequence?: number;
+  } {
+    const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
+    const result = this.messageRepo.getBySessionPaginated(sessionId, options);
+
+    const messages = result.messages.reverse().map((row) => {
+      let contentBlocks: unknown[] | undefined;
+      if (row.contentBlocks) {
+        try {
+          contentBlocks = JSON.parse(row.contentBlocks) as unknown[];
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      return {
+        id: row.id,
+        sessionId: row.sessionId,
+        sequence: row.sequence,
+        role: row.role as "user" | "assistant" | "system",
+        contentType: row.contentType as "text" | "audio" | "transcription",
+        content: row.content,
+        contentBlocks,
+        audioInputPath: row.audioInputPath,
+        audioOutputPath: row.audioOutputPath,
+        isComplete: row.isComplete ?? false,
+        createdAt: row.createdAt,
+      };
+    });
+
+    const firstMsg = messages[0];
+    const lastMsg = messages[messages.length - 1];
+
+    return {
+      messages,
+      hasMore: result.hasMore,
+      oldestSequence: firstMsg?.sequence,
+      newestSequence: lastMsg?.sequence,
+    };
+  }
+
   clearSupervisorHistory(): void {
     const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
     this.messageRepo.deleteBySession(sessionId);
@@ -760,9 +805,56 @@ export class ChatHistoryService {
     });
   }
 
-  /**
-   * Clears agent session chat history.
-   */
+  getAgentHistoryPaginated(
+    sessionId: string,
+    options: { beforeSequence?: number; limit?: number } = {}
+  ): {
+    messages: StoredMessage[];
+    hasMore: boolean;
+    oldestSequence?: number;
+    newestSequence?: number;
+  } {
+    const result = this.messageRepo.getBySessionPaginated(sessionId, options);
+
+    const storedMessages = result.messages.reverse().map((row) => {
+      let contentBlocks: unknown[] | undefined;
+      if (row.contentBlocks) {
+        try {
+          contentBlocks = JSON.parse(row.contentBlocks) as unknown[];
+        } catch (error) {
+          this.logger.error(
+            { sessionId, messageId: row.id, error },
+            "Failed to parse contentBlocks JSON"
+          );
+        }
+      }
+
+      return {
+        id: row.id,
+        sessionId: row.sessionId,
+        sequence: row.sequence,
+        role: row.role as "user" | "assistant" | "system",
+        contentType: row.contentType as "text" | "audio" | "transcription",
+        content: row.content,
+        contentBlocks,
+        audioInputPath: row.audioInputPath,
+        audioOutputPath: row.audioOutputPath,
+        isComplete: row.isComplete ?? false,
+        createdAt: row.createdAt,
+      };
+    });
+
+    const firstMsg = storedMessages[0];
+    const lastMsg = storedMessages[storedMessages.length - 1];
+
+    return {
+      messages: storedMessages,
+      hasMore: result.hasMore,
+      oldestSequence: firstMsg?.sequence,
+      newestSequence: lastMsg?.sequence,
+    };
+  }
+
   clearAgentHistory(sessionId: string): void {
     this.messageRepo.deleteBySession(sessionId);
     this.logger.info({ sessionId }, "Agent session history cleared");

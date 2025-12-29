@@ -149,6 +149,37 @@ final class AppState: ObservableObject {
     /// Scroll triggers for agent sessions - increments on any content update
     @Published var agentScrollTriggers: [String: Int] = [:]
 
+    // MARK: - History Pagination State
+
+    /// History pagination state per session (nil key = supervisor)
+    /// Tracks oldest loaded sequence and whether more history exists
+    struct HistoryPaginationState {
+        var oldestSequence: Int?
+        var hasMore: Bool = true
+        var isLoading: Bool = false
+    }
+
+    /// History pagination state - keyed by session ID (use "supervisor" for supervisor)
+    @Published var historyPaginationState: [String: HistoryPaginationState] = [:]
+
+    /// Check if history is loading for a session
+    func isHistoryLoading(for sessionId: String?) -> Bool {
+        let key = sessionId ?? "supervisor"
+        return historyPaginationState[key]?.isLoading ?? false
+    }
+
+    /// Check if more history exists for a session
+    func hasMoreHistory(for sessionId: String?) -> Bool {
+        let key = sessionId ?? "supervisor"
+        return historyPaginationState[key]?.hasMore ?? true
+    }
+
+    /// Get oldest loaded sequence for a session
+    func oldestLoadedSequence(for sessionId: String?) -> Int? {
+        let key = sessionId ?? "supervisor"
+        return historyPaginationState[key]?.oldestSequence
+    }
+
     /// Pending message acknowledgments - maps message ID to (sessionId, timeout task)
     /// Used to track messages waiting for server acknowledgment
     private var pendingMessageAcks: [String: (sessionId: String?, timeoutTask: Task<Void, Never>)] = [:]
@@ -549,6 +580,8 @@ final class AppState: ObservableObject {
             handleAudioResponse(message)
         case "message.ack":
             handleMessageAck(message)
+        case "history.response":
+            handleHistoryResponse(message)
         default:
             break
         }
@@ -636,6 +669,76 @@ final class AppState: ObservableObject {
         }
 
         print("⚠️ Message acknowledgment timeout: \(messageId)")
+    }
+
+    private func handleHistoryResponse(_ message: [String: Any]) {
+        guard let payload = message["payload"] as? [String: Any],
+              let history = payload["history"] as? [[String: Any]] else {
+            return
+        }
+
+        let sessionId = payload["session_id"] as? String
+        let key = sessionId ?? "supervisor"
+        let hasMore = payload["has_more"] as? Bool ?? false
+        let oldestSequence = payload["oldest_sequence"] as? Int
+
+        historyPaginationState[key] = HistoryPaginationState(
+            oldestSequence: oldestSequence,
+            hasMore: hasMore,
+            isLoading: false
+        )
+
+        let sortedHistory = history.sorted { item1, item2 in
+            let seq1 = item1["sequence"] as? Int ?? 0
+            let seq2 = item2["sequence"] as? Int ?? 0
+            return seq1 < seq2
+        }
+
+        var parsedMessages: [Message] = []
+        for historyItem in sortedHistory {
+            guard let role = historyItem["role"] as? String else { continue }
+            let content = historyItem["content"] as? String ?? ""
+
+            let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
+
+            var blocks: [MessageContentBlock] = []
+            if let contentBlocks = historyItem["content_blocks"] as? [[String: Any]], !contentBlocks.isEmpty {
+                blocks = ContentParser.parseContentBlocks(contentBlocks)
+            }
+
+            if blocks.isEmpty && !content.isEmpty {
+                if messageRole == .user {
+                    blocks = [.text(id: UUID().uuidString, text: content)]
+                } else {
+                    blocks = ContentParser.parse(content: content, contentType: "agent")
+                }
+            }
+
+            guard !blocks.isEmpty else { continue }
+
+            let targetSessionId = sessionId ?? "supervisor"
+            let parsedMessage = Message(
+                sessionId: targetSessionId,
+                role: messageRole,
+                contentBlocks: blocks
+            )
+            parsedMessages.append(parsedMessage)
+        }
+
+        guard !parsedMessages.isEmpty else {
+            print("🔄 handleHistoryResponse: No messages parsed for \(key)")
+            return
+        }
+
+        if sessionId == nil {
+            let existingMessages = supervisorMessages
+            supervisorMessages = parsedMessages + existingMessages
+            print("🔄 handleHistoryResponse: Loaded \(parsedMessages.count) supervisor messages, hasMore=\(hasMore)")
+        } else {
+            let existingMessages = agentMessages[sessionId!] ?? []
+            agentMessages[sessionId!] = parsedMessages + existingMessages
+            print("🔄 handleHistoryResponse: Loaded \(parsedMessages.count) messages for session \(sessionId!), hasMore=\(hasMore)")
+        }
     }
     
     private func handleErrorMessage(_ message: [String: Any]) {
@@ -935,11 +1038,7 @@ final class AppState: ObservableObject {
             sessions.insert(Session(id: "supervisor", type: .supervisor, workspace: nil, project: nil), at: 0)
         }
 
-        // Restore supervisor history
-        if let supervisorHistory = payload["supervisorHistory"] as? [[String: Any]], !supervisorHistory.isEmpty {
-            restoreSupervisorHistory(supervisorHistory)
-        } else if supervisorMessages.isEmpty {
-            // Add welcome message if no history
+        if supervisorMessages.isEmpty {
             let welcomeMessage = Message(
                 sessionId: "supervisor",
                 role: .assistant,
@@ -947,25 +1046,7 @@ final class AppState: ObservableObject {
             )
             supervisorMessages = [welcomeMessage]
         }
-
-        // Restore agent session histories
-        if let agentHistories = payload["agentHistories"] as? [String: [[String: Any]]] {
-            restoreAgentHistories(agentHistories)
-        }
-
-        // Restore supervisor loading state from server
-        // This handles the case when app reconnects and agent has already finished
-        let serverSupervisorIsRunning = payload["supervisorIsRunning"] as? Bool ?? false
-        supervisorIsLoading = serverSupervisorIsRunning
-        if !serverSupervisorIsRunning {
-            // Clear streaming state if supervisor is not running
-            supervisorStreamingMessageId = nil
-            // Mark last message as not streaming if exists
-            if let lastIndex = supervisorMessages.lastIndex(where: { $0.role == .assistant }) {
-                supervisorMessages[lastIndex].isStreaming = false
-            }
-        }
-        print("🔄 handleSyncStateMessage: supervisorIsRunning = \(serverSupervisorIsRunning)")
+        print("🔄 handleSyncStateMessage: v1.13 - history loaded on-demand via history.request")
 
         // Restore agent session loading states from server
         for sessionData in sessionsArray {

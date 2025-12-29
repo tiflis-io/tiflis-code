@@ -456,6 +456,24 @@ async function bootstrap(): Promise<void> {
   // Track sessions cancelled during voice transcription (to prevent execution after transcription completes)
   const cancelledDuringTranscription = new Set<string>();
 
+  // Accumulator for supervisor streaming blocks - accessible from sync handler and output handler
+  // Used for mid-stream device joins (sync returns current streaming blocks)
+  const supervisorMessageAccumulator = {
+    blocks: [] as ContentBlock[],
+    get(): ContentBlock[] {
+      return this.blocks;
+    },
+    set(blocks: ContentBlock[]): void {
+      this.blocks = blocks;
+    },
+    clear(): void {
+      this.blocks = [];
+    },
+    accumulate(newBlocks: ContentBlock[]): void {
+      accumulateBlocks(this.blocks, newBlocks);
+    },
+  };
+
   // Create expected auth key
   const expectedAuthKey = new AuthKey(env.WORKSTATION_AUTH_KEY);
 
@@ -587,7 +605,7 @@ async function bootstrap(): Promise<void> {
     },
 
     sync: async (socket, message) => {
-      const syncMessage = message as { id: string; device_id?: string; lightweight?: boolean };
+      const syncMessage = message as { id: string; device_id?: string };
       // Helper to get client from socket (direct) or device_id (tunnel)
       const client =
         clientRegistry.getBySocket(socket) ??
@@ -596,8 +614,8 @@ async function bootstrap(): Promise<void> {
           : undefined);
       const subscriptions = client ? client.getSubscriptions() : [];
 
-      // Lightweight mode: skip message histories (for watchOS to reduce data transfer)
-      const isLightweight = syncMessage.lightweight === true;
+      // Protocol v1.13: All syncs are lightweight — no message histories
+      // Clients must use history.request for on-demand chat loading
 
       // Get in-memory sessions (terminal sessions + active agent sessions)
       const inMemorySessions = sessionManager.getSessionInfos();
@@ -606,7 +624,7 @@ async function bootstrap(): Promise<void> {
       const persistedAgentSessions =
         chatHistoryService.getActiveAgentSessions();
       logger.debug(
-        { persistedAgentSessions, inMemoryCount: inMemorySessions.length, isLightweight },
+        { persistedAgentSessions, inMemoryCount: inMemorySessions.length },
         "Sync: fetched sessions"
       );
 
@@ -639,167 +657,16 @@ async function bootstrap(): Promise<void> {
 
       const sessions = [...inMemorySessions, ...restoredAgentSessions];
 
-      // Skip history loading in lightweight mode (watchOS)
-      // Clients can request history on-demand via history.request
-      if (isLightweight) {
-        // Get available agents (base + aliases from environment)
-        const availableAgentsMap = getAvailableAgents();
-        const availableAgents = Array.from(availableAgentsMap.values()).map(
-          (agent) => ({
-            name: agent.name,
-            base_type: agent.baseType,
-            description: agent.description,
-            is_alias: agent.isAlias,
-          })
-        );
-
-        // Get disabled base agent types
-        const hiddenBaseTypes: string[] = getDisabledBaseAgents();
-
-        // Get workspaces with their projects
-        const workspacesList = await workspaceDiscovery.listWorkspaces();
-        const workspaces = await Promise.all(
-          workspacesList.map(async (ws) => {
-            const projects = await workspaceDiscovery.listProjects(ws.name);
-            return {
-              name: ws.name,
-              projects: projects.map((p) => ({
-                name: p.name,
-                is_git_repo: p.isGitRepo,
-                default_branch: p.defaultBranch,
-              })),
-            };
-          })
-        );
-
-        // Build execution state for each agent session
-        const executingStates: Record<string, boolean> = {};
-        for (const session of sessions) {
-          if (
-            session.session_type === "cursor" ||
-            session.session_type === "claude" ||
-            session.session_type === "opencode"
-          ) {
-            executingStates[session.session_id] = agentSessionManager.isExecuting(
-              session.session_id
-            );
-          }
-        }
-
-        // Check if supervisor is currently executing
-        const supervisorIsExecuting = supervisorAgent.isProcessing();
-
-        logger.info(
-          {
-            totalSessions: sessions.length,
-            isLightweight: true,
-            availableAgentsCount: availableAgents.length,
-            workspacesCount: workspaces.length,
-            supervisorIsExecuting,
-          },
-          "Sync: sending lightweight state to client (no histories)"
-        );
-
-        const syncStateMessage = JSON.stringify({
-          type: "sync.state",
-          id: syncMessage.id,
-          payload: {
-            sessions,
-            subscriptions,
-            availableAgents,
-            hiddenBaseTypes,
-            workspaces,
-            supervisorIsExecuting,
-            executingStates,
-            // Omit: supervisorHistory, agentHistories, currentStreamingBlocks
-          },
-        });
-
-        // Send response to specific device (not broadcast to all)
-        sendToDevice(socket, syncMessage.device_id, syncStateMessage);
-        return Promise.resolve();
-      }
-
-      // Full sync mode: include message histories
-      // Get global supervisor history (shared across all devices)
-      // Enrich messages with audio data for voice_output blocks
+      // Restore supervisor history into agent's in-memory cache (internal only, not sent to client)
       const supervisorHistoryRaw = chatHistoryService.getSupervisorHistory();
-      // Note: includeAudio=false to avoid huge sync.state messages
-      // Audio will be loaded on-demand when opening specific chats
-      const supervisorHistory = await Promise.all(
-        supervisorHistoryRaw.map(async (msg) => ({
-          sequence: msg.sequence,
-          role: msg.role,
-          content: msg.content,
-          content_blocks: await chatHistoryService.enrichBlocksWithAudio(
-            msg.contentBlocks,
-            msg.audioOutputPath,
-            msg.audioInputPath,
-            false // Don't include audio in sync.state
-          ),
-          createdAt: msg.createdAt.toISOString(),
-        }))
-      );
-
-      // Restore global supervisor history into agent's in-memory cache from database
-      if (supervisorHistory.length > 0) {
-        const historyForAgent = supervisorHistory
+      if (supervisorHistoryRaw.length > 0) {
+        const historyForAgent = supervisorHistoryRaw
           .filter((msg) => msg.role === "user" || msg.role === "assistant")
           .map((msg) => ({
             role: msg.role as "user" | "assistant",
             content: msg.content,
           }));
         supervisorAgent.restoreHistory(historyForAgent);
-      }
-
-      // Get agent session histories (each session has isolated history)
-      const agentSessionIds = sessions
-        .filter(
-          (s) =>
-            s.session_type === "cursor" ||
-            s.session_type === "claude" ||
-            s.session_type === "opencode"
-        )
-        .map((s) => s.session_id);
-
-      const agentHistoriesMap =
-        chatHistoryService.getAllAgentHistories(agentSessionIds);
-      const agentHistories: Record<
-        string,
-        {
-          sequence: number;
-          role: string;
-          content: string;
-          content_blocks?: unknown[];
-          createdAt: string;
-        }[]
-      > = {};
-
-      // Process all session histories in parallel for faster sync
-      const historyEntries = Array.from(agentHistoriesMap.entries());
-      const processedHistories = await Promise.all(
-        historyEntries.map(async ([sessionId, history]) => {
-          const enrichedHistory = await Promise.all(
-            history.map(async (msg) => ({
-              sequence: msg.sequence,
-              role: msg.role,
-              content: msg.content,
-              content_blocks: await chatHistoryService.enrichBlocksWithAudio(
-                msg.contentBlocks,
-                msg.audioOutputPath,
-                msg.audioInputPath,
-                false // Don't include audio in sync.state
-              ),
-              createdAt: msg.createdAt.toISOString(),
-            }))
-          );
-          return { sessionId, history: enrichedHistory };
-        })
-      );
-
-      // Build the agentHistories object from parallel results
-      for (const { sessionId, history } of processedHistories) {
-        agentHistories[sessionId] = history;
       }
 
       // Get available agents (base + aliases from environment)
@@ -813,9 +680,7 @@ async function bootstrap(): Promise<void> {
         })
       );
 
-      // Get disabled base agent types (from HIDE_BASE_* env settings)
-      // Note: getAvailableAgents() already filters these out, but we send this
-      // list for backward compatibility with older mobile clients
+      // Get disabled base agent types
       const hiddenBaseTypes: string[] = getDisabledBaseAgents();
 
       // Get workspaces with their projects
@@ -848,35 +713,28 @@ async function bootstrap(): Promise<void> {
         }
       }
 
-      // Get current streaming blocks for executing sessions (for mirror devices joining mid-stream)
-      const currentStreamingBlocks: Record<string, unknown[]> = {};
-      for (const [sessionId, isExecuting] of Object.entries(executingStates)) {
-        if (isExecuting) {
-          const blocks = agentMessageAccumulator.get(sessionId);
-          if (blocks && blocks.length > 0) {
-            currentStreamingBlocks[sessionId] = blocks;
-          }
-        }
-      }
-
       // Check if supervisor is currently executing
       const supervisorIsExecuting = supervisorAgent.isProcessing();
+
+      // Get current streaming blocks for supervisor only (for devices joining mid-generation)
+      // Agent session streaming blocks are handled by session.subscribe → history.request flow
+      let currentStreamingBlocks: unknown[] | undefined;
+      if (supervisorIsExecuting) {
+        const blocks = supervisorMessageAccumulator.get();
+        if (blocks && blocks.length > 0) {
+          currentStreamingBlocks = blocks;
+        }
+      }
 
       logger.info(
         {
           totalSessions: sessions.length,
-          sessionTypes: sessions.map((s) => ({
-            id: s.session_id,
-            type: s.session_type,
-          })),
-          agentHistoriesCount: Object.keys(agentHistories).length,
           availableAgentsCount: availableAgents.length,
           workspacesCount: workspaces.length,
           supervisorIsExecuting,
-          executingStates,
-          streamingBlocksCount: Object.keys(currentStreamingBlocks).length,
+          hasStreamingBlocks: !!currentStreamingBlocks,
         },
-        "Sync: sending state to client"
+        "Sync: sending state to client (v1.13 - no histories)"
       );
 
       const syncStateMessage = JSON.stringify({
@@ -885,17 +743,15 @@ async function bootstrap(): Promise<void> {
         payload: {
           sessions,
           subscriptions,
-          supervisorHistory,
-          agentHistories,
           availableAgents,
           hiddenBaseTypes,
           workspaces,
           supervisorIsExecuting,
           executingStates,
-          currentStreamingBlocks:
-            Object.keys(currentStreamingBlocks).length > 0
-              ? currentStreamingBlocks
-              : undefined,
+          // Only include supervisor streaming blocks for mid-stream join
+          currentStreamingBlocks,
+          // Protocol v1.13: No supervisorHistory, agentHistories
+          // Clients use history.request for on-demand loading
         },
       });
 
@@ -1491,29 +1347,8 @@ async function bootstrap(): Promise<void> {
             "Client subscribed to agent session"
           );
 
-          // Send current history to the subscribing client
-          // This ensures they get any messages (including cancel) that happened while they weren't subscribed
-          const history = chatHistoryService.getAgentHistory(sessionId, 50);
-          const enrichedHistory = await Promise.all(
-            history.map(async (msg) => ({
-              id: msg.id,
-              sequence: msg.sequence,
-              role: msg.role,
-              content: msg.content,
-              content_blocks: await chatHistoryService.enrichBlocksWithAudio(
-                msg.contentBlocks as ContentBlock[] | undefined,
-                msg.audioOutputPath,
-                msg.audioInputPath,
-                false // Don't include audio in subscription response
-              ),
-              createdAt: msg.createdAt.toISOString(),
-            }))
-          );
-
-          // Check if session is currently executing
           const isExecuting = agentSessionManager.isExecuting(sessionId);
 
-          // Include current streaming blocks if any (so new devices see in-progress response)
           const currentStreamingBlocks =
             agentMessageAccumulator.get(sessionId) ?? [];
 
@@ -1523,7 +1358,6 @@ async function bootstrap(): Promise<void> {
             JSON.stringify({
               type: "session.subscribed",
               session_id: sessionId,
-              history: enrichedHistory,
               is_executing: isExecuting,
               current_streaming_blocks:
                 currentStreamingBlocks.length > 0
@@ -1536,11 +1370,10 @@ async function bootstrap(): Promise<void> {
             {
               deviceId: client.deviceId.value,
               sessionId,
-              historyCount: enrichedHistory.length,
               isExecuting,
               streamingBlocksCount: currentStreamingBlocks.length,
             },
-            "Sent agent session history on subscribe"
+            "Agent session subscribed (v1.13 - use history.request for messages)"
           );
         } else {
           // For terminal sessions, use full subscriptionService with master logic
@@ -2248,31 +2081,36 @@ async function bootstrap(): Promise<void> {
     },
 
     "history.request": async (socket, message) => {
-      // Lazy-load chat history for a specific session (or supervisor)
-      // Used by watchOS after lightweight sync to load history on-demand
       const historyRequest = message as {
         id: string;
         device_id?: string;
         payload?: {
-          session_id?: string; // If omitted, returns supervisor history
+          session_id?: string;
+          before_sequence?: number;
+          limit?: number;
         };
       };
 
       const sessionId = historyRequest.payload?.session_id;
+      const beforeSequence = historyRequest.payload?.before_sequence;
+      const limit = historyRequest.payload?.limit;
       const isSupervisor = !sessionId;
 
       logger.debug(
-        { sessionId, isSupervisor, requestId: historyRequest.id },
-        "History request received"
+        { sessionId, isSupervisor, beforeSequence, limit, requestId: historyRequest.id },
+        "Paginated history request received"
       );
 
       try {
         if (isSupervisor) {
-          // Get supervisor history
-          const supervisorHistoryRaw = chatHistoryService.getSupervisorHistory();
+          const result = chatHistoryService.getSupervisorHistoryPaginated({
+            beforeSequence,
+            limit,
+          });
+
           const supervisorHistory = await Promise.all(
-            supervisorHistoryRaw.map(async (msg) => ({
-              message_id: msg.id, // Include message ID for audio.request
+            result.messages.map(async (msg) => ({
+              message_id: msg.id,
               sequence: msg.sequence,
               role: msg.role,
               content: msg.content,
@@ -2280,36 +2118,57 @@ async function bootstrap(): Promise<void> {
                 msg.contentBlocks,
                 msg.audioOutputPath,
                 msg.audioInputPath,
-                false // Don't include audio in history response
+                false
               ),
               createdAt: msg.createdAt.toISOString(),
             }))
           );
 
-          // Check if supervisor is currently executing
           const isExecuting = supervisorAgent.isProcessing();
+
+          let currentStreamingBlocks: unknown[] | undefined;
+          if (isExecuting && !beforeSequence) {
+            const blocks = supervisorMessageAccumulator.get();
+            if (blocks && blocks.length > 0) {
+              currentStreamingBlocks = blocks;
+            }
+          }
 
           socket.send(
             JSON.stringify({
               type: "history.response",
               id: historyRequest.id,
               payload: {
-                session_id: null, // Indicates supervisor
+                session_id: null,
                 history: supervisorHistory,
+                has_more: result.hasMore,
+                oldest_sequence: result.oldestSequence,
+                newest_sequence: result.newestSequence,
                 is_executing: isExecuting,
+                current_streaming_blocks: currentStreamingBlocks,
               },
             })
           );
 
           logger.debug(
-            { messageCount: supervisorHistory.length, isExecuting },
-            "Supervisor history sent"
+            {
+              messageCount: supervisorHistory.length,
+              hasMore: result.hasMore,
+              oldestSeq: result.oldestSequence,
+              newestSeq: result.newestSequence,
+              isExecuting,
+            },
+            "Paginated supervisor history sent"
           );
         } else {
-          // Get agent session history
-          const history = chatHistoryService.getAgentHistory(sessionId);
+          const result = chatHistoryService.getAgentHistoryPaginated(sessionId, {
+            beforeSequence,
+            limit,
+          });
+
           const enrichedHistory = await Promise.all(
-            history.map(async (msg) => ({
+            result.messages.map(async (msg) => ({
+              message_id: msg.id,
               sequence: msg.sequence,
               role: msg.role,
               content: msg.content,
@@ -2317,18 +2176,16 @@ async function bootstrap(): Promise<void> {
                 msg.contentBlocks,
                 msg.audioOutputPath,
                 msg.audioInputPath,
-                false // Don't include audio in history response
+                false
               ),
               createdAt: msg.createdAt.toISOString(),
             }))
           );
 
-          // Check if session is currently executing
           const isExecuting = agentSessionManager.isExecuting(sessionId);
 
-          // Get current streaming blocks if executing (for joining mid-stream)
           let currentStreamingBlocks: unknown[] | undefined;
-          if (isExecuting) {
+          if (isExecuting && !beforeSequence) {
             const blocks = agentMessageAccumulator.get(sessionId);
             if (blocks && blocks.length > 0) {
               currentStreamingBlocks = blocks;
@@ -2342,6 +2199,9 @@ async function bootstrap(): Promise<void> {
               payload: {
                 session_id: sessionId,
                 history: enrichedHistory,
+                has_more: result.hasMore,
+                oldest_sequence: result.oldestSequence,
+                newest_sequence: result.newestSequence,
                 is_executing: isExecuting,
                 current_streaming_blocks: currentStreamingBlocks,
               },
@@ -2804,9 +2664,6 @@ async function bootstrap(): Promise<void> {
     }
   );
 
-  // Accumulator for supervisor blocks (similar to agent sessions)
-  let supervisorBlockAccumulator: ContentBlock[] = [];
-
   // Stream Supervisor Agent output to ALL clients (supervisor chat is global/shared)
   supervisorAgent.on(
     "blocks",
@@ -2829,21 +2686,18 @@ async function bootstrap(): Promise<void> {
           { deviceId, blockCount: blocks.length, isComplete },
           "Ignoring supervisor blocks - execution was cancelled"
         );
-        // Reset accumulator on cancel
-        supervisorBlockAccumulator = [];
+        supervisorMessageAccumulator.clear();
         return;
       }
 
       // Filter out status blocks (transient UI hints)
       const persistableBlocks = blocks.filter((b) => b.block_type !== "status");
 
-      // Accumulate blocks, merging tool blocks in-place
       if (persistableBlocks.length > 0) {
-        accumulateBlocks(supervisorBlockAccumulator, persistableBlocks);
+        supervisorMessageAccumulator.accumulate(persistableBlocks);
       }
 
-      // Merge tool blocks with same tool_use_id for clean output
-      const mergedBlocks = mergeToolBlocks(supervisorBlockAccumulator);
+      const mergedBlocks = mergeToolBlocks(supervisorMessageAccumulator.get());
 
       // Build plain text content for backward compatibility
       const textContent = mergedBlocks
@@ -2867,9 +2721,8 @@ async function bootstrap(): Promise<void> {
       // Broadcast to ALL clients since supervisor chat is shared across devices
       broadcaster.broadcastToAll(message);
 
-      // Reset accumulator when complete
       if (isComplete) {
-        supervisorBlockAccumulator = [];
+        supervisorMessageAccumulator.clear();
       }
 
       // Save assistant response to persistent history when streaming completes (global)

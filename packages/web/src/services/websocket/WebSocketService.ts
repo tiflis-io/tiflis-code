@@ -389,6 +389,7 @@ class WebSocketServiceImpl {
     const message: SyncMessage = {
       type: 'sync',
       id: crypto.randomUUID(),
+      lightweight: this.reconnectAttempts > 0,
     };
 
     this.send(message);

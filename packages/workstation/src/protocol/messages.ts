@@ -145,6 +145,7 @@ export interface AuthErrorMessage {
 export interface SyncMessage {
   type: 'sync';
   id: string;
+  lightweight?: boolean; // If true, excludes message histories (for performance)
 }
 
 /**

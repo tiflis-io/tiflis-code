@@ -480,15 +480,73 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Refresh session state by re-subscribing to get latest messages from server
-    /// Call this when the view appears to sync state from other devices
     func refreshSession() {
         guard session.type.isAgent else { return }
         guard connectionService.connectionState == .authenticated else { return }
-
-        // Always re-subscribe to get latest state from server
-        // This ensures we sync messages from other devices
         subscribeToSession()
+    }
+
+    // MARK: - History Loading
+
+    var isHistoryLoading: Bool {
+        let sessionId = session.type == .supervisor ? nil : session.id
+        return appState?.isHistoryLoading(for: sessionId) ?? false
+    }
+
+    var hasMoreHistory: Bool {
+        let sessionId = session.type == .supervisor ? nil : session.id
+        return appState?.hasMoreHistory(for: sessionId) ?? true
+    }
+
+    func loadHistory() {
+        guard connectionService.connectionState == .authenticated || connectionService.connectionState == .verified else { return }
+        guard !isHistoryLoading else { return }
+        guard messages.isEmpty else { return }
+
+        let sessionId = session.type == .supervisor ? nil : session.id
+        setHistoryLoading(true, for: sessionId)
+
+        let config = CommandBuilder.historyRequest(sessionId: sessionId, limit: 20)
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure = result {
+                self.setHistoryLoading(false, for: sessionId)
+            }
+        }
+    }
+
+    func loadMoreHistory() {
+        guard connectionService.connectionState == .authenticated || connectionService.connectionState == .verified else { return }
+        guard !isHistoryLoading else { return }
+        guard hasMoreHistory else { return }
+
+        let sessionId = session.type == .supervisor ? nil : session.id
+        let beforeSequence = appState?.oldestLoadedSequence(for: sessionId)
+        setHistoryLoading(true, for: sessionId)
+
+        let config = CommandBuilder.historyRequest(sessionId: sessionId, beforeSequence: beforeSequence, limit: 20)
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure = result {
+                self.setHistoryLoading(false, for: sessionId)
+            }
+        }
+    }
+
+    private func setHistoryLoading(_ loading: Bool, for sessionId: String?) {
+        let key = sessionId ?? "supervisor"
+        if var state = appState?.historyPaginationState[key] {
+            state.isLoading = loading
+            appState?.historyPaginationState[key] = state
+        } else {
+            appState?.historyPaginationState[key] = AppState.HistoryPaginationState(
+                oldestSequence: nil,
+                hasMore: true,
+                isLoading: loading
+            )
+        }
     }
 
     func startRecording() {
