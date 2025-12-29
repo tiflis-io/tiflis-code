@@ -5,6 +5,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { useChatStore } from '@/store/useChatStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { AudioPlayerService } from '@/services/audio';
+import { WebSocketService } from '@/services/websocket/WebSocketService';
 import { logger, devLog } from '@/utils/logger';
 import type {
   SyncStateMessage,
@@ -20,6 +21,7 @@ import type {
   SessionVoiceOutputMessage,
   SupervisorTranscriptionMessage,
   SessionTranscriptionMessage,
+  HistoryResponseMessage,
 } from '@/types/protocol';
 import type { Session, Message, ContentBlock, AgentConfig, WorkspaceConfig, SessionType } from '@/types';
 
@@ -69,6 +71,10 @@ export function handleWebSocketMessage(message: unknown): void {
 
     case 'sync.state':
       handleSyncState(msg as SyncStateMessage);
+      break;
+
+    case 'history.response':
+      handleHistoryResponse(msg as HistoryResponseMessage);
       break;
 
     case 'session.created':
@@ -192,42 +198,90 @@ function handleSyncState(msg: SyncStateMessage): void {
     appStore.setWorkspaces(workspaces);
   }
 
-  // Parse supervisor history
-  if (msg.payload.supervisorHistory) {
-    const messages: Message[] = msg.payload.supervisorHistory.map((entry) => ({
-      id: crypto.randomUUID(),
-      sessionId: 'supervisor',
-      role: entry.role,
-      contentBlocks: entry.content_blocks
-        ? parseContentBlocks(entry.content_blocks)
-        : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: entry.content }],
-      isStreaming: false,
-      createdAt: new Date(entry.createdAt),
-    }));
+  chatStore.setHistoryPaginationState('supervisor', {
+    oldestSequence: undefined,
+    hasMore: true,
+    isLoading: true,
+  });
 
-    // Clear existing and add new messages
-    chatStore.clearSupervisorMessages();
-    messages.forEach((m) => chatStore.addSupervisorMessage(m));
+  logger.log('Sending supervisor history.request');
+  WebSocketService.send({
+    type: 'history.request',
+    id: crypto.randomUUID(),
+    payload: {
+      session_id: null,
+      limit: 50,
+    },
+  });
+}
+
+function handleHistoryResponse(msg: HistoryResponseMessage): void {
+  const chatStore = useChatStore.getState();
+  const { session_id, history, has_more, oldest_sequence, is_executing, current_streaming_blocks } = msg.payload;
+  
+  logger.log('history.response received:', { session_id, historyCount: history?.length ?? 0, has_more, oldest_sequence });
+  
+  const sessionKey = session_id ?? 'supervisor';
+  
+  chatStore.setHistoryPaginationState(sessionKey, {
+    oldestSequence: oldest_sequence,
+    hasMore: has_more,
+    isLoading: false,
+  });
+
+  if (history.length === 0) {
+    return;
   }
 
-  // Set loading state if supervisor is executing
-  if (msg.payload.supervisorIsExecuting) {
-    chatStore.setSupervisorIsLoading(true);
-  }
+  const sortedHistory = [...history].sort((a, b) => a.sequence - b.sequence);
 
-  // Handle current streaming blocks
-  if (msg.payload.currentStreamingBlocks && msg.payload.currentStreamingBlocks.length > 0) {
-    const streamingMessage: Message = {
-      id: crypto.randomUUID(),
-      sessionId: 'supervisor',
-      role: 'assistant',
-      contentBlocks: parseContentBlocks(msg.payload.currentStreamingBlocks),
-      isStreaming: true,
-      createdAt: new Date(),
-    };
-    chatStore.addSupervisorMessage(streamingMessage);
-    chatStore.setSupervisorStreamingMessageId(streamingMessage.id);
-    chatStore.setSupervisorIsLoading(true);
+  const messages: Message[] = sortedHistory.map((entry) => ({
+    id: crypto.randomUUID(),
+    sessionId: sessionKey,
+    role: entry.role,
+    contentBlocks: entry.content_blocks
+      ? parseContentBlocks(entry.content_blocks)
+      : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: entry.content }],
+    isStreaming: false,
+    createdAt: new Date(entry.createdAt),
+  }));
+
+  if (session_id === null) {
+    chatStore.prependSupervisorMessages(messages);
+    if (is_executing) {
+      chatStore.setSupervisorIsLoading(true);
+    }
+    if (current_streaming_blocks && current_streaming_blocks.length > 0) {
+      const streamingMessage: Message = {
+        id: crypto.randomUUID(),
+        sessionId: 'supervisor',
+        role: 'assistant',
+        contentBlocks: parseContentBlocks(current_streaming_blocks),
+        isStreaming: true,
+        createdAt: new Date(),
+      };
+      chatStore.addSupervisorMessage(streamingMessage);
+      chatStore.setSupervisorStreamingMessageId(streamingMessage.id);
+      chatStore.setSupervisorIsLoading(true);
+    }
+  } else {
+    chatStore.prependAgentMessages(session_id, messages);
+    if (is_executing) {
+      chatStore.setAgentIsLoading(session_id, true);
+    }
+    if (current_streaming_blocks && current_streaming_blocks.length > 0) {
+      const streamingMessage: Message = {
+        id: crypto.randomUUID(),
+        sessionId: session_id,
+        role: 'assistant',
+        contentBlocks: parseContentBlocks(current_streaming_blocks),
+        isStreaming: true,
+        createdAt: new Date(),
+      };
+      chatStore.addAgentMessage(session_id, streamingMessage);
+      chatStore.setAgentStreamingMessageId(session_id, streamingMessage.id);
+      chatStore.setAgentIsLoading(session_id, true);
+    }
   }
 }
 
@@ -260,37 +314,32 @@ function handleSessionSubscribed(msg: SessionSubscribedMessage): void {
   const chatStore = useChatStore.getState();
   const sessionId = msg.session_id;
 
-  // Skip terminal sessions - they don't have chat history
   const appStore = useAppStore.getState();
   const session = appStore.sessions.find((s) => s.id === sessionId);
   if (session?.type === 'terminal') {
     return;
   }
 
-  // Handle is_executing state (fields are at root level, not in payload)
   if (msg.is_executing) {
     chatStore.setAgentIsLoading(sessionId, true);
   }
 
-  // Handle history (at root level)
-  if (msg.history && msg.history.length > 0) {
-    const messages: Message[] = msg.history.map((entry) => ({
-      id: crypto.randomUUID(),
-      sessionId,
-      role: entry.role,
-      contentBlocks: entry.content_blocks
-        ? parseContentBlocks(entry.content_blocks)
-        : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: entry.content }],
-      isStreaming: false,
-      createdAt: new Date(entry.createdAt),
-    }));
+  chatStore.setHistoryPaginationState(sessionId, {
+    oldestSequence: undefined,
+    hasMore: true,
+    isLoading: true,
+  });
 
-    // Clear existing messages and add history
-    chatStore.clearAgentMessages(sessionId);
-    messages.forEach((m) => chatStore.addAgentMessage(sessionId, m));
-  }
+  logger.log('Sending agent history.request', { sessionId });
+  WebSocketService.send({
+    type: 'history.request',
+    id: crypto.randomUUID(),
+    payload: {
+      session_id: sessionId,
+      limit: 50,
+    },
+  });
 
-  // Handle current streaming blocks (agent is currently generating, at root level)
   if (msg.current_streaming_blocks && msg.current_streaming_blocks.length > 0) {
     const streamingMessage: Message = {
       id: crypto.randomUUID(),

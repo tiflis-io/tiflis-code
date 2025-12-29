@@ -3,16 +3,17 @@
 
 import { useAppStore } from '@/store/useAppStore';
 import { cn } from '@/lib/utils';
-import { Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw, Check } from 'lucide-react';
+import { Wifi, WifiOff, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { WebSocketService } from '@/services/websocket/WebSocketService';
 import type { ConnectionState } from '@/types';
 
 interface StatusConfig {
-  icon: typeof Wifi;
+  icon: typeof Wifi | null;
   text: string;
   className: string;
   showReconnect?: boolean;
+  isCircle?: boolean;
 }
 
 const statusConfigs: Record<ConnectionState, StatusConfig> = {
@@ -43,9 +44,10 @@ const statusConfigs: Record<ConnectionState, StatusConfig> = {
     className: 'bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400',
   },
   verified: {
-    icon: Check,
+    icon: null,
     text: 'Connected',
     className: 'bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400',
+    isCircle: true,
   },
   degraded: {
     icon: AlertTriangle,
@@ -83,6 +85,11 @@ export function ConnectionStatusBanner() {
     displayText = 'Workstation offline';
   }
 
+  // Determine circle color based on workstation status
+  const circleColor = connectionState === 'verified' && !workstationOnline 
+    ? 'bg-orange-500' 
+    : 'bg-green-500';
+
   return (
     <div
       className={cn(
@@ -93,10 +100,17 @@ export function ConnectionStatusBanner() {
       role="status"
       aria-live="polite"
     >
-      <Icon
-        className={cn('w-4 h-4', isSpinner && 'animate-spin')}
-        aria-hidden="true"
-      />
+      {config.isCircle ? (
+        <span className={cn('w-2.5 h-2.5 rounded-full', circleColor)} aria-hidden="true" />
+      ) : Icon ? (
+        <Icon
+          className={cn(
+            'w-4 h-4',
+            isSpinner && 'animate-spin'
+          )}
+          aria-hidden="true"
+        />
+      ) : null}
       <span>{displayText}</span>
 
       {config.showReconnect && (

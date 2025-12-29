@@ -57,7 +57,9 @@ export const SyncMessageSchema = z.object({
 // ============================================================================
 
 export const HistoryRequestPayloadSchema = z.object({
-  session_id: z.string().optional(), // If omitted, returns supervisor history
+  session_id: z.string().nullable().optional(),
+  before_sequence: z.number().int().optional(),
+  limit: z.number().int().min(1).max(50).optional(),
 });
 
 export const HistoryRequestSchema = z.object({
@@ -340,6 +342,18 @@ export function parseClientMessage(data: unknown) {
     return result.data;
   }
   return undefined;
+}
+
+export type ParseClientMessageResult =
+  | { success: true; data: z.infer<typeof IncomingClientMessageSchema> }
+  | { success: false; errors: z.ZodIssue[] };
+
+export function parseClientMessageWithErrors(data: unknown): ParseClientMessageResult {
+  const result = IncomingClientMessageSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  return { success: false, errors: result.error.issues };
 }
 
 /**

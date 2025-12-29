@@ -64,7 +64,7 @@ import { MockAgentSessionManager } from "./infrastructure/mock/mock-agent-sessio
 import {
   AuthMessageSchema,
   getMessageType,
-  parseClientMessage,
+  parseClientMessageWithErrors,
 } from "./protocol/schemas.js";
 import {
   createSTTService,
@@ -173,12 +173,19 @@ function handleTunnelMessage(
 
     const handler = handlers[messageType as keyof MessageHandlers];
 
-    // Parse the message
-    const parsedMessage = parseClientMessage(data);
-    if (!parsedMessage) {
-      logger.warn({ type: messageType }, "Failed to parse tunnel message");
+    const parseResult = parseClientMessageWithErrors(data);
+    if (!parseResult.success) {
+      logger.warn(
+        {
+          type: messageType,
+          errors: parseResult.errors,
+          rawMessage: JSON.stringify(data).slice(0, 500),
+        },
+        "Failed to parse tunnel message - Zod validation failed"
+      );
       return;
     }
+    const parsedMessage = parseResult.data;
 
     // Execute the handler
     handler(virtualSocket, parsedMessage).catch((error: unknown) => {

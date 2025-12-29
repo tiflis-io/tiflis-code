@@ -117,7 +117,13 @@ export function VoiceRecordButton({
     (e: React.PointerEvent) => {
       if (disabled || isProcessing) return;
 
-      e.preventDefault();
+      // Capture the pointer to ensure we get pointerup even if finger moves
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      
+      // Unlock audio immediately on user gesture (important for iOS)
+      // This must happen synchronously in the gesture handler
+      AudioPlayerService.unlockIfNeeded().catch(() => {});
+      
       pointerDownTimeRef.current = Date.now();
       isHoldModeRef.current = false;
 
@@ -138,7 +144,9 @@ export function VoiceRecordButton({
     (e: React.PointerEvent) => {
       if (disabled) return;
 
-      e.preventDefault();
+      // Release pointer capture
+      (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+      
       const holdDuration = Date.now() - pointerDownTimeRef.current;
 
       // Clear long press timer
@@ -210,7 +218,7 @@ export function VoiceRecordButton({
         className={cn(
           'relative z-10 flex items-center justify-center rounded-full',
           'transition-all duration-150',
-          'touch-none select-none',
+          'select-none',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
           isRecording
             ? 'w-14 h-14 bg-red-500 text-white scale-100'

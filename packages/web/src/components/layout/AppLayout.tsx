@@ -5,7 +5,6 @@ import { useCallback, useRef, useState } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { MobileHeader } from './MobileHeader';
-import { ConnectionStatusBanner } from '@/components/ui/ConnectionStatusBanner';
 import {
   useSettingsStore,
   SIDEBAR_MIN_WIDTH,
@@ -61,7 +60,7 @@ export function AppLayout() {
   const effectiveWidth = sidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth;
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-[var(--app-height)] overflow-hidden bg-background">
       {/* Desktop Sidebar */}
       <aside
         ref={sidebarRef}
@@ -88,9 +87,6 @@ export function AppLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Connection Status Banner */}
-        <ConnectionStatusBanner />
-
         {/* Mobile Header */}
         <MobileHeader />
 

@@ -11,12 +11,10 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { AudioPlayerService } from '@/services/audio';
+import { AudioPlayerService, type AudioState } from '@/services/audio';
 import { WebSocketService } from '@/services/websocket/WebSocketService';
-import { logger, devLog } from '@/utils/logger';
+import { devLog } from '@/utils/logger';
 import type { AudioRequestMessage } from '@/types/protocol';
-
-const TTS_AUDIO_MIME_TYPE = 'audio/wav';
 
 interface AudioPlayerProps {
   audioUrl?: string;
@@ -26,8 +24,6 @@ interface AudioPlayerProps {
   onPlayStart?: () => void;
   onPlayEnd?: () => void;
 }
-
-
 
 export function AudioPlayer({
   audioUrl,
@@ -45,145 +41,93 @@ export function AudioPlayer({
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [dragTime, setDragTime] = useState<number | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
   const progressBarRef = useRef<HTMLDivElement>(null);
   const wasPlayingBeforeDrag = useRef(false);
   const hasInitialized = useRef(false);
+  const prevIsPlaying = useRef(false);
 
   const hasDirectAudio = Boolean(audioBase64 || audioUrl);
   const hasCachedAudio = messageId ? AudioPlayerService.hasAudio(messageId) : false;
-  const canFetchAudio = Boolean(messageId) && !hasDirectAudio && !hasCachedAudio;
+  const canFetchAudio = Boolean(messageId) && !hasDirectAudio && !hasCachedAudio && !audioReady;
 
   const displayTime = dragTime !== null ? dragTime : currentTime;
   const progress = duration > 0 ? (displayTime / duration) * 100 : 0;
 
-  const setupAudioElement = useCallback((audio: HTMLAudioElement) => {
-    audioRef.current = audio;
-
-    const updateProgress = () => {
-      if (audioRef.current && !audioRef.current.paused) {
-        setCurrentTime(audioRef.current.currentTime);
-        animationFrameRef.current = requestAnimationFrame(updateProgress);
+  // Subscribe to AudioPlayerService state changes
+  useEffect(() => {
+    const unsubscribe = AudioPlayerService.subscribe((state: AudioState) => {
+      // Check if this audio player instance should respond to state changes
+      const isThisAudio = state.messageId === messageId;
+      
+      if (isThisAudio) {
+        // This is our audio - update all state
+        setIsPlaying(state.isPlaying);
+        setIsLoading(state.isLoading);
+        setCurrentTime(state.currentTime);
+        if (state.duration > 0) {
+          setDuration(state.duration);
+          setAudioReady(true);
+        }
+        if (state.error) {
+          setError(state.error);
+        }
+        
+        // Track play state changes for callbacks
+        if (state.isPlaying && !prevIsPlaying.current) {
+          onPlayStart?.();
+        } else if (!state.isPlaying && prevIsPlaying.current && state.currentTime === 0) {
+          onPlayEnd?.();
+        }
+        prevIsPlaying.current = state.isPlaying;
+      } else if (prevIsPlaying.current && state.messageId !== messageId) {
+        // Another audio started playing - we should stop showing as playing
+        setIsPlaying(false);
+        prevIsPlaying.current = false;
       }
-    };
+    });
 
-    const handleLoadedMetadata = () => {
-      if (audioRef.current && !isNaN(audioRef.current.duration)) {
-        setDuration(audioRef.current.duration);
-      }
-    };
+    return unsubscribe;
+  }, [messageId, onPlayStart, onPlayEnd]);
 
-    const handleEnded = () => {
-      setIsPlaying(false);
-      setCurrentTime(0);
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-      }
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      AudioPlayerService.unregisterAudio(audio);
-      onPlayEnd?.();
-    };
-
-    const handlePlay = () => {
-      setIsPlaying(true);
-      onPlayStart?.();
-      updateProgress();
-    };
-
-    const handlePause = () => {
-      setIsPlaying(false);
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-    };
-
-    const handleError = () => {
-      setError('Failed to load audio');
-      setIsLoading(false);
-    };
-
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
-    audio.addEventListener('play', handlePlay);
-    audio.addEventListener('pause', handlePause);
-    audio.addEventListener('error', handleError);
-
-    if (audio.duration && !isNaN(audio.duration)) {
-      setDuration(audio.duration);
-    }
-
-    if (!audio.paused) {
-      setIsPlaying(true);
-      updateProgress();
-    }
-
-    setAudioReady(true);
-
-    return () => {
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
-      audio.removeEventListener('play', handlePlay);
-      audio.removeEventListener('pause', handlePause);
-      audio.removeEventListener('error', handleError);
-      if (animationFrameRef.current) {
-        cancelAnimationFrame(animationFrameRef.current);
-      }
-    };
-  }, [onPlayStart, onPlayEnd]);
-
+  // Initialize audio on mount
   useEffect(() => {
     if (hasInitialized.current) return;
-
-    let cleanup: (() => void) | undefined;
-
+    
     if (messageId && AudioPlayerService.hasAudio(messageId)) {
-      const cachedAudio = AudioPlayerService.getAudio(messageId);
-      if (cachedAudio) {
-        cleanup = setupAudioElement(cachedAudio);
+      // Audio is cached, get duration
+      const audio = AudioPlayerService.getAudio(messageId);
+      if (audio) {
+        if (audio.duration && !isNaN(audio.duration)) {
+          setDuration(audio.duration);
+        } else {
+          const onMeta = () => {
+            if (!isNaN(audio.duration)) {
+              setDuration(audio.duration);
+            }
+            audio.removeEventListener('loadedmetadata', onMeta);
+          };
+          audio.addEventListener('loadedmetadata', onMeta);
+        }
+        setAudioReady(true);
         hasInitialized.current = true;
       }
-    } else if (audioBase64 || audioUrl) {
-      const audioSource = audioBase64
-        ? `data:${TTS_AUDIO_MIME_TYPE};base64,${audioBase64}`
-        : audioUrl;
-
-      if (audioSource) {
-        const audio = new Audio(audioSource);
-        cleanup = setupAudioElement(audio);
+    } else if (audioBase64) {
+      // Direct audio data - play through service
+      if (messageId) {
+        AudioPlayerService.playAudio(audioBase64, messageId, false);
+        setAudioReady(true);
         hasInitialized.current = true;
       }
     }
+  }, [audioBase64, messageId]);
 
-    return () => {
-      cleanup?.();
-    };
-  }, [audioUrl, audioBase64, messageId, setupAudioElement]);
-
-  useEffect(() => {
-    if (!messageId) return;
-
-    const checkPlayingState = () => {
-      const currentlyPlayingId = AudioPlayerService.getCurrentMessageId();
-      const isThisPlaying = currentlyPlayingId === messageId && AudioPlayerService.isPlaying();
-      
-      if (isThisPlaying !== isPlaying) {
-        setIsPlaying(isThisPlaying);
-      }
-    };
-
-    const interval = setInterval(checkPlayingState, 100);
-    return () => clearInterval(interval);
-  }, [messageId, isPlaying]);
-
+  // Request audio from server
   const requestAudio = useCallback(async () => {
-    if (!messageId || isLoading) return;
+    if (!messageId || isFetching) return;
 
+    setIsFetching(true);
     setIsLoading(true);
     setError(null);
 
@@ -210,17 +154,18 @@ export function AudioPlayer({
           } else {
             setError(response.payload.error);
           }
+          setIsLoading(false);
+          setIsFetching(false);
           return;
         }
 
         const audioData = response.payload.audio || response.payload.audio_base64;
 
         if (audioData) {
-          const audio = new Audio(`data:${TTS_AUDIO_MIME_TYPE};base64,${audioData}`);
-          setupAudioElement(audio);
-          AudioPlayerService.stop();
-          AudioPlayerService.registerAudio(audio, messageId);
-          audio.play().catch((e) => logger.warn('Play failed:', e));
+          // Play through service - this will cache and play
+          AudioPlayerService.playAudio(audioData, messageId, true);
+          setAudioReady(true);
+          hasInitialized.current = true;
         } else {
           if (attempt < 3) {
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -240,47 +185,42 @@ export function AudioPlayer({
 
     await tryRequest();
     setIsLoading(false);
-  }, [messageId, isLoading, setupAudioElement]);
+    setIsFetching(false);
+  }, [messageId, isFetching]);
 
+  // Toggle play/pause
   const togglePlay = useCallback(() => {
+    // If audio not ready and we can fetch, request it
     if (!audioReady && canFetchAudio) {
       requestAudio();
       return;
     }
 
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    if (isPlaying) {
-      audio.pause();
-    } else {
-      AudioPlayerService.stop();
-      AudioPlayerService.registerAudio(audio, messageId);
-      audio.play().catch((e) => logger.warn('Play failed:', e));
+    // If this is not the current audio, start playing it
+    if (messageId && AudioPlayerService.getCurrentMessageId() !== messageId) {
+      if (AudioPlayerService.hasAudio(messageId)) {
+        AudioPlayerService.playByMessageId(messageId);
+      } else if (audioBase64) {
+        AudioPlayerService.playAudio(audioBase64, messageId, true);
+      }
+      return;
     }
-  }, [isPlaying, audioReady, canFetchAudio, requestAudio, messageId]);
 
+    // Toggle current audio
+    AudioPlayerService.togglePlay();
+  }, [audioReady, canFetchAudio, requestAudio, messageId, audioBase64]);
+
+  // Reset to start
   const resetToStart = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    const wasPlaying = !audio.paused;
-    audio.pause();
-    audio.currentTime = 0;
-    setCurrentTime(0);
-    setIsPlaying(false);
-    AudioPlayerService.unregisterAudio(audio);
-
-    if (wasPlaying) {
-      AudioPlayerService.registerAudio(audio, messageId);
-      audio.play().catch((e) => logger.warn('Play failed:', e));
-    }
-
-    if ('vibrate' in navigator) {
-      navigator.vibrate(10);
+    if (messageId && AudioPlayerService.getCurrentMessageId() === messageId) {
+      AudioPlayerService.resetToStart();
+      if ('vibrate' in navigator) {
+        navigator.vibrate(10);
+      }
     }
   }, [messageId]);
 
+  // Format time
   const formatTime = useCallback((time: number) => {
     if (isNaN(time) || !isFinite(time)) return '0:00';
     const minutes = Math.floor(time / 60);
@@ -288,6 +228,7 @@ export function AudioPlayer({
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }, []);
 
+  // Get position from event
   const getPositionFromEvent = useCallback((e: MouseEvent | TouchEvent | React.MouseEvent | React.TouchEvent) => {
     if (!progressBarRef.current || !duration) return null;
 
@@ -300,16 +241,17 @@ export function AudioPlayer({
     return percent * duration;
   }, [duration]);
 
+  // Handle drag start
   const handleDragStart = useCallback((e: React.MouseEvent<HTMLDivElement> | React.TouchEvent<HTMLDivElement>) => {
-    if (!audioRef.current || !duration || isLoading) return;
+    if (!duration || isLoading) return;
 
     e.preventDefault();
     e.stopPropagation();
 
     wasPlayingBeforeDrag.current = isPlaying;
 
-    if (isPlaying) {
-      audioRef.current.pause();
+    if (isPlaying && messageId && AudioPlayerService.getCurrentMessageId() === messageId) {
+      AudioPlayerService.togglePlay(); // Pause
     }
 
     setIsDragging(true);
@@ -321,8 +263,9 @@ export function AudioPlayer({
         navigator.vibrate(5);
       }
     }
-  }, [duration, isLoading, isPlaying, getPositionFromEvent]);
+  }, [duration, isLoading, isPlaying, messageId, getPositionFromEvent]);
 
+  // Handle drag
   useEffect(() => {
     if (!isDragging) return;
 
@@ -336,12 +279,12 @@ export function AudioPlayer({
 
     const handleEnd = (e: MouseEvent | TouchEvent) => {
       const newTime = getPositionFromEvent(e);
-      if (newTime !== null && audioRef.current) {
-        audioRef.current.currentTime = newTime;
+      if (newTime !== null && messageId) {
+        AudioPlayerService.seekToTime(newTime);
         setCurrentTime(newTime);
 
         if (wasPlayingBeforeDrag.current) {
-          audioRef.current.play().catch((err) => logger.warn('Resume play failed:', err));
+          AudioPlayerService.togglePlay(); // Resume
         }
       }
       setDragTime(null);
@@ -363,8 +306,9 @@ export function AudioPlayer({
       document.removeEventListener('touchmove', handleMove);
       document.removeEventListener('touchend', handleEnd);
     };
-  }, [isDragging, getPositionFromEvent]);
+  }, [isDragging, getPositionFromEvent, messageId]);
 
+  // Handle keyboard
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === ' ' || e.key === 'Spacebar') {
       e.preventDefault();
@@ -378,7 +322,7 @@ export function AudioPlayer({
       return;
     }
 
-    if (!audioRef.current || !duration || isLoading) return;
+    if (!duration || isLoading) return;
 
     const step = duration * 0.05;
     let newTime = currentTime;
@@ -401,14 +345,18 @@ export function AudioPlayer({
     }
 
     e.preventDefault();
-    audioRef.current.currentTime = newTime;
-    setCurrentTime(newTime);
-  }, [currentTime, duration, isLoading, togglePlay, resetToStart]);
+    if (messageId) {
+      AudioPlayerService.seekToTime(newTime);
+      setCurrentTime(newTime);
+    }
+  }, [currentTime, duration, isLoading, togglePlay, resetToStart, messageId]);
 
-  if (!hasDirectAudio && !hasCachedAudio && !canFetchAudio && !error) {
+  // Don't render if no audio source
+  if (!hasDirectAudio && !hasCachedAudio && !canFetchAudio && !error && !audioReady) {
     return null;
   }
 
+  // Error state
   if (error) {
     return (
       <div
@@ -442,6 +390,9 @@ export function AudioPlayer({
     );
   }
 
+  const showLoading = isLoading || isFetching;
+  const isThisPlaying = isPlaying && messageId && AudioPlayerService.getCurrentMessageId() === messageId;
+
   return (
     <div
       className={cn(
@@ -456,24 +407,24 @@ export function AudioPlayer({
       <button
         type="button"
         onClick={togglePlay}
-        disabled={isLoading}
+        disabled={showLoading}
         className={cn(
           'flex items-center justify-center w-10 h-10 rounded-full shrink-0 transition-all active:scale-95',
-          isLoading && 'opacity-70 cursor-wait',
+          showLoading && 'opacity-70 cursor-wait',
           'bg-primary text-primary-foreground'
         )}
         aria-label={
-          isLoading
+          showLoading
             ? 'Loading audio'
-            : isPlaying
+            : isThisPlaying
               ? 'Pause audio'
               : 'Play audio'
         }
-        aria-busy={isLoading}
+        aria-busy={showLoading}
       >
-        {isLoading ? (
+        {showLoading ? (
           <Loader2 className="w-5 h-5 animate-spin" aria-hidden="true" />
-        ) : isPlaying ? (
+        ) : isThisPlaying ? (
           <Pause className="w-5 h-5" fill="currentColor" aria-hidden="true" />
         ) : (
           <Play className="w-5 h-5 ml-0.5" fill="currentColor" aria-hidden="true" />
@@ -485,7 +436,7 @@ export function AudioPlayer({
           ref={progressBarRef}
           className={cn(
             'relative h-1.5 rounded-full bg-secondary-foreground/20 touch-none overflow-hidden',
-            audioReady && !isLoading && 'cursor-pointer',
+            audioReady && !showLoading && 'cursor-pointer',
             isDragging && 'cursor-grabbing'
           )}
           role="slider"
@@ -514,7 +465,7 @@ export function AudioPlayer({
 
         <div className="flex items-center justify-between text-[11px] text-muted-foreground">
           <span className="tabular-nums">
-            {isLoading ? '...' : formatTime(displayTime)}
+            {showLoading ? '...' : formatTime(displayTime)}
           </span>
           <span className="tabular-nums">
             {formatTime(duration)}

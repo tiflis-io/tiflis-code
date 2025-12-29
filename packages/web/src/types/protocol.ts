@@ -398,6 +398,32 @@ export interface SessionTranscriptionMessage extends BaseMessage {
   };
 }
 
+// History request/response (v1.13 - lazy load chat history)
+export interface HistoryRequestMessage extends BaseMessage {
+  type: 'history.request';
+  id: string;
+  payload: {
+    session_id?: string | null; // null or omit for supervisor
+    before_sequence?: number; // For pagination - load messages before this sequence
+    limit?: number; // Max messages to return (default: 20, max: 50)
+  };
+}
+
+export interface HistoryResponseMessage extends BaseMessage {
+  type: 'history.response';
+  id: string;
+  payload: {
+    session_id: string | null; // null = supervisor
+    history: HistoryEntry[];
+    has_more: boolean; // Are there older messages?
+    oldest_sequence?: number; // Sequence of oldest message in response
+    newest_sequence?: number; // Sequence of newest message in response
+    is_executing?: boolean; // Is currently processing?
+    current_streaming_blocks?: ServerContentBlock[]; // In-progress blocks
+    error?: string; // Error message if failed
+  };
+}
+
 // Audio request (to fetch TTS audio)
 export interface AudioRequestMessage extends BaseMessage {
   type: 'audio.request';

@@ -153,10 +153,6 @@ export function ChatInput({
             </button>
           )}
         </form>
-
-        <p className="text-[11px] text-muted-foreground/60 mt-2 text-center">
-          Return to send · Shift+Return for new line
-        </p>
       </div>
     </footer>
   );

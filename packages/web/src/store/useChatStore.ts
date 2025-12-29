@@ -4,6 +4,12 @@
 import { create } from 'zustand';
 import type { Message, ContentBlock, SendStatus } from '@/types';
 
+interface HistoryPaginationState {
+  oldestSequence?: number;
+  hasMore: boolean;
+  isLoading: boolean;
+}
+
 interface ChatState {
   // Messages
   supervisorMessages: Message[];
@@ -12,6 +18,8 @@ interface ChatState {
   // Loading states
   supervisorIsLoading: boolean;
   agentIsLoading: Record<string, boolean>;
+
+  historyPaginationState: Record<string, HistoryPaginationState>;
 
   // Streaming message IDs
   supervisorStreamingMessageId: string | null;
@@ -41,6 +49,11 @@ interface ChatState {
   addPendingAck: (messageId: string) => void;
   removePendingAck: (messageId: string) => void;
 
+  // Actions - History pagination
+  setHistoryPaginationState: (sessionKey: string, state: HistoryPaginationState) => void;
+  prependSupervisorMessages: (messages: Message[]) => void;
+  prependAgentMessages: (sessionId: string, messages: Message[]) => void;
+
   // Actions - Reset
   reset: () => void;
 }
@@ -50,6 +63,7 @@ const initialState = {
   agentMessages: {},
   supervisorIsLoading: false,
   agentIsLoading: {},
+  historyPaginationState: {},
   supervisorStreamingMessageId: null,
   agentStreamingMessageIds: {},
   pendingMessageAcks: new Set<string>(),
@@ -180,6 +194,28 @@ export const useChatStore = create<ChatState>((set) => ({
       newSet.delete(messageId);
       return { pendingMessageAcks: newSet };
     }),
+
+  // Actions - History pagination
+  setHistoryPaginationState: (sessionKey, paginationState) =>
+    set((state) => ({
+      historyPaginationState: {
+        ...state.historyPaginationState,
+        [sessionKey]: paginationState,
+      },
+    })),
+
+  prependSupervisorMessages: (messages) =>
+    set((state) => ({
+      supervisorMessages: [...messages, ...state.supervisorMessages],
+    })),
+
+  prependAgentMessages: (sessionId, messages) =>
+    set((state) => ({
+      agentMessages: {
+        ...state.agentMessages,
+        [sessionId]: [...messages, ...(state.agentMessages[sessionId] ?? [])],
+      },
+    })),
 
   // Reset
   reset: () => set(initialState),

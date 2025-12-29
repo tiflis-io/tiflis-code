@@ -1,7 +1,7 @@
 // Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useCallback, useEffect, useRef } from 'react';
 import { ChatView } from '@/components/chat';
 import { useChatStore } from '@/store/useChatStore';
@@ -19,7 +19,6 @@ import type { Session } from '@/types';
 
 export function ChatPage() {
   const { sessionId } = useParams<{ sessionId?: string }>();
-  const navigate = useNavigate();
   const isSupervisor = !sessionId;
 
   const subscribedSessionsRef = useRef<Set<string>>(new Set());
@@ -27,7 +26,6 @@ export function ChatPage() {
   const credentials = useAppStore((state) => state.credentials);
   const connectionState = useAppStore((state) => state.connectionState);
   const sessions = useAppStore((state) => state.sessions);
-  const removeSession = useAppStore((state) => state.removeSession);
 
   const supervisorMessages = useChatStore((state) => state.supervisorMessages);
   const supervisorIsLoading = useChatStore((state) => state.supervisorIsLoading);
@@ -43,22 +41,7 @@ export function ChatPage() {
     subscribeToSession,
     sendSupervisorVoiceCommand,
     sendAgentVoiceCommand,
-    clearSupervisorContext,
-    terminateSession,
   } = useWebSocket();
-
-  const handleClearContext = useCallback(() => {
-    clearSupervisorContext();
-    toast.success('Context Cleared', 'Supervisor conversation has been reset.');
-  }, [clearSupervisorContext]);
-
-  const handleTerminateSession = useCallback(() => {
-    if (!sessionId) return;
-    terminateSession(sessionId);
-    removeSession(sessionId);
-    navigate('/chat');
-    toast.success('Session Terminated', 'The session has been closed.');
-  }, [sessionId, terminateSession, removeSession, navigate]);
 
   const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
 
@@ -231,14 +214,10 @@ export function ChatPage() {
         onSend={handleSupervisorSend}
         onSendAudio={handleSupervisorAudio}
         onCancel={handleSupervisorCancel}
-        onClearContext={handleClearContext}
-        title="Supervisor"
-        subtitle="AI-powered session orchestrator"
         currentDeviceId={credentials?.deviceId}
         disabled={!isConnected}
         emptyMessage="Hello! I'm your AI assistant. Ask me to create sessions, manage your workspace, or help with tasks."
         emptyIcon={<SupervisorIcon className="w-8 h-8 text-muted-foreground" />}
-        isSupervisor={true}
         agentType="supervisor"
       />
     );
@@ -248,13 +227,6 @@ export function ChatPage() {
   const messages = agentMessages[sessionId] ?? [];
   const isLoading = agentIsLoading[sessionId] ?? false;
 
-  const title = session
-    ? session.agentName ?? session.type
-    : sessionId;
-  const subtitle = session
-    ? `${session.workspace ?? ''}/${session.project ?? ''}${session.worktree ? `--${session.worktree}` : ''}`
-    : undefined;
-
   return (
     <ChatView
       messages={messages}
@@ -262,14 +234,10 @@ export function ChatPage() {
       onSend={handleAgentSend}
       onSendAudio={handleAgentAudio}
       onCancel={handleAgentCancel}
-      onTerminate={handleTerminateSession}
-      title={title}
-      subtitle={subtitle}
       currentDeviceId={credentials?.deviceId}
       disabled={!isConnected}
       emptyMessage={`Start a conversation with ${session?.agentName ?? 'the agent'}...`}
       emptyIcon={getSessionIcon(session ?? null)}
-      isSupervisor={false}
       agentType={session?.type as 'claude' | 'cursor' | 'opencode' | 'terminal' | undefined}
     />
   );

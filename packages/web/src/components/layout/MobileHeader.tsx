@@ -16,7 +16,6 @@ import {
   WifiOff,
   Loader2,
   AlertTriangle,
-  Check,
   MoreVertical,
   Trash2,
   Eraser,
@@ -253,7 +252,7 @@ export function MobileHeader() {
 
   const getConnectionStatus = () => {
     if (connectionState === 'verified' && workstationOnline) {
-      return { icon: Check, color: 'text-green-500', label: 'Connected' };
+      return { icon: null, color: 'bg-green-500', label: 'Connected', isCircle: true };
     }
     if (connectionState === 'verified' && !workstationOnline) {
       return { icon: AlertTriangle, color: 'text-orange-500', label: 'Workstation offline' };
@@ -286,6 +285,34 @@ export function MobileHeader() {
           </div>
         </div>
         
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative shrink-0">
+              {status.isCircle ? (
+                <span className={cn('w-2.5 h-2.5 rounded-full', status.color)} />
+              ) : status.icon ? (
+                <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              ) : null}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56">
+            <div className="flex items-center gap-2">
+              {status.isCircle ? (
+                <span className={cn('w-2.5 h-2.5 rounded-full', status.color)} />
+              ) : status.icon ? (
+                <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              ) : null}
+              <span className="text-sm font-medium">{status.label}</span>
+            </div>
+            {workstationInfo && (
+              <div className="mt-2 pt-2 border-t text-xs text-muted-foreground space-y-1">
+                <p>Workstation: {workstationInfo.name}</p>
+                <p>Version: {workstationInfo.version}</p>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
+
         {(supervisorActive || selectedSessionId) && !settingsActive && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -315,16 +342,37 @@ export function MobileHeader() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
+      </header>
 
+      {/* Desktop Header */}
+      <header className="hidden md:flex items-center gap-3 p-4 pl-6 border-b bg-card">
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          {getPageIcon()}
+          <div className="min-w-0 flex-1">
+            <h1 className="font-semibold truncate text-sm">{getPageTitle()}</h1>
+            {getPageSubtitle() && (
+              <p className="text-xs text-muted-foreground truncate">{getPageSubtitle()}</p>
+            )}
+          </div>
+        </div>
+        
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="icon" className="relative shrink-0">
-              <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              {status.isCircle ? (
+                <span className={cn('w-2.5 h-2.5 rounded-full', status.color)} />
+              ) : status.icon ? (
+                <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              ) : null}
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-56">
             <div className="flex items-center gap-2">
-              <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              {status.isCircle ? (
+                <span className={cn('w-2.5 h-2.5 rounded-full', status.color)} />
+              ) : status.icon ? (
+                <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              ) : null}
               <span className="text-sm font-medium">{status.label}</span>
             </div>
             {workstationInfo && (
@@ -335,6 +383,36 @@ export function MobileHeader() {
             )}
           </PopoverContent>
         </Popover>
+
+        {(supervisorActive || selectedSessionId) && !settingsActive && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="shrink-0">
+                <MoreVertical className="w-5 h-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {supervisorActive && (
+                <DropdownMenuItem
+                  onClick={() => setShowClearDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Eraser className="w-4 h-4" />
+                  Clear Context
+                </DropdownMenuItem>
+              )}
+              {selectedSessionId && (
+                <DropdownMenuItem
+                  onClick={() => setShowTerminateDialog(true)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Terminate Session
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </header>
 
       {/* Clear Context Confirmation Dialog */}
