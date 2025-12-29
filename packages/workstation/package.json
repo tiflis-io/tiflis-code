@@ -1,6 +1,6 @@
 {
   "name": "@tiflis-io/tiflis-code-workstation",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "description": "Workstation server for tiflis-code - manages agent sessions and terminal access",
   "author": "Roman Barinov <rbarinov@gmail.com>",
   "license": "FSL-1.1-NC",
