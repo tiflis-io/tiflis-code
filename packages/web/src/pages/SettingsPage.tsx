@@ -19,7 +19,9 @@ import { useAppStore } from '@/store/useAppStore';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useSettingsStore } from '@/store/useSettingsStore';
 import { useTheme } from '@/components/theme-provider';
-import { LogOut, Trash2, Monitor, Server, Info, Wifi, WifiOff, Sun, Moon, Laptop } from 'lucide-react';
+import { LogOut, Trash2, Monitor, Server, Info, Wifi, WifiOff, Sun, Moon, Laptop, Volume2 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
 export function SettingsPage() {
@@ -29,6 +31,8 @@ export function SettingsPage() {
   const connectionState = useAppStore((state) => state.connectionState);
   const { disconnect, disconnectAndForget } = useWebSocket();
   const resetSettings = useSettingsStore((state) => state.reset);
+  const ttsEnabled = useSettingsStore((state) => state.ttsEnabled);
+  const setTtsEnabled = useSettingsStore((state) => state.setTtsEnabled);
   const { theme, setTheme } = useTheme();
   const [isForgetDialogOpen, setIsForgetDialogOpen] = useState(false);
 
@@ -128,6 +132,36 @@ export function SettingsPage() {
                   System
                 </Button>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Voice */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-5 h-5 text-muted-foreground" />
+              <CardTitle>Voice</CardTitle>
+            </div>
+            <CardDescription>
+              Configure text-to-speech and voice input settings
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="tts-toggle" className="text-sm font-medium">
+                  Auto-play TTS responses
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Automatically play audio when receiving voice responses
+                </p>
+              </div>
+              <Switch
+                id="tts-toggle"
+                checked={ttsEnabled}
+                onCheckedChange={setTtsEnabled}
+              />
             </div>
           </CardContent>
         </Card>

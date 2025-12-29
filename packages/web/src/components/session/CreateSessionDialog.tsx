@@ -23,7 +23,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useWebSocket } from '@/hooks/useWebSocket';
 import { useAppStore } from '@/store/useAppStore';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import {
   ClaudeIcon,
   CursorIcon,
@@ -47,7 +47,6 @@ const FALLBACK_AGENTS = [
 export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
   const [open, setOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [selectedAgent, setSelectedAgent] = useState<string>('claude');
@@ -91,16 +90,9 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
     }
   }, [agents, selectedAgent]);
 
-  const handleRefresh = useCallback(() => {
-    setIsRefreshing(true);
-    requestSync();
-    // Reset after a short delay to show the animation
-    setTimeout(() => setIsRefreshing(false), 500);
-  }, [requestSync]);
-
   const handleCreate = useCallback(async () => {
-    if (!selectedWorkspace || !selectedProject) {
-      setError('Workspace and project are required');
+    if (!isTerminal && (!selectedWorkspace || !selectedProject)) {
+      setError('Workspace and project are required for agent sessions');
       return;
     }
 
@@ -108,15 +100,14 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
     setIsCreating(true);
 
     try {
-      // Find the agent config to get the base type
       const agentConfig = agents.find((a) => a.name === selectedAgent);
       const sessionType = isTerminal ? 'terminal' : (agentConfig?.baseType ?? 'claude');
 
       const result = await createSession(
         sessionType as 'claude' | 'cursor' | 'opencode' | 'terminal',
-        selectedWorkspace,
-        selectedProject,
-        undefined, // worktree
+        selectedWorkspace || '',
+        selectedProject || '',
+        undefined,
         isTerminal ? undefined : selectedAgent
       );
 
@@ -176,19 +167,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
       <DialogTrigger asChild>{children}</DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle>Create New Session</DialogTitle>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleRefresh}
-              disabled={isRefreshing}
-              className="h-8 w-8"
-              title="Refresh available options"
-            >
-              <RefreshCw className={`w-4 h-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </Button>
-          </div>
+          <DialogTitle>Create New Session</DialogTitle>
           <DialogDescription>
             Start a new agent or terminal session
           </DialogDescription>
@@ -320,7 +299,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={isCreating || !selectedWorkspace || !selectedProject}
+            disabled={isCreating || (!isTerminal && (!selectedWorkspace || !selectedProject))}
           >
             {isCreating ? (
               <>

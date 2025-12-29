@@ -486,7 +486,7 @@ describe("SupervisorCommandPayloadSchema", () => {
   });
 
   it("should accept all valid audio formats", () => {
-    const formats = ["m4a", "wav", "mp3"];
+    const formats = ["m4a", "wav", "mp3", "webm", "opus"];
     for (const format of formats) {
       const payload = { audio: "base64", audio_format: format };
       const result = SupervisorCommandPayloadSchema.safeParse(payload);

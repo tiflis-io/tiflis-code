@@ -1,10 +1,12 @@
 // Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
+import { useState, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useAppStore } from '@/store/useAppStore';
 import { useSettingsStore } from '@/store/useSettingsStore';
+import { useWebSocket } from '@/hooks/useWebSocket';
 import { CreateSessionDialog } from '@/components/session/CreateSessionDialog';
 import { cn } from '@/lib/utils';
 import {
@@ -12,8 +14,7 @@ import {
   Plus,
   ChevronLeft,
   ChevronRight,
-  Bot,
-  MessageSquare,
+  Trash2,
 } from 'lucide-react';
 import {
   SupervisorIcon,
@@ -23,6 +24,17 @@ import {
   TerminalIcon,
   AgentIcon,
 } from '@/components/icons';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toastFunctions as toast } from '@/components/ui/toast';
 import type { Session, SessionStatus } from '@/types';
 
 /**
@@ -61,43 +73,50 @@ export function Sidebar() {
   const sessions = useAppStore((state) => state.sessions);
   const selectedSessionId = useAppStore((state) => state.selectedSessionId);
   const selectSession = useAppStore((state) => state.selectSession);
+  const removeSession = useAppStore((state) => state.removeSession);
   const workstationInfo = useAppStore((state) => state.workstationInfo);
   const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
   const toggleSidebar = useSettingsStore((state) => state.toggleSidebar);
+  const { terminateSession } = useWebSocket();
+
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
 
   const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
 
-  // Check if we're on an assistant-ui route
-  const isAssistantUIRoute = location.pathname.startsWith('/assistant-ui');
-  const isCurrentRouteAssistantUI = isAssistantUIRoute;
+  const handleDeleteSession = useCallback((session: Session, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessionToDelete(session);
+  }, []);
 
-  const supervisorActive = !selectedSessionId && (
-    (location.pathname === '/chat' && !isAssistantUIRoute) || 
-    (location.pathname === '/assistant-ui' && isAssistantUIRoute)
-  );
+  const confirmDeleteSession = useCallback(() => {
+    if (!sessionToDelete) return;
+    
+    terminateSession(sessionToDelete.id);
+    removeSession(sessionToDelete.id);
+    
+    if (selectedSessionId === sessionToDelete.id) {
+      navigate('/chat');
+    }
+    
+    toast.success('Session Terminated', `${getTypeDisplayName(sessionToDelete.type)} session has been closed.`);
+    setSessionToDelete(null);
+  }, [sessionToDelete, terminateSession, removeSession, selectedSessionId, navigate]);
+
+  const supervisorActive = !selectedSessionId && location.pathname === '/chat';
   
   const settingsActive = location.pathname === '/settings';
   
-  // Check if the current session is active (handles both interfaces)
+  // Check if the current session is active
   const isSessionActive = (sessionId: string) => {
-    if (isAssistantUIRoute) {
-      return selectedSessionId === sessionId && location.pathname === `/assistant-ui/${sessionId}`;
-    }
     return selectedSessionId === sessionId && location.pathname === `/chat/${sessionId}`;
   };
   
   // Get the base path and session ID for navigation
   const getCurrentPathBase = () => {
-    if (isAssistantUIRoute) {
-      return '/assistant-ui';
-    }
     return '/chat';
   };
   
   const getSessionPath = (sessionId: string) => {
-    if (isAssistantUIRoute) {
-      return `/assistant-ui/${sessionId}`;
-    }
     return `/chat/${sessionId}`;
   };
 
@@ -122,23 +141,7 @@ export function Sidebar() {
     navigate('/settings');
   };
   
-  const handleInterfaceToggle = () => {
-    if (selectedSessionId) {
-      // If we have a selected session, toggle between interfaces for that session
-      if (isAssistantUIRoute) {
-        navigate(`/chat/${selectedSessionId}`);
-      } else {
-        navigate(`/assistant-ui/${selectedSessionId}`);
-      }
-    } else {
-      // Otherwise toggle the supervisor view
-      if (isAssistantUIRoute) {
-        navigate('/chat');
-      } else {
-        navigate('/assistant-ui');
-      }
-    }
-  };
+  
 
   const getSessionIcon = (session: Session) => {
     switch (session.type) {
@@ -246,71 +249,7 @@ export function Sidebar() {
           </Button>
         </div>
         
-        {/* Interface Toggle */}
-        {!sidebarCollapsed && (
-          <div className="space-y-1">
-            <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-              <span>Interface</span>
-              <div className="flex items-center gap-1">
-                <Button
-                  variant={!isCurrentRouteAssistantUI ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => {
-                    if (selectedSessionId) {
-                      navigate(`/chat/${selectedSessionId}`);
-                    } else {
-                      navigate('/chat');
-                    }
-                  }}
-                  aria-pressed={!isCurrentRouteAssistantUI}
-                  title="Classic chat interface"
-                >
-                  <MessageSquare className="w-3 h-3 mr-1" aria-hidden="true" />
-                  Classic
-                </Button>
-                <Button
-                  variant={isCurrentRouteAssistantUI ? "secondary" : "ghost"}
-                  size="sm"
-                  className="h-6 px-2 text-xs"
-                  onClick={() => {
-                    if (selectedSessionId) {
-                      navigate(`/assistant-ui/${selectedSessionId}`);
-                    } else {
-                      navigate('/assistant-ui');
-                    }
-                  }}
-                  aria-pressed={isCurrentRouteAssistantUI}
-                  title="New AI assistant interface with enhanced features"
-                >
-                  <Bot className="w-3 h-3 mr-1" aria-hidden="true" />
-                  Assistant
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
         
-        {/* Collapsed state toggle */}
-        {sidebarCollapsed && (
-          <div className="flex justify-center">
-            <Button
-              variant={isCurrentRouteAssistantUI ? "secondary" : "ghost"}
-              size="icon"
-              className="h-8 w-8"
-              onClick={handleInterfaceToggle}
-              aria-label={isCurrentRouteAssistantUI ? 'Switch to Classic interface' : 'Switch to Assistant UI interface'}
-              title={isCurrentRouteAssistantUI ? 'Switch to Classic chat interface' : 'Switch to Assistant UI interface'}
-              aria-pressed={isCurrentRouteAssistantUI}
-            >
-              {isCurrentRouteAssistantUI ? (
-                <MessageSquare className="w-3 h-3" aria-hidden="true" />
-              ) : (
-                <Bot className="w-3 h-3" aria-hidden="true" />
-              )}
-            </Button>
-          </div>
-        )}
       </div>
 
       {/* Navigation */}
@@ -343,12 +282,12 @@ export function Sidebar() {
                 const subtitle = getSessionSubtitle(session);
                 const displayName = getSessionDisplayName(session);
                 return (
-                  <li key={session.id}>
+                  <li key={session.id} className="group relative">
                     <Button
                       variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
                       className={cn(
-                        'w-full justify-start h-auto py-2',
-                        sidebarCollapsed && 'justify-center px-2'
+                        'w-full justify-start h-auto py-2 pr-8',
+                        sidebarCollapsed && 'justify-center px-2 pr-2'
                       )}
                       onClick={() => handleSessionClick(session)}
                       aria-current={isSessionActive(session.id) ? 'page' : undefined}
@@ -356,7 +295,6 @@ export function Sidebar() {
                     >
                       <div className="relative shrink-0">
                         <span aria-hidden="true">{getSessionIcon(session)}</span>
-                        {/* Status indicator overlay */}
                         <span className="absolute -bottom-0.5 -right-0.5">
                           <StatusIndicator status={session.status} />
                         </span>
@@ -374,6 +312,22 @@ export function Sidebar() {
                         </div>
                       )}
                     </Button>
+                    {!sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(session, e)}
+                        className={cn(
+                          'absolute right-1 top-1/2 -translate-y-1/2',
+                          'p-1.5 rounded-md',
+                          'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                          'transition-opacity'
+                        )}
+                        aria-label={`Delete ${displayName} session`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -393,12 +347,12 @@ export function Sidebar() {
               {terminalSessions.map((session) => {
                 const subtitle = getSessionSubtitle(session);
                 return (
-                  <li key={session.id}>
+                  <li key={session.id} className="group relative">
                     <Button
                       variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
                       className={cn(
-                        'w-full justify-start h-auto py-2',
-                        sidebarCollapsed && 'justify-center px-2'
+                        'w-full justify-start h-auto py-2 pr-8',
+                        sidebarCollapsed && 'justify-center px-2 pr-2'
                       )}
                       onClick={() => handleSessionClick(session)}
                       aria-current={isSessionActive(session.id) ? 'page' : undefined}
@@ -406,7 +360,6 @@ export function Sidebar() {
                     >
                       <div className="relative shrink-0">
                         <span aria-hidden="true">{getSessionIcon(session)}</span>
-                        {/* Status indicator overlay */}
                         <span className="absolute -bottom-0.5 -right-0.5">
                           <StatusIndicator status={session.status} />
                         </span>
@@ -422,6 +375,22 @@ export function Sidebar() {
                         </div>
                       )}
                     </Button>
+                    {!sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(session, e)}
+                        className={cn(
+                          'absolute right-1 top-1/2 -translate-y-1/2',
+                          'p-1.5 rounded-md',
+                          'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                          'transition-opacity'
+                        )}
+                        aria-label="Delete terminal session"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
                   </li>
                 );
               })}
@@ -463,6 +432,28 @@ export function Sidebar() {
           {!sidebarCollapsed && <span className="ml-2">Settings</span>}
         </Button>
       </div>
+
+      <AlertDialog open={!!sessionToDelete} onOpenChange={(open) => !open && setSessionToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Terminate Session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will end the {sessionToDelete ? getTypeDisplayName(sessionToDelete.type) : ''} session
+              {sessionToDelete?.project && ` for ${sessionToDelete.project}`}.
+              You will need to create a new session to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSession}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Terminate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </aside>
   );
 }

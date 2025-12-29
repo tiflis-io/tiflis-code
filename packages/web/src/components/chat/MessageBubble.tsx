@@ -5,8 +5,16 @@ import { cn } from '@/lib/utils';
 import type { Message, ContentBlock } from '@/types';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
 import { TypingIndicator } from './TypingIndicator';
-import { User, Brain, Terminal, RefreshCw } from 'lucide-react';
+import { User, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  SupervisorIcon,
+  ClaudeIcon,
+  CursorIcon,
+  OpenCodeIcon,
+  TerminalIcon,
+  AgentIcon,
+} from '@/components/icons';
 
 interface MessageBubbleProps {
   message: Message;
@@ -28,17 +36,29 @@ interface SegmentBubbleProps {
   agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
 }
 
-/**
- * Get agent icon based on type
- */
 function AgentAvatar({ agentType }: { agentType?: string }) {
-  // For now, use Brain icon for all AI agents (like iOS SF Symbol fallback)
-  // In the future, we can add custom SVG logos for each agent
-  const Icon = agentType === 'terminal' ? Terminal : Brain;
+  const iconClass = "w-[18px] h-[18px]";
+  
+  const renderIcon = () => {
+    switch (agentType) {
+      case 'supervisor':
+        return <SupervisorIcon className={iconClass} />;
+      case 'claude':
+        return <ClaudeIcon className={iconClass} />;
+      case 'cursor':
+        return <CursorIcon className={iconClass} />;
+      case 'opencode':
+        return <OpenCodeIcon className={iconClass} />;
+      case 'terminal':
+        return <TerminalIcon className={cn(iconClass, "text-foreground")} />;
+      default:
+        return <AgentIcon className={cn(iconClass, "text-foreground")} />;
+    }
+  };
 
   return (
-    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-muted flex items-center justify-center">
-      <Icon className="w-[18px] h-[18px] text-foreground" />
+    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+      {renderIcon()}
     </div>
   );
 }

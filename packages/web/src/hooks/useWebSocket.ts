@@ -29,6 +29,7 @@ export function useWebSocket() {
   const setAuthenticated = useAppStore((state) => state.setAuthenticated);
   const setCredentials = useAppStore((state) => state.setCredentials);
   const credentials = useAppStore((state) => state.credentials);
+  const connectionState = useAppStore((state) => state.connectionState);
 
   const addSupervisorMessage = useChatStore((state) => state.addSupervisorMessage);
   const setSupervisorIsLoading = useChatStore((state) => state.setSupervisorIsLoading);
@@ -159,9 +160,9 @@ export function useWebSocket() {
           setMessageSendStatus(messageId, 'failed');
         }
       }, 5000);
-      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
+pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
-    [credentials, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
+    [credentials, connectionState]
   );
 
   // Send agent command
@@ -301,6 +302,16 @@ export function useWebSocket() {
   // Send supervisor voice command
   const sendSupervisorVoiceCommand = useCallback(
     async (audioBase64: string, format: string) => {
+      if (!credentials) {
+        logger.error('Cannot send supervisor voice command: Not authenticated');
+        return;
+      }
+
+      if (connectionState !== 'verified' && connectionState !== 'authenticated') {
+        logger.error('Cannot send supervisor voice command: Not connected', { connectionState });
+        return;
+      }
+
       const messageId = crypto.randomUUID();
 
       devLog.voice(`Sending supervisor voice command: format=${format}, audioSize=${audioBase64.length}, messageId=${messageId}`);
@@ -335,7 +346,7 @@ export function useWebSocket() {
         id: messageId,
         payload: {
           audio: audioBase64,
-          audio_format: format as 'm4a' | 'wav' | 'mp3' | 'webm',
+          audio_format: format as 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus',
           message_id: messageId,
         },
       };
@@ -355,12 +366,22 @@ export function useWebSocket() {
       }, 10000); // Longer timeout for voice (STT processing)
       pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
-    [credentials, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
+    [credentials, connectionState, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
   );
 
   // Send agent voice command
   const sendAgentVoiceCommand = useCallback(
     async (sessionId: string, audioBase64: string, format: string) => {
+      if (!credentials) {
+        logger.error('Cannot send agent voice command: Not authenticated');
+        return;
+      }
+
+      if (connectionState !== 'verified' && connectionState !== 'authenticated') {
+        logger.error('Cannot send agent voice command: Not connected', { connectionState });
+        return;
+      }
+
       const messageId = crypto.randomUUID();
       const chatStore = useChatStore.getState();
 
@@ -397,7 +418,7 @@ export function useWebSocket() {
         session_id: sessionId,
         payload: {
           audio: audioBase64,
-          audio_format: format as 'm4a' | 'wav' | 'mp3' | 'webm',
+          audio_format: format as 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus',
           message_id: messageId,
         },
       };
@@ -427,7 +448,6 @@ export function useWebSocket() {
     useChatStore.getState().clearSupervisorMessages();
   }, []);
 
-  // Request sync state (lightweight - only agents and workspaces)
   const requestSync = useCallback(() => {
     const message: SyncMessage = {
       type: 'sync',
@@ -435,6 +455,16 @@ export function useWebSocket() {
       lightweight: true,
     };
     WebSocketService.send(message);
+  }, []);
+
+  const terminateSession = useCallback((sessionId: string) => {
+    WebSocketService.send({
+      type: 'supervisor.terminate_session',
+      id: crypto.randomUUID(),
+      payload: {
+        session_id: sessionId,
+      },
+    });
   }, []);
 
   return {
@@ -452,6 +482,7 @@ export function useWebSocket() {
     cancelSupervisor,
     cancelAgent,
     clearSupervisorContext,
+    terminateSession,
     requestSync,
     isConnected: WebSocketService.isConnected,
   };

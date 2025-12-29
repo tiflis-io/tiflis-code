@@ -12,9 +12,17 @@ import {
   X,
   Settings,
   Plus,
-  Bot,
-  MessageSquare,
+  Wifi,
+  WifiOff,
+  Loader2,
+  AlertTriangle,
+  Check,
 } from 'lucide-react';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   SupervisorIcon,
   ClaudeIcon,
@@ -63,16 +71,12 @@ export function MobileHeader() {
   const selectedSessionId = useAppStore((state) => state.selectedSessionId);
   const selectSession = useAppStore((state) => state.selectSession);
   const workstationInfo = useAppStore((state) => state.workstationInfo);
+  const connectionState = useAppStore((state) => state.connectionState);
+  const workstationOnline = useAppStore((state) => state.workstationOnline);
 
   const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
 
-  // Check if we're on an assistant-ui route
-  const isAssistantUIRoute = location.pathname.startsWith('/assistant-ui');
-  
-  const supervisorActive = !selectedSessionId && (
-    (location.pathname === '/chat' && !isAssistantUIRoute) || 
-    (location.pathname === '/assistant-ui' && isAssistantUIRoute)
-  );
+  const supervisorActive = !selectedSessionId && location.pathname === '/chat';
   const settingsActive = location.pathname === '/settings';
 
   const agentSessions = sessions.filter((s) => s.type !== 'terminal');
@@ -88,18 +92,12 @@ export function MobileHeader() {
     setIsOpen(false);
   };
 
-  // Helper functions to navigate to the correct interface
+  // Helper function to navigate 
   const getCurrentPathBase = () => {
-    if (isAssistantUIRoute) {
-      return '/assistant-ui';
-    }
     return '/chat';
   };
   
   const getSessionPath = (sessionId: string) => {
-    if (isAssistantUIRoute) {
-      return `/assistant-ui/${sessionId}`;
-    }
     return `/chat/${sessionId}`;
   };
 
@@ -190,6 +188,24 @@ export function MobileHeader() {
     return 'Supervisor';
   };
 
+  const getConnectionStatus = () => {
+    if (connectionState === 'verified' && workstationOnline) {
+      return { icon: Check, color: 'text-green-500', label: 'Connected' };
+    }
+    if (connectionState === 'verified' && !workstationOnline) {
+      return { icon: AlertTriangle, color: 'text-orange-500', label: 'Workstation offline' };
+    }
+    if (connectionState === 'error' || connectionState === 'disconnected') {
+      return { icon: WifiOff, color: 'text-destructive', label: 'Disconnected' };
+    }
+    if (connectionState === 'connecting' || connectionState === 'authenticating' || connectionState === 'authenticated') {
+      return { icon: Loader2, color: 'text-yellow-500', label: 'Connecting...', spin: true };
+    }
+    return { icon: Wifi, color: 'text-muted-foreground', label: connectionState };
+  };
+
+  const status = getConnectionStatus();
+
   return (
     <>
       {/* Mobile Header */}
@@ -198,7 +214,25 @@ export function MobileHeader() {
           <Menu className="w-5 h-5" />
         </Button>
         <h1 className="font-semibold">{getPageTitle()}</h1>
-        <div className="w-10" /> {/* Spacer for centering */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="icon" className="relative">
+              <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-56">
+            <div className="flex items-center gap-2">
+              <status.icon className={cn('w-4 h-4', status.color, status.spin && 'animate-spin')} />
+              <span className="text-sm font-medium">{status.label}</span>
+            </div>
+            {workstationInfo && (
+              <div className="mt-2 pt-2 border-t text-xs text-muted-foreground space-y-1">
+                <p>Workstation: {workstationInfo.name}</p>
+                <p>Version: {workstationInfo.version}</p>
+              </div>
+            )}
+          </PopoverContent>
+        </Popover>
       </header>
 
       {/* Mobile Drawer Overlay */}
@@ -225,49 +259,6 @@ export function MobileHeader() {
                 <X className="w-4 h-4" />
               </Button>
             </div>
-            
-            {/* Interface Toggle */}
-            <div className="space-y-1">
-              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
-                <span>Interface</span>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant={!isAssistantUIRoute ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => {
-                      if (selectedSessionId) {
-                        handleNavigation(`/chat/${selectedSessionId}`, selectedSessionId);
-                      } else {
-                        handleNavigation('/chat');
-                      }
-                    }}
-                    aria-pressed={!isAssistantUIRoute}
-                    title="Classic chat interface"
-                  >
-                    <MessageSquare className="w-3 h-3 mr-1" aria-hidden="true" />
-                    Classic
-                  </Button>
-                  <Button
-                    variant={isAssistantUIRoute ? "secondary" : "ghost"}
-                    size="sm"
-                    className="h-6 px-2 text-xs"
-                    onClick={() => {
-                      if (selectedSessionId) {
-                        handleNavigation(`/assistant-ui/${selectedSessionId}`, selectedSessionId);
-                      } else {
-                        handleNavigation('/assistant-ui');
-                      }
-                    }}
-                    aria-pressed={isAssistantUIRoute}
-                    title="New AI assistant interface with enhanced features"
-                  >
-                    <Bot className="w-3 h-3 mr-1" aria-hidden="true" />
-                    Assistant
-                  </Button>
-                </div>
-              </div>
-            </div>
           </div>
 
           {/* Navigation */}
@@ -281,7 +272,7 @@ export function MobileHeader() {
             >
               <SupervisorIcon className="w-4 h-4" aria-hidden="true" />
               <span className="ml-2">Supervisor</span>
-              {isAssistantUIRoute && <Bot className="w-3 h-3 ml-1 text-primary" aria-hidden="true" />}
+              
             </Button>
 
             {/* Agent Sessions */}
@@ -311,7 +302,6 @@ export function MobileHeader() {
 <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
                              <span className="truncate text-sm font-medium flex items-center">
                                {displayName}
-                               {isAssistantUIRoute && <Bot className="w-3 h-3 ml-1 text-primary" aria-hidden="true" />}
                              </span>
                             {subtitle && (
                               <span className="truncate text-xs text-muted-foreground">

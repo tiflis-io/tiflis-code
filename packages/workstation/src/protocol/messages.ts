@@ -196,6 +196,21 @@ export interface TerminateSessionMessage {
   };
 }
 
+/**
+ * Mobile → Workstation: Execute supervisor command
+ */
+export interface SupervisorCommandMessage {
+  type: 'supervisor.command';
+  id: string;
+  payload: {
+    command?: string;
+    audio?: string;
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
+    message_id?: string;
+    language?: string;
+  };
+}
+
 // ============================================================================
 // Session Subscription Messages
 // ============================================================================
@@ -253,7 +268,7 @@ export interface SessionExecuteMessage {
   payload: {
     text?: string;
     audio?: string;
-    audio_format?: 'm4a' | 'wav' | 'mp3';
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
     language?: string;
     tts_enabled?: boolean;
   };
@@ -500,6 +515,7 @@ export type IncomingClientMessage =
   | ListSessionsMessage
   | CreateSessionMessage
   | TerminateSessionMessage
+  | SupervisorCommandMessage
   | SupervisorCancelMessage
   | SessionSubscribeMessage
   | SessionUnsubscribeMessage

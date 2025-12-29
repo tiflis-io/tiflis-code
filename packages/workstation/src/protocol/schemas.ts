@@ -106,7 +106,7 @@ export const TerminateSessionSchema = z.object({
 export const SupervisorCommandPayloadSchema = z.object({
   command: z.string().optional(),
   audio: z.string().optional(),
-  audio_format: z.enum(['m4a', 'wav', 'mp3']).optional(),
+  audio_format: z.enum(['m4a', 'wav', 'mp3', 'webm', 'opus']).optional(),
   message_id: z.string().optional(),
   language: z.string().optional(),
 }).refine(
@@ -157,7 +157,7 @@ export const SessionExecutePayloadSchema = z.object({
   content: z.string().optional(), // Primary field for text content
   text: z.string().optional(),    // Alias for content (backward compat)
   audio: z.string().optional(),
-  audio_format: z.enum(['m4a', 'wav', 'mp3']).optional(),
+  audio_format: z.enum(['m4a', 'wav', 'mp3', 'webm', 'opus']).optional(),
   message_id: z.string().optional(), // For linking transcription back to voice message
   language: z.string().optional(),
   tts_enabled: z.boolean().optional(),

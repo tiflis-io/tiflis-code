@@ -3,10 +3,8 @@
 
 import { logger } from '@/utils/logger';
 
-/**
- * Audio player service with caching support
- * Matches iOS AudioPlayerService behavior
- */
+const TTS_AUDIO_MIME_TYPE = 'audio/wav';
+
 class AudioPlayerServiceClass {
   private audioCache = new Map<string, { audio: HTMLAudioElement; expiresAt: number; accessedAt: number }>();
   private currentAudio: HTMLAudioElement | null = null;
@@ -39,8 +37,7 @@ class AudioPlayerServiceClass {
       return;
     }
 
-    // Create new audio element
-    const audio = new Audio(`data:audio/mp3;base64,${base64Audio}`);
+    const audio = new Audio(`data:${TTS_AUDIO_MIME_TYPE};base64,${base64Audio}`);
     audio.addEventListener('ended', () => {
       this.currentAudio = null;
       this.currentMessageId = null;

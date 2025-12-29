@@ -598,10 +598,14 @@ function handleSessionVoiceOutput(msg: SessionVoiceOutputMessage): void {
 
 function handleSupervisorTranscription(msg: SupervisorTranscriptionMessage): void {
   const chatStore = useChatStore.getState();
-  const { message_id, transcription } = msg.payload;
+  const appStore = useAppStore.getState();
+  const credentials = appStore.credentials;
+  const { message_id, transcription, from_device_id } = msg.payload;
 
   // Find the voice_input message with this ID and update transcription
   const messages = chatStore.supervisorMessages;
+  let messageFound = false;
+
   for (const message of messages) {
     if (message.id === message_id || message.contentBlocks.some((b) => b.metadata?.messageId === message_id)) {
       // Update the voice_input block with transcription
@@ -615,21 +619,47 @@ function handleSupervisorTranscription(msg: SupervisorTranscriptionMessage): voi
         return block;
       });
       chatStore.updateSupervisorMessage(message.id, { contentBlocks: updatedBlocks });
+      messageFound = true;
       break;
     }
+  }
+
+  // If message not found and it's from another device, create a new user message
+  if (!messageFound && from_device_id && from_device_id !== credentials?.deviceId && transcription) {
+    const newMessage: Message = {
+      id: message_id,
+      sessionId: 'supervisor',
+      role: 'user',
+      contentBlocks: [
+        {
+          id: crypto.randomUUID(),
+          blockType: 'voice_input',
+          content: transcription,
+          metadata: {
+            messageId: message_id,
+          },
+        },
+      ],
+      isStreaming: false,
+      createdAt: new Date(),
+      fromDeviceId: from_device_id,
+    };
+    chatStore.addSupervisorMessage(newMessage);
   }
 }
 
 function handleSessionTranscription(msg: SessionTranscriptionMessage): void {
   const chatStore = useChatStore.getState();
+  const appStore = useAppStore.getState();
+  const credentials = appStore.credentials;
   const sessionId = msg.session_id;
-  const { message_id, transcription } = msg.payload;
+  const { message_id, transcription, from_device_id } = msg.payload;
 
-  // Find the voice_input message with this ID and update transcription
   const messages = chatStore.agentMessages[sessionId] ?? [];
+  let messageFound = false;
+
   for (const message of messages) {
     if (message.id === message_id || message.contentBlocks.some((b) => b.metadata?.messageId === message_id)) {
-      // Update the voice_input block with transcription
       const updatedBlocks = message.contentBlocks.map((block) => {
         if (block.blockType === 'voice_input') {
           return {
@@ -640,7 +670,31 @@ function handleSessionTranscription(msg: SessionTranscriptionMessage): void {
         return block;
       });
       chatStore.updateAgentMessage(sessionId, message.id, { contentBlocks: updatedBlocks });
+      messageFound = true;
       break;
     }
+  }
+
+  // If message not found and it's from another device, create a new user message
+  if (!messageFound && from_device_id && from_device_id !== credentials?.deviceId && transcription) {
+    const newMessage: Message = {
+      id: message_id,
+      sessionId,
+      role: 'user',
+      contentBlocks: [
+        {
+          id: crypto.randomUUID(),
+          blockType: 'voice_input',
+          content: transcription,
+          metadata: {
+            messageId: message_id,
+          },
+        },
+      ],
+      isStreaming: false,
+      createdAt: new Date(),
+      fromDeviceId: from_device_id,
+    };
+    chatStore.addAgentMessage(sessionId, newMessage);
   }
 }

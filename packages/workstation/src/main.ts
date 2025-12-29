@@ -1023,7 +1023,7 @@ async function bootstrap(): Promise<void> {
             const errorEvent = {
               type: "supervisor.transcription",
               payload: {
-                text: "",
+                transcription: "",
                 error:
                   "Voice transcription not available - STT service not configured",
                 message_id: messageId,
@@ -1087,7 +1087,7 @@ async function bootstrap(): Promise<void> {
             const transcriptionEvent = {
               type: "supervisor.transcription",
               payload: {
-                text: commandText,
+                transcription: commandText,
                 language: transcriptionResult.language,
                 duration: transcriptionResult.duration,
                 message_id: messageId,
@@ -1121,7 +1121,7 @@ async function bootstrap(): Promise<void> {
             const errorEvent = {
               type: "supervisor.transcription",
               payload: {
-                text: "",
+                transcription: "",
                 error:
                   error instanceof Error
                     ? error.message
@@ -1715,7 +1715,7 @@ async function bootstrap(): Promise<void> {
               type: "session.transcription",
               session_id: sessionId,
               payload: {
-                text: transcribedText,
+                transcription: transcribedText,
                 language: transcriptionResult.language,
                 duration: transcriptionResult.duration,
                 message_id: messageId,
@@ -1830,7 +1830,7 @@ async function bootstrap(): Promise<void> {
               type: "session.transcription",
               session_id: sessionId,
               payload: {
-                text: "",
+                transcription: "",
                 error:
                   error instanceof Error
                     ? error.message
@@ -2394,7 +2394,7 @@ async function bootstrap(): Promise<void> {
               id: audioRequest.id,
               payload: {
                 message_id,
-                audio: audioBase64,
+                audio_base64: audioBase64,
               },
             })
           );
@@ -2777,7 +2777,7 @@ async function bootstrap(): Promise<void> {
               session_id: sessionId,
               payload: {
                 text: textForTTS,
-                audio: audioBase64,
+                audio_base64: audioBase64,
                 audio_format: "mp3",
                 duration: ttsResult.duration,
                 message_id: pendingMessageId,
@@ -2937,7 +2937,7 @@ async function bootstrap(): Promise<void> {
               type: "supervisor.voice_output",
               payload: {
                 text: textForTTS,
-                audio: audioBase64,
+                audio_base64: audioBase64,
                 audio_format: "mp3",
                 duration: ttsResult.duration,
                 message_id: pendingMessageId,

@@ -1,12 +1,13 @@
 // Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { devLog } from '@/utils/logger';
 import type { ContentBlock } from '@/types';
 import { AudioPlayer } from '@/components/voice/AudioPlayer';
-import { Code, Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, Volume2, ChevronDown, ChevronUp, Copy, Check } from 'lucide-react';
+import { CodeHighlighter } from './CodeHighlighter';
+import { Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ContentBlockRendererProps {
   block: ContentBlock;
@@ -19,8 +20,8 @@ export function ContentBlockRenderer({ block, isUserMessage = false }: ContentBl
       return <TextBlock content={block.content} isUserMessage={isUserMessage} />;
     case 'code':
       return (
-        <CodeBlock
-          content={block.content}
+        <CodeHighlighter
+          code={block.content}
           language={block.metadata?.language}
         />
       );
@@ -65,74 +66,106 @@ export function ContentBlockRenderer({ block, isUserMessage = false }: ContentBl
 }
 
 function TextBlock({ content, isUserMessage }: { content: string; isUserMessage: boolean }) {
-  // Simple markdown-like rendering for bold, italic, code
-  const rendered = (content || '')
-    .split(/(`[^`]+`)/)
-    .map((part, i) => {
-      if (part.startsWith('`') && part.endsWith('`')) {
-        return (
+  const renderInlineFormatting = (text: string, keyPrefix: string): React.ReactNode[] => {
+    const result: React.ReactNode[] = [];
+    let remaining = text;
+    let keyIndex = 0;
+
+    while (remaining.length > 0) {
+      // Match patterns in order of specificity
+      // Inline code: `code`
+      const codeMatch = remaining.match(/^`([^`]+)`/);
+      if (codeMatch) {
+        result.push(
           <code
-            key={i}
+            key={`${keyPrefix}-${keyIndex++}`}
             className={cn(
               'px-1 py-0.5 rounded text-sm font-mono',
-              isUserMessage
-                ? 'bg-primary-foreground/20'
-                : 'bg-background'
+              isUserMessage ? 'bg-primary-foreground/20' : 'bg-muted'
             )}
           >
-            {part.slice(1, -1)}
+            {codeMatch[1]}
           </code>
         );
+        remaining = remaining.slice(codeMatch[0].length);
+        continue;
       }
-      return <span key={i}>{part}</span>;
-    });
 
-  return <p className="whitespace-pre-wrap break-words">{rendered}</p>;
-}
+      // Bold: **text** or __text__
+      const boldMatch = remaining.match(/^(\*\*|__)(.+?)\1/);
+      if (boldMatch?.[2]) {
+        result.push(
+          <strong key={`${keyPrefix}-${keyIndex++}`} className="font-semibold">
+            {renderInlineFormatting(boldMatch[2], `${keyPrefix}-b${keyIndex}`)}
+          </strong>
+        );
+        remaining = remaining.slice(boldMatch[0].length);
+        continue;
+      }
 
-function CodeBlock({ content, language }: { content: string; language?: string }) {
-  const [copied, setCopied] = useState(false);
+      // Italic: *text* or _text_ (but not ** or __)
+      const italicMatch = remaining.match(/^(\*|_)(?!\1)(.+?)\1(?!\1)/);
+      if (italicMatch?.[2]) {
+        result.push(
+          <em key={`${keyPrefix}-${keyIndex++}`} className="italic">
+            {renderInlineFormatting(italicMatch[2], `${keyPrefix}-i${keyIndex}`)}
+          </em>
+        );
+        remaining = remaining.slice(italicMatch[0].length);
+        continue;
+      }
 
-  const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [content]);
+      // Links: [text](url)
+      const linkMatch = remaining.match(/^\[([^\]]+)\]\(([^)]+)\)/);
+      if (linkMatch) {
+        result.push(
+          <a
+            key={`${keyPrefix}-${keyIndex++}`}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'underline underline-offset-2 hover:opacity-80',
+              isUserMessage ? 'text-primary-foreground' : 'text-primary'
+            )}
+          >
+            {linkMatch[1]}
+          </a>
+        );
+        remaining = remaining.slice(linkMatch[0].length);
+        continue;
+      }
+
+      // Find next special character or end
+      const nextSpecialIndex = remaining.slice(1).search(/[`*_[]/);
+      if (nextSpecialIndex === -1) {
+        result.push(<span key={`${keyPrefix}-${keyIndex++}`}>{remaining}</span>);
+        break;
+      } else {
+        const plainText = remaining.slice(0, nextSpecialIndex + 1);
+        result.push(<span key={`${keyPrefix}-${keyIndex++}`}>{plainText}</span>);
+        remaining = remaining.slice(nextSpecialIndex + 1);
+      }
+    }
+
+    return result;
+  };
+
+  // Split by newlines to handle line breaks properly
+  const lines = (content || '').split('\n');
 
   return (
-    <div className="my-2 rounded-lg overflow-hidden bg-zinc-900 text-zinc-100">
-      <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800 text-xs text-zinc-400">
-        <div className="flex items-center gap-2">
-          <Code className="w-3 h-3" aria-hidden="true" />
-          <span>{language ?? 'code'}</span>
-        </div>
-        <button
-          className={cn(
-            'flex items-center gap-1 transition-colors',
-            copied ? 'text-green-400' : 'hover:text-zinc-200'
-          )}
-          onClick={handleCopy}
-          aria-label={copied ? 'Copied to clipboard' : 'Copy code'}
-        >
-          {copied ? (
-            <>
-              <Check className="w-3 h-3" aria-hidden="true" />
-              <span>Copied</span>
-            </>
-          ) : (
-            <>
-              <Copy className="w-3 h-3" aria-hidden="true" />
-              <span>Copy</span>
-            </>
-          )}
-        </button>
-      </div>
-      <pre className="p-3 overflow-x-auto text-sm">
-        <code>{content}</code>
-      </pre>
+    <div className="whitespace-pre-wrap break-words space-y-1">
+      {lines.map((line, lineIndex) => (
+        <p key={lineIndex} className={line === '' ? 'h-4' : undefined}>
+          {renderInlineFormatting(line, `line-${lineIndex}`)}
+        </p>
+      ))}
     </div>
   );
 }
+
+
 
 function ToolBlock({
   toolName,
@@ -213,15 +246,28 @@ function ToolBlock({
 }
 
 function ThinkingBlock({ content }: { content: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
-    <div className="my-2 rounded-lg overflow-hidden border border-dashed bg-card/50">
-      <div className="flex items-center gap-2 px-3 py-1.5 text-sm text-muted-foreground">
-        <Brain className="w-3 h-3" />
-        <span className="italic">Thinking...</span>
-      </div>
-      <div className="px-3 py-2 text-sm text-muted-foreground italic">
-        <pre className="whitespace-pre-wrap text-xs">{content}</pre>
-      </div>
+    <div className="my-2 rounded-lg overflow-hidden border border-dashed bg-purple-500/5">
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-purple-500/5 transition-colors"
+        onClick={() => setIsExpanded(!isExpanded)}
+      >
+        <Brain className="w-4 h-4 text-purple-500 flex-shrink-0" />
+        <span className="flex-1 text-left italic">Thinking...</span>
+        {isExpanded ? (
+          <ChevronUp className="w-4 h-4 flex-shrink-0" />
+        ) : (
+          <ChevronDown className="w-4 h-4 flex-shrink-0" />
+        )}
+      </button>
+      {isExpanded && (
+        <div className="px-3 pb-3 text-sm text-muted-foreground italic border-t border-dashed">
+          <pre className="whitespace-pre-wrap text-xs pt-2">{content}</pre>
+        </div>
+      )}
     </div>
   );
 }

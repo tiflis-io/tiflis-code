@@ -198,7 +198,7 @@ export interface SupervisorCommandMessage extends BaseMessage {
   payload: {
     command?: string;
     audio?: string;
-    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm';
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
     message_id?: string;
   };
 }
@@ -277,7 +277,7 @@ export interface SessionExecuteMessage extends BaseMessage {
     content?: string;
     text?: string;
     audio?: string;
-    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm';
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
     message_id?: string;
     language?: string;
     tts_enabled?: boolean;
