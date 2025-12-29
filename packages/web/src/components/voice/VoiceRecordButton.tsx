@@ -2,10 +2,11 @@
 // Licensed under the FSL-1.1-NC.
 
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Mic, Square, Loader2 } from 'lucide-react';
+import { Mic, Square } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { logger } from '@/utils/logger';
 import { toastFunctions as toast } from '@/components/ui/toast';
+import { AudioPlayerService } from '@/services/audio';
 
 interface VoiceRecordButtonProps {
   onRecordingComplete: (audioBlob: Blob, format: string) => void;
@@ -20,18 +21,19 @@ export function VoiceRecordButton({
 }: VoiceRecordButtonProps) {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState(0);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
-  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isHoldModeRef = useRef(false);
   const pointerDownTimeRef = useRef(0);
 
   const startRecording = useCallback(async () => {
     if (isRecording || isProcessing) return;
+
+    // Stop any playing audio before recording
+    AudioPlayerService.stop();
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -83,12 +85,6 @@ export function VoiceRecordButton({
 
       mediaRecorder.start(100);
       setIsRecording(true);
-      setRecordingDuration(0);
-
-      // Start duration timer
-      durationIntervalRef.current = setInterval(() => {
-        setRecordingDuration((prev) => prev + 0.1);
-      }, 100);
 
       // Haptic feedback
       if ('vibrate' in navigator) {
@@ -109,12 +105,6 @@ export function VoiceRecordButton({
     }
 
     setIsRecording(false);
-
-    // Stop duration timer
-    if (durationIntervalRef.current) {
-      clearInterval(durationIntervalRef.current);
-      durationIntervalRef.current = null;
-    }
 
     // Haptic feedback
     if ('vibrate' in navigator) {
@@ -194,21 +184,11 @@ export function VoiceRecordButton({
       if (longPressTimerRef.current) {
         clearTimeout(longPressTimerRef.current);
       }
-      if (durationIntervalRef.current) {
-        clearInterval(durationIntervalRef.current);
-      }
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
   }, []);
-
-  // Format duration for display
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   const baseSize = 36;
 
@@ -219,17 +199,6 @@ export function VoiceRecordButton({
         className
       )}
     >
-      {/* Pulsing rings when recording */}
-      {isRecording && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div className="absolute w-14 h-14 rounded-full border-2 border-red-500/30 animate-ping" />
-          <div
-            className="absolute w-14 h-14 rounded-full border-2 border-red-500/20 animate-ping"
-            style={{ animationDelay: '0.3s' }}
-          />
-        </div>
-      )}
-
       {/* Main button */}
       <button
         type="button"
@@ -246,20 +215,11 @@ export function VoiceRecordButton({
           isRecording
             ? 'w-14 h-14 bg-red-500 text-white scale-100'
             : 'w-9 h-9 text-primary hover:bg-muted active:scale-95',
-          disabled && 'opacity-50 cursor-not-allowed',
-          isProcessing && 'opacity-70'
+          disabled && 'opacity-50 cursor-not-allowed'
         )}
-        aria-label={
-          isProcessing
-            ? 'Sending voice message'
-            : isRecording
-              ? 'Stop recording'
-              : 'Record voice message'
-        }
+        aria-label={isRecording ? 'Stop recording' : 'Record voice message'}
       >
-        {isProcessing ? (
-          <Loader2 className="w-5 h-5 animate-spin" />
-        ) : isRecording ? (
+        {isRecording ? (
           <Square className="w-5 h-5" fill="currentColor" />
         ) : (
           <Mic
@@ -268,18 +228,6 @@ export function VoiceRecordButton({
           />
         )}
       </button>
-
-      {/* Recording duration */}
-      {isRecording && (
-        <span className="text-sm font-medium text-red-500 tabular-nums min-w-[3rem]">
-          {formatDuration(recordingDuration)}
-        </span>
-      )}
-
-      {/* Processing indicator */}
-      {isProcessing && (
-        <span className="text-xs text-muted-foreground">Sending...</span>
-      )}
     </div>
   );
 }

@@ -17,6 +17,7 @@ import type {
   SessionInputMessage,
   SessionResizeMessage,
   SyncMessage,
+  HistoryRequestMessage,
 } from '@/types/protocol';
 
 export function useWebSocket() {
@@ -338,6 +339,20 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
         fromDeviceId: credentials?.deviceId,
       });
 
+      // Create placeholder streaming message immediately (shows typing indicator while STT processes)
+      const streamingMessageId = crypto.randomUUID();
+      addSupervisorMessage({
+        id: streamingMessageId,
+        sessionId: 'supervisor',
+        role: 'assistant',
+        contentBlocks: [],
+        isStreaming: true,
+        createdAt: new Date(),
+      });
+
+      const chatStore = useChatStore.getState();
+      chatStore.setSupervisorStreamingMessageId(streamingMessageId);
+
       addPendingAck(messageId);
       setSupervisorIsLoading(true);
 
@@ -409,6 +424,18 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
         fromDeviceId: credentials?.deviceId,
       });
 
+      // Create placeholder streaming message immediately (shows typing indicator while STT processes)
+      const streamingMessageId = crypto.randomUUID();
+      chatStore.addAgentMessage(sessionId, {
+        id: streamingMessageId,
+        sessionId,
+        role: 'assistant',
+        contentBlocks: [],
+        isStreaming: true,
+        createdAt: new Date(),
+      });
+      chatStore.setAgentStreamingMessageId(sessionId, streamingMessageId);
+
       chatStore.addPendingAck(messageId);
       chatStore.setAgentIsLoading(sessionId, true);
 
@@ -436,7 +463,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
       }, 10000); // Longer timeout for voice (STT processing)
       pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
-    [credentials]
+    [credentials, connectionState]
   );
 
   // Clear supervisor context
@@ -452,7 +479,19 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     const message: SyncMessage = {
       type: 'sync',
       id: crypto.randomUUID(),
-      lightweight: true,
+    };
+    WebSocketService.send(message);
+  }, []);
+
+  const requestHistory = useCallback((sessionId?: string | null, beforeSequence?: number, limit = 20) => {
+    const message: HistoryRequestMessage = {
+      type: 'history.request',
+      id: crypto.randomUUID(),
+      payload: {
+        session_id: sessionId,
+        before_sequence: beforeSequence,
+        limit,
+      },
     };
     WebSocketService.send(message);
   }, []);
@@ -484,6 +523,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     clearSupervisorContext,
     terminateSession,
     requestSync,
+    requestHistory,
     isConnected: WebSocketService.isConnected,
   };
 }

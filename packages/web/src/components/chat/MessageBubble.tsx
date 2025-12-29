@@ -80,7 +80,7 @@ function SegmentBubble({
 }: SegmentBubbleProps) {
   // Check if we have any content to display
   const hasContent = contentBlocks.length > 0 && contentBlocks.some(
-    block => block.content || block.blockType === 'tool' || block.blockType === 'voice_output'
+    block => block.content || block.blockType === 'tool' || block.blockType === 'voice_output' || block.blockType === 'voice_input'
   );
 
   return (

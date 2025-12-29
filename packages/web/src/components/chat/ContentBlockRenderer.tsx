@@ -7,7 +7,7 @@ import { devLog } from '@/utils/logger';
 import type { ContentBlock } from '@/types';
 import { AudioPlayer } from '@/components/voice/AudioPlayer';
 import { CodeHighlighter } from './CodeHighlighter';
-import { Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, Volume2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal, Brain, AlertCircle, CheckCircle, Loader2, Mic, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface ContentBlockRendererProps {
   block: ContentBlock;
@@ -152,12 +152,14 @@ function TextBlock({ content, isUserMessage }: { content: string; isUserMessage:
   };
 
   // Split by newlines to handle line breaks properly
-  const lines = (content || '').split('\n');
+  // Trim leading/trailing empty lines to avoid extra padding
+  const trimmedContent = (content || '').replace(/^\n+/, '').replace(/\n+$/, '');
+  const lines = trimmedContent.split('\n');
 
   return (
-    <div className="whitespace-pre-wrap break-words space-y-1">
+    <div className="whitespace-pre-wrap break-words">
       {lines.map((line, lineIndex) => (
-        <p key={lineIndex} className={line === '' ? 'h-4' : undefined}>
+        <p key={lineIndex} className={cn('m-0', line === '' ? 'h-4' : undefined)}>
           {renderInlineFormatting(line, `line-${lineIndex}`)}
         </p>
       ))}
@@ -307,7 +309,12 @@ function VoiceInputBlock({
   duration?: number;
   isUserMessage: boolean;
 }) {
-  const hasAudio = Boolean(audioUrl || audioBase64);
+  // For user messages, we don't show the audio player (like iOS app)
+  // Users don't need to replay their own voice recordings
+  const showAudioPlayer = !isUserMessage && Boolean(audioUrl || audioBase64);
+
+  // Check if we're waiting for transcription (user message with no content yet)
+  const isTranscribing = isUserMessage && !content && duration && duration > 0;
 
   return (
     <div className="space-y-2">
@@ -325,18 +332,17 @@ function VoiceInputBlock({
             {Math.floor(duration / 60)}:{(duration % 60).toString().padStart(2, '0')}
           </span>
         )}
+        {isTranscribing && (
+          <span className="text-xs opacity-70">Transcribing...</span>
+        )}
       </div>
 
-      {/* Audio player if audio is available */}
-      {hasAudio && (
+      {/* Audio player only for non-user messages */}
+      {showAudioPlayer && (
         <AudioPlayer
           audioUrl={audioUrl}
           audioBase64={audioBase64}
-          className={cn(
-            isUserMessage
-              ? 'bg-primary-foreground/10'
-              : 'bg-background/50'
-          )}
+          className="bg-background/50"
         />
       )}
 
@@ -351,7 +357,6 @@ function VoiceInputBlock({
 }
 
 function VoiceOutputBlock({
-  content,
   audioUrl,
   audioBase64,
   messageId,
@@ -370,7 +375,6 @@ function VoiceOutputBlock({
   const shouldShowAudioPlayer = audioAvailable || hasAudio;
 
   devLog.audio('VoiceOutputBlock render:', {
-    content: content?.slice(0, 50),
     audioUrl: !!audioUrl,
     audioBase64: !!audioBase64,
     messageId,
@@ -379,28 +383,17 @@ function VoiceOutputBlock({
     shouldShowAudioPlayer,
   });
 
+  // Only render audio player, no wrapper needed
+  if (!shouldShowAudioPlayer) {
+    return null;
+  }
+
   return (
-    <div className="space-y-2">
-      {/* Voice indicator header */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Volume2 className="w-4 h-4" />
-        <span>Voice response</span>
-      </div>
-
-      {/* Text content (spoken text) */}
-      {content && (
-        <p className="whitespace-pre-wrap break-words">{content}</p>
-      )}
-
-      {/* Audio player if audio is available */}
-      {shouldShowAudioPlayer && (
-        <AudioPlayer
-          audioUrl={audioUrl}
-          audioBase64={audioBase64}
-          messageId={messageId}
-          className="bg-background/50"
-        />
-      )}
-    </div>
+    <AudioPlayer
+      audioUrl={audioUrl}
+      audioBase64={audioBase64}
+      messageId={messageId}
+      className="bg-background/50 !p-2 mt-2"
+    />
   );
 }
