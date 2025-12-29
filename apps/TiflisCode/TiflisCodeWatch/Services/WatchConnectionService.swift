@@ -894,7 +894,7 @@ final class WatchConnectionService {
 
     private func handleSupervisorTranscription(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any],
-              let text = payload["text"] as? String,
+              let text = payload["transcription"] as? String,
               let messageId = payload["message_id"] as? String else {
             NSLog("⌚️ WatchConnectionService: supervisor.transcription missing required fields")
             return
@@ -953,7 +953,7 @@ final class WatchConnectionService {
     private func handleSessionTranscription(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String,
               let payload = message["payload"] as? [String: Any],
-              let text = payload["text"] as? String,
+              let text = payload["transcription"] as? String,
               let messageId = payload["message_id"] as? String else {
             NSLog("⌚️ WatchConnectionService: session.transcription missing required fields")
             return
@@ -1010,7 +1010,7 @@ final class WatchConnectionService {
 
     private func handleVoiceOutput(_ message: [String: Any], sessionId: String) {
         guard let payload = message["payload"] as? [String: Any],
-              let audioBase64 = payload["audio"] as? String else { return }
+              let audioBase64 = payload["audio_base64"] as? String else { return }
 
         // Decode audio
         guard let audioData = Data(base64Encoded: audioBase64) else { return }
@@ -1094,7 +1094,8 @@ final class WatchConnectionService {
             return
         }
 
-        guard let audioBase64 = payload["audio"] as? String,
+        // Server sends "audio_base64" in audio.response
+        guard let audioBase64 = payload["audio_base64"] as? String,
               let audioData = Data(base64Encoded: audioBase64) else {
             NSLog("⌚️ WatchConnectionService: audio.response has no valid audio data")
             return

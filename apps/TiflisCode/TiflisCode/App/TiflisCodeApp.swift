@@ -593,7 +593,8 @@ final class AppState: ObservableObject {
             return
         }
 
-        let audio = payload["audio"] as? String
+        // Server sends "audio_base64" in audio.response
+        let audio = payload["audio_base64"] as? String
         let error = payload["error"] as? String
 
         AudioPlayerService.shared.handleAudioResponse(
@@ -1409,7 +1410,7 @@ final class AppState: ObservableObject {
 
     private func handleSupervisorTranscription(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any],
-              let text = payload["text"] as? String else { return }
+              let text = payload["transcription"] as? String else { return }
 
         let messageId = payload["message_id"] as? String
         let errorMessage = payload["error"] as? String
@@ -1467,7 +1468,7 @@ final class AppState: ObservableObject {
 
     private func handleSupervisorVoiceOutput(_ message: [String: Any]) {
         guard let payload = message["payload"] as? [String: Any],
-              let audioBase64 = payload["audio"] as? String else { return }
+              let audioBase64 = payload["audio_base64"] as? String else { return }
 
         let messageId = payload["message_id"] as? String ?? UUID().uuidString
         let duration = payload["duration"] as? TimeInterval ?? 0
@@ -1649,7 +1650,7 @@ final class AppState: ObservableObject {
     private func handleSessionTranscription(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String,
               let payload = message["payload"] as? [String: Any],
-              let text = payload["text"] as? String else { return }
+              let text = payload["transcription"] as? String else { return }
 
         let messageId = payload["message_id"] as? String
         let errorMessage = payload["error"] as? String
@@ -1717,7 +1718,7 @@ final class AppState: ObservableObject {
     private func handleSessionVoiceOutput(_ message: [String: Any]) {
         guard let sessionId = message["session_id"] as? String,
               let payload = message["payload"] as? [String: Any],
-              let audioBase64 = payload["audio"] as? String else { return }
+              let audioBase64 = payload["audio_base64"] as? String else { return }
 
         let messageId = payload["message_id"] as? String ?? UUID().uuidString
         let duration = payload["duration"] as? TimeInterval ?? 0
