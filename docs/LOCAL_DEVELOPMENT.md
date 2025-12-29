@@ -2,7 +2,7 @@
 
 > Complete guide for setting up and running all components locally.
 
-**Last Updated:** 2025-12-03
+**Last Updated:** 2025-12-30
 
 ---
 
@@ -107,6 +107,23 @@ pnpm dev
 
 # This runs both servers in parallel with proper log prefixes
 ```
+
+### Web Client Development
+
+The web client is bundled with the tunnel server and served as static files:
+
+```bash
+# The web client is automatically built when running:
+cd packages/tunnel && pnpm build
+
+# Access at: http://localhost:3001/ (or your tunnel URL)
+
+# For web client development with hot reload:
+cd packages/web
+pnpm dev  # Runs Next.js dev server on http://localhost:3002
+```
+
+**Note:** In production, the web client is bundled into the tunnel server's Docker image and served at the root path.
 
 ---
 
@@ -287,10 +304,12 @@ AGENT_API_KEY=sk-xxx
 AGENT_MODEL_NAME=gpt-4o-mini
 
 # Speech (optional in dev)
-STT_PROVIDER=openai
-STT_API_KEY=sk-xxx
-TTS_PROVIDER=openai
-TTS_API_KEY=sk-xxx
+STT_PROVIDER=openai              # or deepgram, local
+STT_API_KEY=sk-xxx               # Not required for local provider
+STT_BASE_URL=http://localhost:5000/v1  # For local provider
+TTS_PROVIDER=openai              # or elevenlabs, local
+TTS_API_KEY=sk-xxx               # Not required for local provider
+TTS_BASE_URL=http://localhost:5001/v1  # For local provider
 ```
 
 ---

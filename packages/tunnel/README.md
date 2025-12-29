@@ -20,14 +20,29 @@
 
 ## Overview
 
-The Tunnel Server acts as a secure reverse proxy between mobile clients (iOS/watchOS) and workstations running the Tiflis Code workstation server. It enables remote access to your workstation without requiring a public IP address.
+The Tunnel Server acts as a secure reverse proxy between clients (iOS/watchOS/Android/Web) and workstations running the Tiflis Code workstation server. It enables remote access to your workstation without requiring a public IP address.
 
 ```
 ┌─────────────┐         ┌─────────────┐         ┌─────────────────┐
-│   Mobile    │◄───────►│   Tunnel    │◄───────►│   Workstation   │
-│  (iOS/Watch)│   WSS   │   Server    │   WS    │     Server      │
+│   Clients   │◄───────►│   Tunnel    │◄───────►│   Workstation   │
+│ iOS/Watch/  │   WSS   │   Server    │   WS    │     Server      │
+│ Android/Web │         │ (+Web App)  │         │                 │
 └─────────────┘         └─────────────┘         └─────────────────┘
 ```
+
+### Web Client
+
+The tunnel server includes a bundled web client built with Next.js and assistant-ui, accessible at the root URL of your tunnel server:
+
+```
+https://your-tunnel-url.com/
+```
+
+Features:
+- Voice messaging with STT/TTS
+- Mobile-first responsive design
+- Cross-device message sync
+- Lazy history loading (protocol v1.13)
 
 ## Installation
 
@@ -170,6 +185,16 @@ server {
     ssl_certificate /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
+    # Web client (static files)
+    location / {
+        proxy_pass http://tiflis_tunnel;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # WebSocket endpoint
     location /ws {
         proxy_pass http://tiflis_tunnel;
         proxy_http_version 1.1;
@@ -182,8 +207,18 @@ server {
         proxy_read_timeout 86400s;
     }
 
+    # Health check endpoint
     location /health {
         proxy_pass http://tiflis_tunnel;
+    }
+
+    # watchOS polling API
+    location /api/v1/watch/ {
+        proxy_pass http://tiflis_tunnel;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
 ```
@@ -196,10 +231,12 @@ See `deploy/docker-compose.traefik.yml` for a complete example with automatic Le
 
 | Endpoint   | Method    | Description                                 |
 | ---------- | --------- | ------------------------------------------- |
+| `/`        | GET       | Web client (bundled static files)           |
 | `/health`  | GET       | Detailed health check with connection stats |
 | `/healthz` | GET       | Simple liveness probe                       |
 | `/readyz`  | GET       | Readiness probe                             |
 | `/ws`      | WebSocket | Main WebSocket endpoint                     |
+| `/api/v1/watch/*` | HTTP | watchOS polling API endpoints                |
 
 ### Health Check Response
 

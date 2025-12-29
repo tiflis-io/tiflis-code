@@ -189,11 +189,22 @@ Audio data excluded from sync to reduce bandwidth. Audio loaded on-demand:
 
 ---
 
-## watchOS App (WIP)
+## watchOS App
 
-> **Status:** In active development, not yet ready for production use.
+> **Status:** Production ready - Native Apple Watch companion with HTTP Polling (WebSocket blocked on watchOS 9+), voice commands, and WatchConnectivity sync.
+> 📖 See [docs/MOBILE_APP_LOGIC.md](docs/MOBILE_APP_LOGIC.md#watchos-app) for detailed architecture
 
-Native Apple Watch companion app with independent connectivity.
+Native Apple Watch app with HTTP Polling, voice commands, and WatchConnectivity sync for seamless iOS integration.
+
+### Recent Features
+
+### Workspace/Project Path Display (v1.13)
+
+Session list and chat header now display the full workspace/project path:
+
+- **Session List** — Shows `workspace/project` subtitle under agent name
+- **Chat Header** — Displays working directory context
+- **watchOS Optimization** — Compact layout for small screen real estate
 
 ### Overview
 

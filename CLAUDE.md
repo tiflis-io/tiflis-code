@@ -27,6 +27,7 @@
 | iOS App       | `TiflisCode`                         | iOS            | Swift, SwiftUI               | ✅ Production |
 | watchOS App   | `TiflisCodeWatch`                    | watchOS        | Swift, SwiftUI, HTTP Polling | ✅ Production |
 | Android App   | `TiflisCodeAndroid`                  | Android        | Kotlin, Jetpack Compose      | ✅ Production |
+| Web Client    | `@tiflis-io/tiflis-code-web`         | Web            | Next.js, assistant-ui        | ✅ Production |
 | Tunnel Server | `@tiflis-io/tiflis-code-tunnel`      | Remote Server  | TypeScript, Node.js          | ✅ Production |
 | Workstation   | `@tiflis-io/tiflis-code-workstation` | User's Machine | TypeScript, Node.js          | ✅ Production |
 | STT Service   | `@tiflis-io/tiflis-code-stt`         | User's Machine | Python, FastAPI, MLX/CUDA    | ✅ Production |
@@ -120,6 +121,36 @@ Magic link format: `tiflis://connect?data=<base64_json>` with `{tunnel_id, url, 
 
 ---
 
+## Web Client
+
+> 📖 See [packages/web/README.md](packages/web/README.md) for detailed documentation
+
+### Tech Stack
+
+- **Next.js 15** with App Router
+- **assistant-ui** for chat interface
+- **TailwindCSS** for styling
+- **WebSocket** for real-time communication
+
+### Key Features
+
+- **Voice Messaging** — Record audio commands with STT transcription and TTS responses
+- **Mobile-First Design** — Responsive layout optimized for mobile browsers
+- **iOS-Style UI** — Native-feeling interface matching iOS app design
+- **Lazy History Loading** — Protocol v1.13 with on-demand chat history
+- **Cross-Device Sync** — Message deduplication across multiple devices
+
+### Deployment
+
+The web client is bundled with the tunnel server and served as static files:
+
+```bash
+# Access at tunnel URL
+https://your-tunnel-url.com/
+```
+
+---
+
 ## TypeScript Server Stack
 
 ### Technology
@@ -168,12 +199,17 @@ tiflis-code/
 │   ├── TiflisCode/           # iOS + watchOS (Xcode)
 │   └── TiflisCodeAndroid/    # Android (Gradle)
 ├── packages/
-│   ├── tunnel/               # @tiflis-io/tiflis-code-tunnel
+│   ├── tunnel/               # @tiflis-io/tiflis-code-tunnel (with bundled web client)
 │   ├── workstation/          # @tiflis-io/tiflis-code-workstation
+│   ├── web/                  # @tiflis-io/tiflis-code-web (Next.js, assistant-ui)
 │   └── promo/                # Marketing landing page (Next.js)
 ├── services/
 │   ├── stt/                  # @tiflis-io/tiflis-code-stt (Python, MLX/CUDA Whisper)
 │   └── tts/                  # @tiflis-io/tiflis-code-tts (Python, Kokoro TTS)
+├── scripts/
+│   ├── install-native-services.sh  # Native STT/TTS deployment installer
+│   ├── install-tunnel.sh           # Tunnel server one-line installer
+│   └── install-workstation.sh      # Workstation server one-line installer
 ├── docs/                     # Detailed documentation
 └── assets/branding/          # Logos, ASCII art
 ```
@@ -208,12 +244,15 @@ git add -A && git commit -m "chore: bump version" && git push origin main
 git clone git@github.com:tiflis-io/tiflis-code.git && cd tiflis-code
 pnpm install && pnpm build
 
-# Run servers
+# Run servers (includes bundled web client)
 pnpm dev  # Runs tunnel + workstation with Turborepo
 
 # iOS
 open apps/TiflisCode/TiflisCode.xcodeproj
 # Run on iPhone 16 Pro simulator (⌘R)
+
+# Web client
+# Access at http://localhost:3001/ when tunnel is running
 ```
 
 ### Environment Setup

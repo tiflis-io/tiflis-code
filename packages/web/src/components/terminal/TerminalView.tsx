@@ -70,6 +70,9 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const fitAddonRef = useRef<FitAddon | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
+  // Resize debounce ref
+  const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const { sendTerminalInput, resizeTerminal, subscribeToSession } = useWebSocket();
   const connectionState = useAppStore((state) => state.connectionState);
   const { resolvedTheme } = useTheme();
@@ -87,13 +90,31 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     if (!containerRef.current || terminalRef.current) return;
 
     const terminal = new Terminal({
+      // Cursor
       cursorBlink: true,
       cursorStyle: 'block',
+      cursorInactiveStyle: 'outline', // Visible cursor when terminal loses focus
+
+      // Font
       fontSize: 14,
       fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+
+      // Theme
       theme: terminalTheme,
+
+      // Scrolling - optimized for TUI apps (htop, vim, etc.)
       scrollback: 10000,
+      scrollOnUserInput: true, // Auto-scroll to bottom on keystroke
+      smoothScrollDuration: 0, // Disable smooth scrolling - conflicts with TUI apps
+      fastScrollModifier: 'alt', // Hold Alt for fast scrolling
+      fastScrollSensitivity: 5, // 5x speed when fast scrolling
+
+      // Input handling
       convertEol: true,
+      macOptionIsMeta: true, // Option key as meta on Mac
+      macOptionClickForcesSelection: true, // Option+click for selection on Mac
+      rightClickSelectsWord: true, // Standard macOS behavior
+      altClickMovesCursor: true, // Alt+click to move cursor (readline)
     });
 
     const fitAddon = new FitAddon();
@@ -104,6 +125,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
     terminal.open(containerRef.current);
     fitAddon.fit();
+
+    // Note: WebGL addon (@xterm/addon-webgl) is available but disabled.
+    // It causes zoom/magnification issues with TUI apps (htop, top, vim)
+    // that use alternate screen buffer mode. Canvas renderer works correctly.
 
     terminalRef.current = terminal;
     fitAddonRef.current = fitAddon;
@@ -129,13 +154,19 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isConnected, sendTerminalInput, subscribeToSession]);
 
-  // Handle resize
+  // Handle resize with debouncing
   const handleResize = useCallback(() => {
-    if (fitAddonRef.current && terminalRef.current && isConnected) {
-      fitAddonRef.current.fit();
-      const { cols, rows } = terminalRef.current;
-      resizeTerminal(sessionId, cols, rows);
+    if (resizeTimeoutRef.current !== null) {
+      clearTimeout(resizeTimeoutRef.current);
     }
+    resizeTimeoutRef.current = setTimeout(() => {
+      resizeTimeoutRef.current = null;
+      if (fitAddonRef.current && terminalRef.current && isConnected) {
+        fitAddonRef.current.fit();
+        const { cols, rows } = terminalRef.current;
+        resizeTerminal(sessionId, cols, rows);
+      }
+    }, 50); // 50ms debounce
   }, [sessionId, isConnected, resizeTerminal]);
 
   // Setup resize observer
@@ -157,6 +188,9 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     return () => {
       resizeObserver.disconnect();
       window.removeEventListener('resize', handleResize);
+      if (resizeTimeoutRef.current !== null) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
     };
   }, [handleResize, isInitialized]);
 

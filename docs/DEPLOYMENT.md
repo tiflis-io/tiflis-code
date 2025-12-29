@@ -50,6 +50,20 @@ curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
 4. Install packages and create service (systemd/launchd)
 5. Start the server and display connection info
 
+### Native Speech Services Installer
+
+```bash
+# Interactive setup for local STT/TTS services
+curl -fsSL https://code.tiflis.io/install-native-services.sh | bash
+
+# Features:
+# - Automatic GPU detection (CUDA/ROCm/Metal)
+# - NVIDIA driver installation (Linux)
+# - Python 3.11+ environment setup
+# - HuggingFace token configuration
+# - Systemd service creation
+```
+
 ### Installation Directory
 
 Both scripts install to `~/.tiflis-code/`:
@@ -61,12 +75,21 @@ Both scripts install to `~/.tiflis-code/`:
 │   ├── docker-compose.yml  # Docker mode
 │   ├── node_modules/       # Native mode
 │   └── logs/
-└── workstation/
-    ├── .env
-    ├── node_modules/
-    ├── data/
-    │   └── tiflis.db
-    └── logs/
+├── workstation/
+│   ├── .env
+│   ├── node_modules/
+│   ├── data/
+│   │   └── tiflis.db
+│   └── logs/
+└── services/
+    ├── stt/                # Speech-to-Text service
+    │   ├── .venv/
+    │   ├── models/
+    │   └── logs/
+    └── tts/                # Text-to-Speech service
+        ├── .venv/
+        ├── models/
+        └── logs/
 ```
 
 ## 🏗️ Architecture
@@ -75,7 +98,16 @@ Both scripts install to `~/.tiflis-code/`:
 ┌─────────────────┐    HTTPS/WSS    ┌─────────────────┐    WS    ┌─────────────────────┐
 │  Mobile Client  │ ◄──────────────► │  Tunnel Server  │ ◄───────► │  Workstation Server │
 │  (iOS/watchOS)  │                  │   (Public VPS)  │          │   (User's Machine)  │
+│                 │                  │  + Web Client   │          │                     │
 └─────────────────┘                  └─────────────────┘          └─────────────────────┘
+                                                                            │
+                                                                            │ HTTP
+                                                                            ▼
+                                                                   ┌─────────────────────┐
+                                                                   │  Speech Services    │
+                                                                   │  ├─ STT (Whisper)   │
+                                                                   │  └─ TTS (Kokoro)    │
+                                                                   └─────────────────────┘
 ```
 
 ## 🐳 Docker Deployment (Recommended)
@@ -248,10 +280,12 @@ LOG_LEVEL=info
 NODE_ENV=production
 
 # Speech/Text-to-Speech (Optional)
-STT_PROVIDER=openai                # openai, deepgram
-STT_API_KEY=your-stt-api-key
-TTS_PROVIDER=openai                # openai, elevenlabs
-TTS_API_KEY=your-tts-api-key
+STT_PROVIDER=openai                # openai, deepgram, local
+STT_API_KEY=your-stt-api-key       # Not required for local provider
+STT_BASE_URL=http://localhost:5000 # For local provider
+TTS_PROVIDER=openai                # openai, elevenlabs, local
+TTS_API_KEY=your-tts-api-key       # Not required for local provider
+TTS_BASE_URL=http://localhost:5001 # For local provider
 ```
 
 ## 🔒 SSL/TLS Setup

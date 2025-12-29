@@ -24,6 +24,7 @@
   <img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?logo=android" alt="Android 8+">
   <img src="https://img.shields.io/badge/Node.js-22%20LTS-339933?logo=nodedotjs" alt="Node.js 22">
   <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript" alt="TypeScript">
+  <img src="https://img.shields.io/badge/Next.js-15-000000?logo=next.js" alt="Next.js">
   <img src="https://img.shields.io/badge/Swift-5.x-FA7343?logo=swift" alt="Swift">
   <img src="https://img.shields.io/badge/Kotlin-2.x-7F52FF?logo=kotlin" alt="Kotlin">
   <img src="https://img.shields.io/badge/license-FSL--1.1--NC-blue" alt="FSL-1.1-NC">
@@ -115,16 +116,17 @@ tail -f logs/app.log
 
 Tiflis Code includes a **complete PTY terminal** on your phone — with full ANSI support, scrollback, and keyboard input.
 
-### 📱 Native Mobile Experience
+### 📱 Native Mobile & Web Experience
 
 | Platform        | Features                                                    | Status    |
 | --------------- | ----------------------------------------------------------- | --------- |
 | **iPhone**      | Full chat UI, terminal, voice recording, sidebar navigation | ✅ Ready  |
 | **iPad**        | Optimized layout with persistent sidebar                    | ✅ Ready  |
 | **Android**     | Full chat UI, voice I/O, adaptive layout, deep linking      | ✅ Ready  |
-| **Apple Watch** | Voice commands, session list, audio responses               | 🚧 WIP    |
+| **Apple Watch** | Voice commands, session list, audio responses               | ✅ Ready  |
+| **Web Browser** | Full chat UI, voice messaging, mobile-first design          | ✅ Ready  |
 
-Built with **SwiftUI** (iOS/watchOS) and **Jetpack Compose** (Android). Supports light & dark modes.
+Built with **SwiftUI** (iOS/watchOS), **Jetpack Compose** (Android), and **Next.js + assistant-ui** (Web). Supports light & dark modes.
 
 ### 🔐 Privacy & Security
 
@@ -147,32 +149,40 @@ Built with **SwiftUI** (iOS/watchOS) and **Jetpack Compose** (Android). Supports
 │                                                                         │
 │  ┌─────────────┐                                     ┌───────────────┐  │
 │  │   iPhone    │         ┌─────────────┐             │               │  │
-│  │   Android   │◄───────►│             │◄───────────►│  Workstation  │  │
-│  │             │   WSS   │   Tunnel    │    WSS      │    Server     │  │
-│  └─────────────┘         │   Server    │             │               │  │
-│                          │             │             │  ┌─────────┐  │  │
-│  ┌─────────────┐         │  (Your VPS) │             │  │ Claude  │  │  │
-│  │             │  HTTP   │             │             │  │ Cursor  │  │  │
-│  │ Apple Watch │◄───────►│             │             │  │OpenCode │  │  │
-│  │             │ Polling └─────────────┘             │  └─────────┘  │  │
-│  └─────────────┘                                     │               │  │
-│                                                      │  (Your Mac)   │  │
-│  Anywhere in the world                               └───────────────┘  │
+│  │   Android   │         │             │             │  Workstation  │  │
+│  │   Web App   │◄───────►│   Tunnel    │◄───────────►│    Server     │  │
+│  │             │   WSS   │   Server    │    WSS      │               │  │
+│  └─────────────┘         │             │             │  ┌─────────┐  │  │
+│                          │  + Web App  │             │  │ Claude  │  │  │
+│  ┌─────────────┐         │             │             │  │ Cursor  │  │  │
+│  │             │  HTTP   │             │             │  │OpenCode │  │  │
+│  │ Apple Watch │◄───────►│             │             │  └─────────┘  │  │
+│  │             │ Polling └─────────────┘             │               │  │
+│  └─────────────┘                                     │  (Your Mac)   │  │
+│                                                      └───────────────┘  │
+│  Anywhere in the world                               └─────────────────┘  │
+│                                                          HTTP            │
+│                                                          ▼              │
+│                                                   ┌─────────────┐     │
+│                                                   │ STT / TTS   │     │
+│                                                   │  Services   │     │
+│                                                   └─────────────┘     │
 │                                                                         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Components
 
-| Component              | Description                  | Technology               |
-| ---------------------- | ---------------------------- | ------------------------ |
-| **iOS App**            | iPhone & iPad client         | Swift, SwiftUI           |
-| **watchOS App**        | Apple Watch companion (WIP)  | Swift, SwiftUI           |
-| **Android App**        | Android client               | Kotlin, Jetpack Compose  |
-| **Tunnel Server**      | Secure relay (deploy on VPS) | TypeScript, Node.js      |
-| **Workstation Server** | Runs on your machine         | TypeScript, Node.js      |
-| **STT Service**        | Local speech-to-text         | Python, MLX/CUDA Whisper |
-| **TTS Service**        | Local text-to-speech         | Python, Kokoro           |
+| Component              | Description                              | Technology                      |
+| ---------------------- | ---------------------------------------- | ------------------------------- |
+| **iOS App**            | iPhone & iPad client                     | Swift, SwiftUI                  |
+| **watchOS App**        | Apple Watch companion                    | Swift, SwiftUI                  |
+| **Android App**        | Android client                           | Kotlin, Jetpack Compose         |
+| **Web Client**         | Browser client (bundled with tunnel)     | Next.js, assistant-ui            |
+| **Tunnel Server**      | Secure relay + web hosting (deploy on VPS)| TypeScript, Node.js            |
+| **Workstation Server** | Runs on your machine                     | TypeScript, Node.js             |
+| **STT Service**        | Local speech-to-text (optional)          | Python, MLX/CUDA Whisper        |
+| **TTS Service**        | Local text-to-speech (optional)          | Python, Kokoro                  |
 
 ### How It Works
 
@@ -314,12 +324,17 @@ tiflis-code/
 │   ├── TiflisCode/              # iOS & watchOS app (Xcode)
 │   └── TiflisCodeAndroid/       # Android app (Gradle)
 ├── packages/
-│   ├── tunnel/                  # Tunnel Server
+│   ├── tunnel/                  # Tunnel Server (with bundled web client)
 │   ├── workstation/             # Workstation Server
+│   ├── web/                     # Web Client (Next.js, assistant-ui)
 │   └── promo/                   # Marketing landing page
 ├── services/
 │   ├── stt/                     # Speech-to-Text (MLX/CUDA Whisper)
 │   └── tts/                     # Text-to-Speech (Kokoro)
+├── scripts/
+│   ├── install-native-services.sh  # Native STT/TTS installer
+│   ├── install-tunnel.sh           # Tunnel server installer
+│   └── install-workstation.sh      # Workstation server installer
 ├── assets/
 │   └── branding/                # Logos and icons
 ├── CLAUDE.md                    # Complete project guide
