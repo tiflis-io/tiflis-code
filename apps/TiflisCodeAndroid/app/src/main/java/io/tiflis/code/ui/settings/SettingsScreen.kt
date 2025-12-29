@@ -57,7 +57,6 @@ fun SettingsScreen(
     val workstationInfo by appState.workstationInfo.collectAsState()
     val tunnelInfo by appState.tunnelInfo.collectAsState()
     val ttsEnabled by appState.ttsEnabled.collectAsState()
-    val speechLanguage by appState.speechLanguage.collectAsState()
 
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showMagicLinkDialog by remember { mutableStateOf(false) }
@@ -131,19 +130,22 @@ fun SettingsScreen(
                     modifier = Modifier.clickableListItem { showMagicLinkDialog = true }
                 )
 
-                // Disconnect (if connected)
+                // Disconnect & Forget All Data (if connected)
                 if (connectionState.isConnected || connectionState.isConnecting) {
                     HorizontalDivider()
                     ListItem(
                         headlineContent = {
                             Text(
-                                stringResource(R.string.settings_disconnect),
+                                "Disconnect & Forget All Data",
                                 color = MaterialTheme.colorScheme.error
                             )
                         },
+                        supportingContent = {
+                            Text("Clear all stored connection data")
+                        },
                         leadingContent = {
                             Icon(
-                                Icons.Default.LinkOff,
+                                Icons.Default.DeleteForever,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error
                             )
@@ -225,51 +227,6 @@ fun SettingsScreen(
                         )
                     }
                 )
-
-                HorizontalDivider()
-
-                // Speech language selection
-                var languageExpanded by remember { mutableStateOf(false) }
-                val languages = listOf(
-                    "en-US" to "English (US)",
-                    "en-GB" to "English (UK)",
-                    "ru-RU" to "Russian"
-                )
-                val currentLanguageName = languages.find { it.first == speechLanguage }?.second ?: "English (US)"
-
-                ExposedDropdownMenuBox(
-                    expanded = languageExpanded,
-                    onExpandedChange = { languageExpanded = it }
-                ) {
-                    ListItem(
-                        headlineContent = { Text("Speech Language") },
-                        supportingContent = { Text(currentLanguageName) },
-                        trailingContent = {
-                            ExposedDropdownMenuDefaults.TrailingIcon(expanded = languageExpanded)
-                        },
-                        modifier = Modifier
-                            .menuAnchor(MenuAnchorType.PrimaryNotEditable)
-                            .clickable { languageExpanded = true }
-                    )
-
-                    ExposedDropdownMenu(
-                        expanded = languageExpanded,
-                        onDismissRequest = { languageExpanded = false }
-                    ) {
-                        languages.forEach { (code, name) ->
-                            DropdownMenuItem(
-                                text = { Text(name) },
-                                onClick = {
-                                    appState.setSpeechLanguage(code)
-                                    languageExpanded = false
-                                },
-                                trailingIcon = if (code == speechLanguage) {
-                                    { Icon(Icons.Default.Check, contentDescription = null) }
-                                } else null
-                            )
-                        }
-                    }
-                }
             }
 
             // About Section
@@ -358,23 +315,25 @@ fun SettingsScreen(
         }
     }
 
-    // Disconnect confirmation dialog
+    // Disconnect & Forget All Data confirmation dialog
     if (showDisconnectDialog) {
         AlertDialog(
             onDismissRequest = { showDisconnectDialog = false },
-            title = { Text(stringResource(R.string.settings_disconnect)) },
-            text = { Text(stringResource(R.string.settings_disconnect_confirm)) },
+            title = { Text("Disconnect & Forget All Data") },
+            text = { 
+                Text("This will disconnect and delete all stored connection data including authentication keys and tunnel settings. You will need to scan a QR code or paste a magic link again to reconnect.") 
+            },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        appState.disconnect()
+                        appState.disconnectAndForget()
                         showDisconnectDialog = false
                     },
                     colors = ButtonDefaults.textButtonColors(
                         contentColor = MaterialTheme.colorScheme.error
                     )
                 ) {
-                    Text(stringResource(R.string.action_confirm))
+                    Text("Delete All Data")
                 }
             },
             dismissButton = {

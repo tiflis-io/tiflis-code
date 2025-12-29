@@ -249,6 +249,9 @@ class ConnectionService @Inject constructor(
             // Message acknowledgment
             "message.ack" -> emitMessage(WebSocketMessage.MessageAck(payload))
 
+            // History response (Protocol v1.13)
+            "history.response" -> emitMessage(WebSocketMessage.HistoryResponse(requestId, payload))
+
             // Response/Error
             "response" -> emitMessage(WebSocketMessage.Response(requestId, payload))
             "error" -> emitMessage(WebSocketMessage.Error(requestId, payload))
@@ -416,4 +419,7 @@ sealed class WebSocketMessage {
     // Response/Error
     data class Response(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
     data class Error(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
+
+    // History response (Protocol v1.13)
+    data class HistoryResponse(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
 }

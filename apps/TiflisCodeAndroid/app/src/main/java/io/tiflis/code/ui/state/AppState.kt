@@ -267,6 +267,27 @@ class AppState @Inject constructor(
     }
 
     /**
+     * Disconnect and forget all stored data.
+     * Clears credentials and all stored preferences.
+     */
+    fun disconnectAndForget() {
+        connectionService.disconnect()
+        subscribedSessions.clear()
+        secureStorage.clearCredentials()
+
+        // Clear sessions
+        _sessions.value = emptyList()
+
+        // Clear messages
+        _supervisorMessages.value = emptyList()
+        _agentMessages.value = emptyMap()
+
+        // Clear streaming state
+        streamingMessageIds.clear()
+        tempIdMapping.clear()
+    }
+
+    /**
      * Check if credentials are stored.
      */
     fun hasCredentials(): Boolean = secureStorage.hasCredentials()
@@ -725,6 +746,62 @@ class AppState @Inject constructor(
         }
     }
 
+    // MARK: - History (Protocol v1.13)
+
+    // Special key for supervisor history requests (ConcurrentHashMap doesn't support null keys)
+    private val SUPERVISOR_HISTORY_KEY = "__supervisor__"
+
+    // Track pending history requests to avoid duplicate requests (thread-safe)
+    // Uses String keys - supervisor uses SUPERVISOR_HISTORY_KEY instead of null
+    private val pendingHistoryRequests = java.util.Collections.newSetFromMap(
+        java.util.concurrent.ConcurrentHashMap<String, Boolean>()
+    )
+
+    // Track history loading state per session
+    private val _historyLoading = MutableStateFlow<Map<String?, Boolean>>(emptyMap())
+    val historyLoading: StateFlow<Map<String?, Boolean>> = _historyLoading.asStateFlow()
+
+    /**
+     * Request chat history for supervisor or agent session.
+     * Protocol v1.13: sync.state no longer includes history - clients must request it explicitly.
+     *
+     * @param sessionId Target session ID (null for supervisor)
+     * @param beforeSequence Load messages BEFORE this sequence (for scroll-up pagination)
+     * @param limit Maximum number of messages to return (default: 20, max: 50)
+     */
+    fun requestHistory(sessionId: String? = null, beforeSequence: Long? = null, limit: Int? = 20) {
+        val actualId = if (sessionId != null) tempIdMapping[sessionId] ?: sessionId else null
+        // Use special key for supervisor since ConcurrentHashMap doesn't support null keys
+        val pendingKey = actualId ?: SUPERVISOR_HISTORY_KEY
+
+        // Prevent duplicate requests for the same session
+        if (pendingHistoryRequests.contains(pendingKey)) {
+            Log.d(TAG, "History request already pending for session: $actualId")
+            return
+        }
+
+        pendingHistoryRequests.add(pendingKey)
+        _historyLoading.value = _historyLoading.value.toMutableMap().apply {
+            put(actualId, true)
+        }
+
+        viewModelScope.launch {
+            val config = CommandBuilder.historyRequest(actualId, beforeSequence, limit)
+            val result = connectionService.commandSender.send(config)
+            when (result) {
+                is CommandSendResult.Success -> Log.d(TAG, "History request sent for session: $actualId")
+                is CommandSendResult.Queued -> Log.d(TAG, "History request queued for session: $actualId")
+                is CommandSendResult.Failure -> {
+                    Log.w(TAG, "Failed to request history: ${result.error.message}")
+                    pendingHistoryRequests.remove(pendingKey)
+                    _historyLoading.value = _historyLoading.value.toMutableMap().apply {
+                        put(actualId, false)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Settings
 
     fun setTtsEnabled(enabled: Boolean) {
@@ -770,6 +847,7 @@ class AppState @Inject constructor(
             is WebSocketMessage.SyncState -> handleSyncState(message.payload)
             is WebSocketMessage.AudioResponse -> handleAudioResponse(message.payload)
             is WebSocketMessage.MessageAck -> handleMessageAck(message.payload)
+            is WebSocketMessage.HistoryResponse -> handleHistoryResponse(message.payload)
             else -> { /* Other messages handled elsewhere */ }
         }
     }
@@ -778,7 +856,8 @@ class AppState @Inject constructor(
         payload ?: return
 
         val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull ?: return
-        val audio = payload["audio"]?.jsonPrimitive?.contentOrNull
+        // Server sends "audio_base64" in audio.response (protocol change)
+        val audio = payload["audio_base64"]?.jsonPrimitive?.contentOrNull
         val error = payload["error"]?.jsonPrimitive?.contentOrNull
 
         Log.d(TAG, "Audio response: messageId=$messageId, hasAudio=${audio != null}, audioLen=${audio?.length ?: 0}, error=$error")
@@ -875,6 +954,123 @@ class AppState @Inject constructor(
                     sessionMessages[index] = existingMessage.withSendStatus(MessageSendStatus.FAILED)
                     put(sessionId, sessionMessages.toList())
                     Log.d(TAG, "Updated agent message $messageId status to FAILED (timeout)")
+                }
+            }
+        }
+    }
+
+    /**
+     * Handle history response from server (Protocol v1.13).
+     * Parses the history array and updates the appropriate message list.
+     */
+    private fun handleHistoryResponse(payload: JsonObject?) {
+        payload ?: return
+
+        val sessionId = payload["session_id"]?.jsonPrimitive?.contentOrNull
+        val historyArray = payload["history"]?.jsonArray
+        val hasMore = payload["has_more"]?.jsonPrimitive?.booleanOrNull ?: false
+        val oldestSequence = payload["oldest_sequence"]?.jsonPrimitive?.longOrNull
+        val newestSequence = payload["newest_sequence"]?.jsonPrimitive?.longOrNull
+        val isExecuting = payload["is_executing"]?.jsonPrimitive?.booleanOrNull ?: false
+        val error = payload["error"]?.jsonPrimitive?.contentOrNull
+
+        Log.d(TAG, "History response: sessionId=$sessionId, historySize=${historyArray?.size ?: 0}, hasMore=$hasMore, isExecuting=$isExecuting, error=$error")
+
+        // Clear pending request (use special key for supervisor since ConcurrentHashMap doesn't support null)
+        val pendingKey = sessionId ?: SUPERVISOR_HISTORY_KEY
+        pendingHistoryRequests.remove(pendingKey)
+        _historyLoading.value = _historyLoading.value.toMutableMap().apply {
+            put(sessionId, false)
+        }
+
+        if (error != null) {
+            Log.w(TAG, "History request error: $error")
+            return
+        }
+
+        if (historyArray == null) {
+            Log.d(TAG, "No history array in response")
+            return
+        }
+
+        // Parse history messages
+        val targetSessionId = sessionId ?: SUPERVISOR_SESSION_ID
+        val messages = historyArray.mapNotNull { element ->
+            try {
+                parseHistoryMessage(element.jsonObject, targetSessionId)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to parse history message", e)
+                null
+            }
+        }
+
+        Log.d(TAG, "Parsed ${messages.size} history messages for session: $targetSessionId")
+
+        if (sessionId == null) {
+            // Supervisor history
+            // Merge with existing messages (history comes first, then existing streaming messages)
+            val existingMessages = _supervisorMessages.value
+            val existingIds = existingMessages.map { it.id }.toSet()
+            val newMessages = messages.filter { it.id !in existingIds }
+
+            if (newMessages.isNotEmpty()) {
+                // Prepend history messages (they are older)
+                _supervisorMessages.value = newMessages + existingMessages
+                Log.d(TAG, "Added ${newMessages.size} supervisor history messages")
+            }
+
+            // Update loading state if executing
+            if (isExecuting) {
+                _supervisorIsLoading.value = true
+            }
+        } else {
+            // Agent history
+            _agentMessages.value = _agentMessages.value.toMutableMap().apply {
+                val existingMessages = this[sessionId] ?: emptyList()
+                val existingIds = existingMessages.map { it.id }.toSet()
+                val newMessages = messages.filter { it.id !in existingIds }
+
+                if (newMessages.isNotEmpty()) {
+                    // Prepend history messages (they are older)
+                    put(sessionId, newMessages + existingMessages)
+                    Log.d(TAG, "Added ${newMessages.size} agent history messages for session: $sessionId")
+                }
+            }
+
+            // Update loading state if executing
+            if (isExecuting) {
+                _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
+                    put(sessionId, true)
+                }
+            }
+        }
+
+        // Handle current streaming blocks if present
+        val currentStreamingBlocks = payload["current_streaming_blocks"]?.jsonArray
+        if (currentStreamingBlocks != null && currentStreamingBlocks.isNotEmpty()) {
+            Log.d(TAG, "Processing ${currentStreamingBlocks.size} current streaming blocks")
+            // These are in-progress blocks - create a streaming message
+            val streamingMessageId = UUID.randomUUID().toString()
+            val blocks = parseContentBlocks(currentStreamingBlocks, messageId = streamingMessageId)
+
+            if (blocks.isNotEmpty()) {
+                val streamingMessage = Message(
+                    id = streamingMessageId,
+                    sessionId = targetSessionId,
+                    role = MessageRole.ASSISTANT,
+                    contentBlocks = blocks.toMutableList(),
+                    isStreaming = true
+                )
+
+                if (sessionId == null) {
+                    _supervisorMessages.value = _supervisorMessages.value + streamingMessage
+                    streamingMessageIds[SUPERVISOR_SESSION_ID] = streamingMessageId
+                } else {
+                    _agentMessages.value = _agentMessages.value.toMutableMap().apply {
+                        val existing = this[sessionId] ?: emptyList()
+                        put(sessionId, existing + streamingMessage)
+                    }
+                    streamingMessageIds[sessionId] = streamingMessageId
                 }
             }
         }
@@ -1298,8 +1494,8 @@ class AppState @Inject constructor(
     private fun handleSupervisorTranscription(payload: JsonObject?) {
         payload ?: return
         val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull ?: return
-        // Protocol uses "text" field for transcription, with optional "error" field
-        val text = payload["text"]?.jsonPrimitive?.contentOrNull
+        // Protocol uses "transcription" field (not "text"), with optional "error" field
+        val text = payload["transcription"]?.jsonPrimitive?.contentOrNull
         val errorText = payload["error"]?.jsonPrimitive?.contentOrNull
         val transcription = errorText ?: text ?: return
         val fromDeviceId = payload["from_device_id"]?.jsonPrimitive?.contentOrNull
@@ -1358,7 +1554,8 @@ class AppState @Inject constructor(
         // Handle TTS voice output - add to the LAST ASSISTANT message (not user message)
         payload ?: return
         val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull ?: return
-        val audio = payload["audio"]?.jsonPrimitive?.contentOrNull
+        // Protocol uses "audio_base64" (not "audio")
+        val audio = payload["audio_base64"]?.jsonPrimitive?.contentOrNull
         val ttsText = payload["text"]?.jsonPrimitive?.contentOrNull ?: "Voice message"
         val duration = payload["duration"]?.jsonPrimitive?.longOrNull ?: 0
         val fromDeviceId = payload["from_device_id"]?.jsonPrimitive?.contentOrNull
@@ -1503,7 +1700,8 @@ class AppState @Inject constructor(
         sessionId ?: return
         payload ?: return
 
-        val text = payload["text"]?.jsonPrimitive?.contentOrNull
+        // Protocol uses "transcription" field (not "text"), with optional "error" field
+        val text = payload["transcription"]?.jsonPrimitive?.contentOrNull
         val errorText = payload["error"]?.jsonPrimitive?.contentOrNull
         val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull
         val fromDeviceId = payload["from_device_id"]?.jsonPrimitive?.contentOrNull
@@ -1594,7 +1792,8 @@ class AppState @Inject constructor(
         payload ?: return
 
         val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull ?: return
-        val audio = payload["audio"]?.jsonPrimitive?.contentOrNull
+        // Protocol uses "audio_base64" (not "audio")
+        val audio = payload["audio_base64"]?.jsonPrimitive?.contentOrNull
         val ttsText = payload["text"]?.jsonPrimitive?.contentOrNull ?: "Voice message"
         val duration = payload["duration"]?.jsonPrimitive?.longOrNull ?: 0
         val fromDeviceId = payload["from_device_id"]?.jsonPrimitive?.contentOrNull
@@ -1688,28 +1887,10 @@ class AppState @Inject constructor(
             _sessions.value = parsedSessions
         }
 
-        // Parse supervisor history (protocol uses camelCase: supervisorHistory)
-        val supervisorHistory = payload["supervisorHistory"]?.jsonArray
-        if (supervisorHistory != null) {
-            val messages = supervisorHistory.mapNotNull { parseHistoryMessage(it.jsonObject, SUPERVISOR_SESSION_ID) }
-            _supervisorMessages.value = messages
-        }
-
-        // Parse agent histories (protocol uses camelCase: agentHistories)
-        // This is a map of sessionId -> array of history messages
-        val agentHistories = payload["agentHistories"]?.jsonObject
-        if (agentHistories != null) {
-            val updatedAgentMessages = _agentMessages.value.toMutableMap()
-            for ((sessionId, historyElement) in agentHistories) {
-                val historyArray = historyElement.jsonArray
-                val messages = historyArray.mapNotNull { parseHistoryMessage(it.jsonObject, sessionId) }
-                if (messages.isNotEmpty()) {
-                    updatedAgentMessages[sessionId] = messages
-                }
-            }
-            _agentMessages.value = updatedAgentMessages
-            Log.d(TAG, "Restored agent histories for ${agentHistories.size} sessions")
-        }
+        // Protocol v1.13: sync.state no longer includes supervisorHistory or agentHistories
+        // Clients must use history.request for lazy loading
+        // Request supervisor history on sync
+        requestHistory(sessionId = null)
 
         // Note: workspaces and availableAgents are parsed in ConnectionService
         // and exposed via delegated StateFlows
@@ -1736,7 +1917,10 @@ class AppState @Inject constructor(
     }
 
     private fun parseHistoryMessage(obj: JsonObject, sessionId: String): Message? {
-        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: UUID.randomUUID().toString()
+        // Protocol uses message_id in history.response, fallback to id for compatibility
+        val id = obj["message_id"]?.jsonPrimitive?.contentOrNull
+            ?: obj["id"]?.jsonPrimitive?.contentOrNull
+            ?: UUID.randomUUID().toString()
         val role = obj["role"]?.jsonPrimitive?.contentOrNull?.let {
             when (it) {
                 "user" -> MessageRole.USER

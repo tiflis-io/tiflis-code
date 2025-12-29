@@ -388,4 +388,36 @@ object CommandBuilder {
             debugName = "audio.request"
         )
     }
+
+    /**
+     * Request chat history for supervisor or agent session.
+     * Protocol v1.13: sync.state no longer includes history - clients must request it explicitly.
+     *
+     * @param sessionId Target session ID (null for supervisor)
+     * @param beforeSequence Load messages BEFORE this sequence (for scroll-up pagination)
+     * @param limit Maximum number of messages to return (default: 20, max: 50)
+     * @return Command configuration with 3 retries and queue enabled
+     */
+    fun historyRequest(
+        sessionId: String? = null,
+        beforeSequence: Long? = null,
+        limit: Int? = 20
+    ): CommandConfig {
+        val payload = buildMap<String, Any?> {
+            if (sessionId != null) put("session_id", sessionId)
+            if (beforeSequence != null) put("before_sequence", beforeSequence)
+            if (limit != null) put("limit", limit)
+        }
+        val message = buildMap<String, Any?> {
+            put("type", "history.request")
+            put("id", UUID.randomUUID().toString())
+            if (payload.isNotEmpty()) put("payload", payload)
+        }
+        return CommandConfig(
+            message = message,
+            maxRetries = 3,
+            shouldQueue = true,
+            debugName = "history.request"
+        )
+    }
 }
