@@ -40,12 +40,14 @@ const SECURITY_HEADERS = {
   // Content Security Policy
   'Content-Security-Policy': [
     "default-src 'self'",
-    "script-src 'self'",
+    // Allow wasm-unsafe-eval for WebAssembly (audio processing libraries)
+    "script-src 'self' 'wasm-unsafe-eval'",
     "style-src 'self' 'unsafe-inline'", // unsafe-inline needed for Tailwind
     "img-src 'self' data: blob:",
     "font-src 'self'",
     "connect-src 'self' ws: wss:",
-    "media-src 'self' blob:",
+    // Allow data: URIs for audio (TTS responses are base64-encoded)
+    "media-src 'self' blob: data:",
     "worker-src 'self' blob:",
     "frame-ancestors 'none'",
     "base-uri 'self'",
