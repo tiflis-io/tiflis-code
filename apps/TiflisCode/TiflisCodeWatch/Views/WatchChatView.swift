@@ -455,13 +455,13 @@ struct WatchChatView: View {
 
     // MARK: - Computed Properties
 
-    /// Navigation title string
+    /// Navigation title string (includes workspace/project for agent sessions)
     private var navTitle: String {
         switch destination {
         case .supervisor:
             return "Supervisor"
         case .agent(let session):
-            return session.displayName
+            return session.fullDisplayName(relativeTo: appState.workspacesRoot)
         }
     }
 

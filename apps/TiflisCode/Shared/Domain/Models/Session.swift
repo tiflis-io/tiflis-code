@@ -151,6 +151,40 @@ struct Session: Identifiable, Equatable, Hashable {
         return type.displayName
     }
 
+    /// Returns the full display name including workspace/project prefix
+    /// Format: "workspace/project Agent Name" or "workspace/project--worktree Agent Name"
+    /// For sessions without workspace/project, returns just the display name
+    var fullDisplayName: String {
+        fullDisplayName(relativeTo: nil)
+    }
+
+    /// Returns the full display name including workspace/project prefix
+    /// If workspace/project are not available, computes relative path from workspacesRoot
+    /// - Parameter workspacesRoot: The workspaces root directory path from workstation
+    /// - Returns: "path Agent Name" or just "Agent Name" if no path available
+    func fullDisplayName(relativeTo workspacesRoot: String?) -> String {
+        // First try workspace/project if available
+        let hasRealWorkspace = workspace != nil && workspace != "home"
+        let hasRealProject = project != nil && project != "default"
+
+        if hasRealWorkspace, hasRealProject, let ws = workspace, let proj = project {
+            let prefix: String
+            if let wt = worktree {
+                prefix = "\(ws)/\(proj)--\(wt)"
+            } else {
+                prefix = "\(ws)/\(proj)"
+            }
+            return "\(prefix) \(displayName)"
+        }
+
+        // Fallback: compute relative path from workingDir
+        if let relativePath = subtitle(relativeTo: workspacesRoot), relativePath != "~" {
+            return "\(relativePath) \(displayName)"
+        }
+
+        return displayName
+    }
+
     init(
         id: String = UUID().uuidString,
         type: SessionType,

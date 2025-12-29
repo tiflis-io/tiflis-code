@@ -67,6 +67,9 @@ final class WatchAppState: ObservableObject {
     /// STT language (synced from iPhone)
     @Published var sttLanguage: String = "en"
 
+    /// Workspaces root directory from workstation (for computing relative paths)
+    @Published var workspacesRoot: String = ""
+
     // MARK: - Debug State (visible in UI when logs don't work)
 
     @Published var debugAppStartTime: Date = Date()

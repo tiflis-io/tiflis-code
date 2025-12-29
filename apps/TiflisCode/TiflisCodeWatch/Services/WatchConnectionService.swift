@@ -568,7 +568,14 @@ final class WatchConnectionService {
 
         case "auth.success":
             // Device authenticated successfully with workstation
-            NSLog("⌚️ WatchConnectionService: auth.success received - device authenticated")
+            // Extract workspaces_root for computing relative paths in session display
+            if let payload = message["payload"] as? [String: Any],
+               let workspacesRoot = payload["workspaces_root"] as? String {
+                appState?.workspacesRoot = workspacesRoot
+                NSLog("⌚️ WatchConnectionService: auth.success received - workspacesRoot=%@", workspacesRoot)
+            } else {
+                NSLog("⌚️ WatchConnectionService: auth.success received - no workspacesRoot")
+            }
             appState?.connectionState = .authenticated
 
         case "supervisor.user_message":
