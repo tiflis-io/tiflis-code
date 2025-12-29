@@ -465,18 +465,28 @@ async function bootstrap(): Promise<void> {
 
   // Accumulator for supervisor streaming blocks - accessible from sync handler and output handler
   // Used for mid-stream device joins (sync returns current streaming blocks)
+  // Includes streaming_message_id for client-side deduplication across multiple devices
   const supervisorMessageAccumulator = {
     blocks: [] as ContentBlock[],
+    streamingMessageId: null as string | null,
     get(): ContentBlock[] {
       return this.blocks;
+    },
+    getStreamingMessageId(): string | null {
+      return this.streamingMessageId;
     },
     set(blocks: ContentBlock[]): void {
       this.blocks = blocks;
     },
     clear(): void {
       this.blocks = [];
+      this.streamingMessageId = null;
     },
     accumulate(newBlocks: ContentBlock[]): void {
+      // Generate streaming_message_id on first block of a new response
+      if (this.blocks.length === 0 && newBlocks.length > 0) {
+        this.streamingMessageId = randomUUID();
+      }
       accumulateBlocks(this.blocks, newBlocks);
     },
   };
@@ -1358,6 +1368,11 @@ async function bootstrap(): Promise<void> {
 
           const currentStreamingBlocks =
             agentMessageAccumulator.get(sessionId) ?? [];
+          
+          // Get streaming_message_id if there's an active streaming response
+          const streamingMessageId = currentStreamingBlocks.length > 0
+            ? agentStreamingMessageIds.get(sessionId)
+            : undefined;
 
           sendToDevice(
             socket,
@@ -1370,6 +1385,7 @@ async function bootstrap(): Promise<void> {
                 currentStreamingBlocks.length > 0
                   ? currentStreamingBlocks
                   : undefined,
+              streaming_message_id: streamingMessageId,
             })
           );
 
@@ -1379,6 +1395,7 @@ async function bootstrap(): Promise<void> {
               sessionId,
               isExecuting,
               streamingBlocksCount: currentStreamingBlocks.length,
+              streamingMessageId,
             },
             "Agent session subscribed (v1.13 - use history.request for messages)"
           );
@@ -2134,10 +2151,12 @@ async function bootstrap(): Promise<void> {
           const isExecuting = supervisorAgent.isProcessing();
 
           let currentStreamingBlocks: unknown[] | undefined;
+          let streamingMessageId: string | undefined;
           if (isExecuting && !beforeSequence) {
             const blocks = supervisorMessageAccumulator.get();
             if (blocks && blocks.length > 0) {
               currentStreamingBlocks = blocks;
+              streamingMessageId = supervisorMessageAccumulator.getStreamingMessageId() ?? undefined;
             }
           }
 
@@ -2153,6 +2172,7 @@ async function bootstrap(): Promise<void> {
                 newest_sequence: result.newestSequence,
                 is_executing: isExecuting,
                 current_streaming_blocks: currentStreamingBlocks,
+                streaming_message_id: streamingMessageId,
               },
             })
           );
@@ -2192,10 +2212,12 @@ async function bootstrap(): Promise<void> {
           const isExecuting = agentSessionManager.isExecuting(sessionId);
 
           let currentStreamingBlocks: unknown[] | undefined;
+          let streamingMessageId: string | undefined;
           if (isExecuting && !beforeSequence) {
             const blocks = agentMessageAccumulator.get(sessionId);
             if (blocks && blocks.length > 0) {
               currentStreamingBlocks = blocks;
+              streamingMessageId = agentStreamingMessageIds.get(sessionId);
             }
           }
 
@@ -2211,12 +2233,13 @@ async function bootstrap(): Promise<void> {
                 newest_sequence: result.newestSequence,
                 is_executing: isExecuting,
                 current_streaming_blocks: currentStreamingBlocks,
+                streaming_message_id: streamingMessageId,
               },
             })
           );
 
           logger.debug(
-            { sessionId, messageCount: enrichedHistory.length, isExecuting },
+            { sessionId, messageCount: enrichedHistory.length, isExecuting, streamingMessageId },
             "Agent session history sent"
           );
         }
@@ -2460,7 +2483,24 @@ async function bootstrap(): Promise<void> {
   const broadcaster = messageBroadcaster;
 
   // Accumulator for agent message blocks - save only when complete
+  // Stores both blocks and streaming_message_id for client-side deduplication
   const agentMessageAccumulator = new Map<string, ContentBlock[]>();
+  const agentStreamingMessageIds = new Map<string, string>();
+
+  // Helper to get or create streaming_message_id for a session
+  const getOrCreateAgentStreamingMessageId = (sessionId: string): string => {
+    let messageId = agentStreamingMessageIds.get(sessionId);
+    if (!messageId) {
+      messageId = randomUUID();
+      agentStreamingMessageIds.set(sessionId, messageId);
+    }
+    return messageId;
+  };
+
+  // Helper to clear streaming_message_id when response completes
+  const clearAgentStreamingMessageId = (sessionId: string): void => {
+    agentStreamingMessageIds.delete(sessionId);
+  };
 
   agentSessionManager.on(
     "blocks",
@@ -2566,9 +2606,14 @@ async function bootstrap(): Promise<void> {
         .map((b) => b.content)
         .join("\n");
 
+      // Get or create streaming_message_id for this response
+      // This ID is stable across all chunks of the same response, enabling client-side deduplication
+      const streamingMessageId = getOrCreateAgentStreamingMessageId(sessionId);
+
       const outputEvent = {
         type: "session.output",
         session_id: sessionId,
+        streaming_message_id: streamingMessageId,
         payload: {
           content_type: "agent",
           content: fullAccumulatedText, // Full accumulated text for backward compat
@@ -2584,6 +2629,11 @@ async function bootstrap(): Promise<void> {
         sessionId,
         JSON.stringify(outputEvent)
       );
+
+      // Clear streaming_message_id when response is complete
+      if (isComplete) {
+        clearAgentStreamingMessageId(sessionId);
+      }
 
       // Check if this was a voice command that needs TTS response
       if (isComplete && fullTextContent.length > 0) {
@@ -2712,8 +2762,13 @@ async function bootstrap(): Promise<void> {
         .map((b) => b.content)
         .join("\n");
 
+      // Get streaming_message_id for this response (generated on first block)
+      // This ID is stable across all chunks of the same response, enabling client-side deduplication
+      const streamingMessageId = supervisorMessageAccumulator.getStreamingMessageId();
+
       const outputEvent = {
         type: "supervisor.output",
+        streaming_message_id: streamingMessageId,
         payload: {
           content_type: "supervisor",
           content: textContent,

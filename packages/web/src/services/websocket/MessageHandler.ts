@@ -217,9 +217,9 @@ function handleSyncState(msg: SyncStateMessage): void {
 
 function handleHistoryResponse(msg: HistoryResponseMessage): void {
   const chatStore = useChatStore.getState();
-  const { session_id, history, has_more, oldest_sequence, is_executing, current_streaming_blocks } = msg.payload;
+  const { session_id, history, has_more, oldest_sequence, is_executing, current_streaming_blocks, streaming_message_id } = msg.payload;
   
-  logger.log('history.response received:', { session_id, historyCount: history?.length ?? 0, has_more, oldest_sequence });
+  logger.log('history.response received:', { session_id, historyCount: history?.length ?? 0, has_more, oldest_sequence, streaming_message_id });
   
   const sessionKey = session_id ?? 'supervisor';
   
@@ -254,17 +254,30 @@ function handleHistoryResponse(msg: HistoryResponseMessage): void {
       chatStore.setSupervisorIsLoading(true);
     }
     if (current_streaming_blocks && current_streaming_blocks.length > 0) {
-      const streamingMessage: Message = {
-        id: crypto.randomUUID(),
-        sessionId: 'supervisor',
-        role: 'assistant',
-        contentBlocks: parseContentBlocks(current_streaming_blocks),
-        isStreaming: true,
-        createdAt: new Date(),
-      };
-      chatStore.addSupervisorMessage(streamingMessage);
-      chatStore.setSupervisorStreamingMessageId(streamingMessage.id);
-      chatStore.setSupervisorIsLoading(true);
+      // Use streaming_message_id from server for deduplication across clients
+      // This ensures all clients use the same ID for the same streaming response
+      const messageId = streaming_message_id ?? crypto.randomUUID();
+      
+      // Check if we already have a streaming message with this ID (from another source)
+      const existingStreamingId = chatStore.supervisorStreamingMessageId;
+      if (existingStreamingId === messageId) {
+        // Already tracking this streaming message, just update blocks
+        chatStore.updateSupervisorStreamingBlocks(messageId, parseContentBlocks(current_streaming_blocks));
+      } else if (!chatStore.supervisorMessages.some(m => m.id === messageId)) {
+        // New streaming message, create it
+        const streamingMessage: Message = {
+          id: messageId,
+          sessionId: 'supervisor',
+          role: 'assistant',
+          contentBlocks: parseContentBlocks(current_streaming_blocks),
+          isStreaming: true,
+          createdAt: new Date(),
+        };
+        chatStore.addSupervisorMessage(streamingMessage);
+        chatStore.setSupervisorStreamingMessageId(messageId);
+        chatStore.setSupervisorIsLoading(true);
+      }
+      // If message already exists but not streaming, skip (it's completed)
     }
   } else {
     chatStore.prependAgentMessages(session_id, messages);
@@ -272,17 +285,32 @@ function handleHistoryResponse(msg: HistoryResponseMessage): void {
       chatStore.setAgentIsLoading(session_id, true);
     }
     if (current_streaming_blocks && current_streaming_blocks.length > 0) {
-      const streamingMessage: Message = {
-        id: crypto.randomUUID(),
-        sessionId: session_id,
-        role: 'assistant',
-        contentBlocks: parseContentBlocks(current_streaming_blocks),
-        isStreaming: true,
-        createdAt: new Date(),
-      };
-      chatStore.addAgentMessage(session_id, streamingMessage);
-      chatStore.setAgentStreamingMessageId(session_id, streamingMessage.id);
-      chatStore.setAgentIsLoading(session_id, true);
+      // Use streaming_message_id from server for deduplication across clients
+      const messageId = streaming_message_id ?? crypto.randomUUID();
+      
+      // Check if we already have a streaming message with this ID
+      const existingStreamingId = chatStore.agentStreamingMessageIds[session_id];
+      if (existingStreamingId === messageId) {
+        // Already tracking this streaming message, just update blocks
+        chatStore.updateAgentStreamingBlocks(session_id, messageId, parseContentBlocks(current_streaming_blocks));
+      } else {
+        const existingMessages = chatStore.agentMessages[session_id] ?? [];
+        if (!existingMessages.some(m => m.id === messageId)) {
+          // New streaming message, create it
+          const streamingMessage: Message = {
+            id: messageId,
+            sessionId: session_id,
+            role: 'assistant',
+            contentBlocks: parseContentBlocks(current_streaming_blocks),
+            isStreaming: true,
+            createdAt: new Date(),
+          };
+          chatStore.addAgentMessage(session_id, streamingMessage);
+          chatStore.setAgentStreamingMessageId(session_id, messageId);
+          chatStore.setAgentIsLoading(session_id, true);
+        }
+        // If message already exists but not streaming, skip (it's completed)
+      }
     }
   }
 }
@@ -343,17 +371,32 @@ function handleSessionSubscribed(msg: SessionSubscribedMessage): void {
   });
 
   if (msg.current_streaming_blocks && msg.current_streaming_blocks.length > 0) {
-    const streamingMessage: Message = {
-      id: crypto.randomUUID(),
-      sessionId,
-      role: 'assistant',
-      contentBlocks: parseContentBlocks(msg.current_streaming_blocks),
-      isStreaming: true,
-      createdAt: new Date(),
-    };
-    chatStore.addAgentMessage(sessionId, streamingMessage);
-    chatStore.setAgentStreamingMessageId(sessionId, streamingMessage.id);
-    chatStore.setAgentIsLoading(sessionId, true);
+    // Use streaming_message_id from server for deduplication across clients
+    const messageId = msg.streaming_message_id ?? crypto.randomUUID();
+    
+    // Check if we already have a streaming message with this ID
+    const existingStreamingId = chatStore.agentStreamingMessageIds[sessionId];
+    if (existingStreamingId === messageId) {
+      // Already tracking this streaming message, just update blocks
+      chatStore.updateAgentStreamingBlocks(sessionId, messageId, parseContentBlocks(msg.current_streaming_blocks));
+    } else {
+      const existingMessages = chatStore.agentMessages[sessionId] ?? [];
+      if (!existingMessages.some(m => m.id === messageId)) {
+        // New streaming message, create it
+        const streamingMessage: Message = {
+          id: messageId,
+          sessionId,
+          role: 'assistant',
+          contentBlocks: parseContentBlocks(msg.current_streaming_blocks),
+          isStreaming: true,
+          createdAt: new Date(),
+        };
+        chatStore.addAgentMessage(sessionId, streamingMessage);
+        chatStore.setAgentStreamingMessageId(sessionId, messageId);
+        chatStore.setAgentIsLoading(sessionId, true);
+      }
+      // If message already exists but not streaming, skip (it's completed)
+    }
   }
 }
 
@@ -365,9 +408,31 @@ function handleSessionTerminated(msg: { session_id: string }): void {
 function handleSupervisorOutput(msg: SupervisorOutputMessage): void {
   const chatStore = useChatStore.getState();
   const streamingId = chatStore.supervisorStreamingMessageId;
+  
+  // Use streaming_message_id from server for deduplication across clients
+  const serverMessageId = msg.streaming_message_id;
 
   const contentBlocks = parseContentBlocks(msg.payload.content_blocks);
   const hasContent = contentBlocks.length > 0 && contentBlocks.some(b => b.content || b.blockType === 'tool' || b.blockType === 'voice_output');
+
+  // If server provides streaming_message_id, use it for matching
+  // This handles the case where a new client joins mid-stream
+  if (serverMessageId && streamingId && streamingId !== serverMessageId) {
+    // We have a different streaming message - this shouldn't happen normally
+    // but if it does, check if the server's message already exists
+    if (chatStore.supervisorMessages.some(m => m.id === serverMessageId)) {
+      // Server's message exists, update it instead
+      if (hasContent) {
+        chatStore.updateSupervisorStreamingBlocks(serverMessageId, contentBlocks);
+      }
+      if (msg.payload.is_complete) {
+        chatStore.updateSupervisorMessage(serverMessageId, { isStreaming: false });
+        chatStore.setSupervisorStreamingMessageId(null);
+        chatStore.setSupervisorIsLoading(false);
+      }
+      return;
+    }
+  }
 
   if (streamingId) {
     // Only update blocks if we have content (don't replace with empty on completion)
@@ -387,8 +452,28 @@ function handleSupervisorOutput(msg: SupervisorOutputMessage): void {
       return;
     }
 
+    // Use server's streaming_message_id if available, otherwise generate one
+    const messageId = serverMessageId ?? crypto.randomUUID();
+    
+    // Check if message with this ID already exists (deduplication)
+    if (chatStore.supervisorMessages.some(m => m.id === messageId)) {
+      // Message already exists, just update it
+      if (hasContent) {
+        chatStore.updateSupervisorStreamingBlocks(messageId, contentBlocks);
+      }
+      if (msg.payload.is_complete) {
+        chatStore.updateSupervisorMessage(messageId, { isStreaming: false });
+        chatStore.setSupervisorStreamingMessageId(null);
+        chatStore.setSupervisorIsLoading(false);
+      } else {
+        chatStore.setSupervisorStreamingMessageId(messageId);
+        chatStore.setSupervisorIsLoading(true);
+      }
+      return;
+    }
+
     const message: Message = {
-      id: crypto.randomUUID(),
+      id: messageId,
       sessionId: 'supervisor',
       role: 'assistant',
       contentBlocks,
@@ -454,10 +539,32 @@ function handleSessionOutput(msg: SessionOutputMessage): void {
   }
 
   const streamingId = chatStore.agentStreamingMessageIds[sessionId];
+  // Use streaming_message_id from server for deduplication across clients
+  const serverMessageId = msg.streaming_message_id;
+  
   const contentBlocks = msg.payload.content_blocks
     ? parseContentBlocks(msg.payload.content_blocks)
     : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: msg.payload.content }];
   const hasContent = contentBlocks.length > 0 && contentBlocks.some(b => b.content || b.blockType === 'tool' || b.blockType === 'voice_output');
+
+  // If server provides streaming_message_id, use it for matching
+  // This handles the case where a new client joins mid-stream
+  if (serverMessageId && streamingId && streamingId !== serverMessageId) {
+    // We have a different streaming message - check if server's message exists
+    const existingMessages = chatStore.agentMessages[sessionId] ?? [];
+    if (existingMessages.some(m => m.id === serverMessageId)) {
+      // Server's message exists, update it instead
+      if (hasContent) {
+        chatStore.updateAgentStreamingBlocks(sessionId, serverMessageId, contentBlocks);
+      }
+      if (msg.payload.is_complete) {
+        chatStore.updateAgentMessage(sessionId, serverMessageId, { isStreaming: false });
+        chatStore.setAgentStreamingMessageId(sessionId, null);
+        chatStore.setAgentIsLoading(sessionId, false);
+      }
+      return;
+    }
+  }
 
   if (streamingId) {
     // Only update blocks if we have content (don't replace with empty on completion)
@@ -477,8 +584,29 @@ function handleSessionOutput(msg: SessionOutputMessage): void {
       return;
     }
 
+    // Use server's streaming_message_id if available, otherwise generate one
+    const messageId = serverMessageId ?? crypto.randomUUID();
+    
+    // Check if message with this ID already exists (deduplication)
+    const existingMessages = chatStore.agentMessages[sessionId] ?? [];
+    if (existingMessages.some(m => m.id === messageId)) {
+      // Message already exists, just update it
+      if (hasContent) {
+        chatStore.updateAgentStreamingBlocks(sessionId, messageId, contentBlocks);
+      }
+      if (msg.payload.is_complete) {
+        chatStore.updateAgentMessage(sessionId, messageId, { isStreaming: false });
+        chatStore.setAgentStreamingMessageId(sessionId, null);
+        chatStore.setAgentIsLoading(sessionId, false);
+      } else {
+        chatStore.setAgentStreamingMessageId(sessionId, messageId);
+        chatStore.setAgentIsLoading(sessionId, true);
+      }
+      return;
+    }
+
     const message: Message = {
-      id: crypto.randomUUID(),
+      id: messageId,
       sessionId,
       role: 'assistant',
       contentBlocks,

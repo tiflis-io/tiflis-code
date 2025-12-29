@@ -834,12 +834,12 @@ class AppState @Inject constructor(
         when (message) {
             is WebSocketMessage.SessionCreated -> handleSessionCreated(message.sessionId, message.payload)
             is WebSocketMessage.SessionTerminated -> handleSessionTerminated(message.sessionId)
-            is WebSocketMessage.SessionOutput -> handleSessionOutput(message.sessionId, message.payload)
-            is WebSocketMessage.SessionSubscribed -> handleSessionSubscribed(message.sessionId, message.payload)
+            is WebSocketMessage.SessionOutput -> handleSessionOutput(message.sessionId, message.payload, message.streamingMessageId)
+            is WebSocketMessage.SessionSubscribed -> handleSessionSubscribed(message.sessionId, message.payload, message.streamingMessageId)
             is WebSocketMessage.SessionUserMessage -> handleSessionUserMessage(message.sessionId, message.payload)
             is WebSocketMessage.SessionTranscription -> handleSessionTranscription(message.sessionId, message.payload)
             is WebSocketMessage.SessionVoiceOutput -> handleSessionVoiceOutput(message.sessionId, message.payload)
-            is WebSocketMessage.SupervisorOutput -> handleSupervisorOutput(message.payload)
+            is WebSocketMessage.SupervisorOutput -> handleSupervisorOutput(message.payload, message.streamingMessageId)
             is WebSocketMessage.SupervisorUserMessage -> handleSupervisorUserMessage(message.payload)
             is WebSocketMessage.SupervisorTranscription -> handleSupervisorTranscription(message.payload)
             is WebSocketMessage.SupervisorVoiceOutput -> handleSupervisorVoiceOutput(message.payload)
@@ -847,7 +847,7 @@ class AppState @Inject constructor(
             is WebSocketMessage.SyncState -> handleSyncState(message.payload)
             is WebSocketMessage.AudioResponse -> handleAudioResponse(message.payload)
             is WebSocketMessage.MessageAck -> handleMessageAck(message.payload)
-            is WebSocketMessage.HistoryResponse -> handleHistoryResponse(message.payload)
+            is WebSocketMessage.HistoryResponse -> handleHistoryResponse(message.payload, message.streamingMessageId)
             else -> { /* Other messages handled elsewhere */ }
         }
     }
@@ -963,7 +963,7 @@ class AppState @Inject constructor(
      * Handle history response from server (Protocol v1.13).
      * Parses the history array and updates the appropriate message list.
      */
-    private fun handleHistoryResponse(payload: JsonObject?) {
+    private fun handleHistoryResponse(payload: JsonObject?, serverStreamingMessageId: String?) {
         payload ?: return
 
         val sessionId = payload["session_id"]?.jsonPrimitive?.contentOrNull
@@ -974,7 +974,7 @@ class AppState @Inject constructor(
         val isExecuting = payload["is_executing"]?.jsonPrimitive?.booleanOrNull ?: false
         val error = payload["error"]?.jsonPrimitive?.contentOrNull
 
-        Log.d(TAG, "History response: sessionId=$sessionId, historySize=${historyArray?.size ?: 0}, hasMore=$hasMore, isExecuting=$isExecuting, error=$error")
+        Log.d(TAG, "History response: sessionId=$sessionId, historySize=${historyArray?.size ?: 0}, hasMore=$hasMore, isExecuting=$isExecuting, serverStreamingId=$serverStreamingMessageId, error=$error")
 
         // Clear pending request (use special key for supervisor since ConcurrentHashMap doesn't support null)
         val pendingKey = sessionId ?: SUPERVISOR_HISTORY_KEY
@@ -1048,27 +1048,74 @@ class AppState @Inject constructor(
         // Handle current streaming blocks if present
         val currentStreamingBlocks = payload["current_streaming_blocks"]?.jsonArray
         if (currentStreamingBlocks != null && currentStreamingBlocks.isNotEmpty()) {
-            Log.d(TAG, "Processing ${currentStreamingBlocks.size} current streaming blocks")
-            // These are in-progress blocks - create a streaming message
-            val streamingMessageId = UUID.randomUUID().toString()
+            // Use server's streaming_message_id for deduplication across devices
+            val streamingMessageId = serverStreamingMessageId ?: UUID.randomUUID().toString()
+            Log.d(TAG, "Processing ${currentStreamingBlocks.size} current streaming blocks with id=$streamingMessageId")
             val blocks = parseContentBlocks(currentStreamingBlocks, messageId = streamingMessageId)
 
             if (blocks.isNotEmpty()) {
-                val streamingMessage = Message(
-                    id = streamingMessageId,
-                    sessionId = targetSessionId,
-                    role = MessageRole.ASSISTANT,
-                    contentBlocks = blocks.toMutableList(),
-                    isStreaming = true
-                )
-
                 if (sessionId == null) {
-                    _supervisorMessages.value = _supervisorMessages.value + streamingMessage
+                    // Check if message with this ID already exists (deduplication)
+                    val existingMessages = _supervisorMessages.value.toMutableList()
+                    val existingIndex = existingMessages.indexOfFirst { it.id == streamingMessageId }
+                    
+                    if (existingIndex >= 0) {
+                        // Update existing message
+                        val existingMessage = existingMessages[existingIndex]
+                        existingMessages[existingIndex] = Message(
+                            id = existingMessage.id,
+                            sessionId = existingMessage.sessionId,
+                            role = existingMessage.role,
+                            contentBlocks = blocks.toMutableList(),
+                            isStreaming = true,
+                            createdAt = existingMessage.createdAt
+                        )
+                        _supervisorMessages.value = existingMessages.toList()
+                        Log.d(TAG, "Updated existing supervisor streaming message $streamingMessageId")
+                    } else {
+                        // Create new streaming message
+                        val streamingMessage = Message(
+                            id = streamingMessageId,
+                            sessionId = targetSessionId,
+                            role = MessageRole.ASSISTANT,
+                            contentBlocks = blocks.toMutableList(),
+                            isStreaming = true
+                        )
+                        _supervisorMessages.value = _supervisorMessages.value + streamingMessage
+                        Log.d(TAG, "Created new supervisor streaming message $streamingMessageId")
+                    }
                     streamingMessageIds[SUPERVISOR_SESSION_ID] = streamingMessageId
                 } else {
+                    // Check if message with this ID already exists (deduplication)
                     _agentMessages.value = _agentMessages.value.toMutableMap().apply {
-                        val existing = this[sessionId] ?: emptyList()
-                        put(sessionId, existing + streamingMessage)
+                        val existingMessages = this[sessionId]?.toMutableList() ?: mutableListOf()
+                        val existingIndex = existingMessages.indexOfFirst { it.id == streamingMessageId }
+                        
+                        if (existingIndex >= 0) {
+                            // Update existing message
+                            val existingMessage = existingMessages[existingIndex]
+                            existingMessages[existingIndex] = Message(
+                                id = existingMessage.id,
+                                sessionId = existingMessage.sessionId,
+                                role = existingMessage.role,
+                                contentBlocks = blocks.toMutableList(),
+                                isStreaming = true,
+                                createdAt = existingMessage.createdAt
+                            )
+                            put(sessionId, existingMessages.toList())
+                            Log.d(TAG, "Updated existing agent streaming message $streamingMessageId")
+                        } else {
+                            // Create new streaming message
+                            val streamingMessage = Message(
+                                id = streamingMessageId,
+                                sessionId = targetSessionId,
+                                role = MessageRole.ASSISTANT,
+                                contentBlocks = blocks.toMutableList(),
+                                isStreaming = true
+                            )
+                            put(sessionId, existingMessages + streamingMessage)
+                            Log.d(TAG, "Created new agent streaming message $streamingMessageId")
+                        }
                     }
                     streamingMessageIds[sessionId] = streamingMessageId
                 }
@@ -1133,7 +1180,7 @@ class AppState @Inject constructor(
         Log.d(TAG, "Session terminated: $sessionId")
     }
 
-    private fun handleSessionOutput(sessionId: String?, payload: JsonObject?) {
+    private fun handleSessionOutput(sessionId: String?, payload: JsonObject?, serverStreamingMessageId: String?) {
         sessionId ?: return
         payload ?: return
 
@@ -1141,21 +1188,23 @@ class AppState @Inject constructor(
         val isComplete = payload["is_complete"]?.jsonPrimitive?.booleanOrNull ?: false
 
         when (contentType) {
-            "agent" -> handleAgentOutput(sessionId, payload, isComplete)
+            "agent" -> handleAgentOutput(sessionId, payload, isComplete, serverStreamingMessageId)
             "terminal" -> { /* Terminal output handled by TerminalViewModel */ }
-            else -> handleAgentOutput(sessionId, payload, isComplete)
+            else -> handleAgentOutput(sessionId, payload, isComplete, serverStreamingMessageId)
         }
     }
 
-    private fun handleAgentOutput(sessionId: String, payload: JsonObject, isComplete: Boolean) {
-        val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull
+    private fun handleAgentOutput(sessionId: String, payload: JsonObject, isComplete: Boolean, serverStreamingMessageId: String?) {
+        // Use server's streaming_message_id for deduplication across devices
+        // Priority: server streaming ID > local tracking > new UUID
+        val messageId = serverStreamingMessageId
             ?: streamingMessageIds[sessionId]
             ?: UUID.randomUUID().toString()
 
         val contentBlocks = parseContentBlocks(payload["content_blocks"]?.jsonArray, messageId = messageId)
         val textContent = payload["content"]?.jsonPrimitive?.contentOrNull
 
-        Log.d(TAG, "Agent output: sessionId=$sessionId, messageId=$messageId, blocks=${contentBlocks.size}, text=${textContent?.take(50)}, isComplete=$isComplete")
+        Log.d(TAG, "Agent output: sessionId=$sessionId, messageId=$messageId, serverStreamingId=$serverStreamingMessageId, blocks=${contentBlocks.size}, text=${textContent?.take(50)}, isComplete=$isComplete")
 
         // Handle empty blocks case - just mark as complete, don't clear content
         // Also treat blank textContent as empty (don't overwrite existing content with whitespace)
@@ -1187,12 +1236,14 @@ class AppState @Inject constructor(
         // CRITICAL: Use inline update pattern to avoid race conditions
         _agentMessages.value = _agentMessages.value.toMutableMap().apply {
             val messages = this[sessionId]?.toMutableList() ?: mutableListOf()
-            val streamingId = streamingMessageIds[sessionId]
-            val existingIndex = if (streamingId != null) {
-                messages.indexOfFirst { it.id == streamingId }
-            } else {
-                -1
-            }
+            
+            // Check for existing message by ID (deduplication across devices)
+            // Priority: check by messageId first (includes server's streaming_message_id), then by local tracking
+            val existingIndex = messages.indexOfFirst { it.id == messageId }.takeIf { it >= 0 }
+                ?: streamingMessageIds[sessionId]?.let { streamingId -> 
+                    messages.indexOfFirst { it.id == streamingId } 
+                }?.takeIf { it >= 0 }
+                ?: -1
 
             if (existingIndex >= 0) {
                 // Update existing message
@@ -1339,16 +1390,20 @@ class AppState @Inject constructor(
         return result
     }
 
-    private fun handleSupervisorOutput(payload: JsonObject?) {
+    private fun handleSupervisorOutput(payload: JsonObject?, serverStreamingMessageId: String?) {
         payload ?: return
 
-        val messageId = payload["message_id"]?.jsonPrimitive?.contentOrNull
+        // Use server's streaming_message_id for deduplication across devices
+        // Priority: server streaming ID > local tracking > new UUID
+        val messageId = serverStreamingMessageId
             ?: streamingMessageIds[SUPERVISOR_SESSION_ID]
             ?: UUID.randomUUID().toString()
 
         val contentBlocks = parseContentBlocks(payload["content_blocks"]?.jsonArray, messageId = messageId)
         val textContent = payload["content"]?.jsonPrimitive?.contentOrNull
         val isComplete = payload["is_complete"]?.jsonPrimitive?.booleanOrNull ?: false
+        
+        Log.d(TAG, "Supervisor output: messageId=$messageId, serverStreamingId=$serverStreamingMessageId, blocks=${contentBlocks.size}, isComplete=$isComplete")
 
         // Handle empty blocks case - don't overwrite existing content with empty/blank content
         if (contentBlocks.isEmpty() && textContent.isNullOrBlank()) {
@@ -1375,12 +1430,14 @@ class AppState @Inject constructor(
         }
 
         val messages = _supervisorMessages.value.toMutableList()
-        val streamingId = streamingMessageIds[SUPERVISOR_SESSION_ID]
-        val existingIndex = if (streamingId != null) {
-            messages.indexOfFirst { it.id == streamingId }
-        } else {
-            -1
-        }
+        
+        // Check for existing message by ID (deduplication across devices)
+        // Priority: check by messageId first (includes server's streaming_message_id), then by local tracking
+        val existingIndex = messages.indexOfFirst { it.id == messageId }.takeIf { it >= 0 }
+            ?: streamingMessageIds[SUPERVISOR_SESSION_ID]?.let { streamingId -> 
+                messages.indexOfFirst { it.id == streamingId } 
+            }?.takeIf { it >= 0 }
+            ?: -1
 
         if (existingIndex >= 0) {
             // Update existing message
@@ -1871,10 +1928,71 @@ class AppState @Inject constructor(
         }
     }
 
-    private fun handleSessionSubscribed(sessionId: String?, payload: JsonObject?) {
+    private fun handleSessionSubscribed(sessionId: String?, payload: JsonObject?, serverStreamingMessageId: String?) {
         sessionId ?: return
         subscribedSessions.add(sessionId)
-        Log.d(TAG, "Subscribed to session: $sessionId")
+        
+        // Handle is_executing state from server
+        val isExecuting = payload?.get("is_executing")?.jsonPrimitive?.booleanOrNull ?: false
+        if (isExecuting) {
+            _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
+                put(sessionId, true)
+            }
+        }
+        
+        // Handle current_streaming_blocks for mirror devices joining mid-stream
+        val currentStreamingBlocks = payload?.get("current_streaming_blocks")?.jsonArray
+        if (isExecuting && currentStreamingBlocks != null && currentStreamingBlocks.isNotEmpty()) {
+            // Use server's streaming_message_id for deduplication across devices
+            val streamingMessageId = serverStreamingMessageId ?: UUID.randomUUID().toString()
+            Log.d(TAG, "Session subscribed with ${currentStreamingBlocks.size} streaming blocks, id=$streamingMessageId")
+            
+            val blocks = parseContentBlocks(currentStreamingBlocks, messageId = streamingMessageId)
+            if (blocks.isNotEmpty()) {
+                _agentMessages.value = _agentMessages.value.toMutableMap().apply {
+                    val existingMessages = this[sessionId]?.toMutableList() ?: mutableListOf()
+                    val existingIndex = existingMessages.indexOfFirst { it.id == streamingMessageId }
+                    
+                    if (existingIndex >= 0) {
+                        // Update existing message with new content
+                        val existingMessage = existingMessages[existingIndex]
+                        existingMessages[existingIndex] = Message(
+                            id = existingMessage.id,
+                            sessionId = existingMessage.sessionId,
+                            role = existingMessage.role,
+                            contentBlocks = blocks.toMutableList(),
+                            isStreaming = true,
+                            createdAt = existingMessage.createdAt
+                        )
+                        put(sessionId, existingMessages.toList())
+                        Log.d(TAG, "Updated existing streaming message $streamingMessageId on subscribe")
+                    } else {
+                        // Check if last message is a partial streaming message that needs to be replaced
+                        val lastMessage = existingMessages.lastOrNull()
+                        if (lastMessage != null && 
+                            lastMessage.role == MessageRole.ASSISTANT && 
+                            (lastMessage.isStreaming || streamingMessageIds[sessionId] == lastMessage.id)) {
+                            // Replace the last streaming message with updated content from server
+                            existingMessages.removeLast()
+                        }
+                        
+                        // Create new streaming message with server's ID
+                        val streamingMessage = Message(
+                            id = streamingMessageId,
+                            sessionId = sessionId,
+                            role = MessageRole.ASSISTANT,
+                            contentBlocks = blocks.toMutableList(),
+                            isStreaming = true
+                        )
+                        put(sessionId, existingMessages + streamingMessage)
+                        Log.d(TAG, "Created streaming message $streamingMessageId on subscribe")
+                    }
+                }
+                streamingMessageIds[sessionId] = streamingMessageId
+            }
+        }
+        
+        Log.d(TAG, "Subscribed to session: $sessionId, isExecuting=$isExecuting, hasStreamingBlocks=${currentStreamingBlocks?.isNotEmpty() == true}")
     }
 
     private fun handleSyncState(payload: JsonObject?) {

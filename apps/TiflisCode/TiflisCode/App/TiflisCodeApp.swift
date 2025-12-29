@@ -682,6 +682,8 @@ final class AppState: ObservableObject {
         let key = sessionId ?? "supervisor"
         let hasMore = payload["has_more"] as? Bool ?? false
         let oldestSequence = payload["oldest_sequence"] as? Int
+        // Extract streaming_message_id for current streaming response (if any)
+        let serverStreamingMessageId = payload["streaming_message_id"] as? String
 
         historyPaginationState[key] = HistoryPaginationState(
             oldestSequence: oldestSequence,
@@ -699,6 +701,8 @@ final class AppState: ObservableObject {
         for historyItem in sortedHistory {
             guard let role = historyItem["role"] as? String else { continue }
             let content = historyItem["content"] as? String ?? ""
+            // Use message_id from server if available for deduplication
+            let messageId = historyItem["message_id"] as? String ?? UUID().uuidString
 
             let messageRole: Message.MessageRole = role == "user" ? .user : .assistant
 
@@ -719,11 +723,37 @@ final class AppState: ObservableObject {
 
             let targetSessionId = sessionId ?? "supervisor"
             let parsedMessage = Message(
+                id: messageId,
                 sessionId: targetSessionId,
                 role: messageRole,
                 contentBlocks: blocks
             )
             parsedMessages.append(parsedMessage)
+        }
+
+        // Handle current_streaming_blocks with server's streaming_message_id
+        if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+            let blocks = ContentParser.parseContentBlocks(streamingBlocks)
+            if !blocks.isEmpty {
+                // Use server's streaming_message_id for deduplication
+                let streamingMessageId = serverStreamingMessageId ?? UUID().uuidString
+                let targetSessionId = sessionId ?? "supervisor"
+                let streamingMessage = Message(
+                    id: streamingMessageId,
+                    sessionId: targetSessionId,
+                    role: .assistant,
+                    contentBlocks: blocks,
+                    isStreaming: true
+                )
+                parsedMessages.append(streamingMessage)
+
+                // Track the streaming message ID
+                if sessionId == nil {
+                    supervisorStreamingMessageId = streamingMessageId
+                } else {
+                    agentStreamingMessageIds[sessionId!] = streamingMessageId
+                }
+            }
         }
 
         guard !parsedMessages.isEmpty else {
@@ -732,13 +762,31 @@ final class AppState: ObservableObject {
         }
 
         if sessionId == nil {
+            // Filter out duplicates by message ID
             let existingMessages = supervisorMessages
-            supervisorMessages = parsedMessages + existingMessages
-            print("🔄 handleHistoryResponse: Loaded \(parsedMessages.count) supervisor messages, hasMore=\(hasMore)")
+            let existingIds = Set(existingMessages.map { $0.id })
+            
+            let newMessages = parsedMessages.filter { !existingIds.contains($0.id) }
+            
+            if !newMessages.isEmpty {
+                supervisorMessages = newMessages + existingMessages
+                print("🔄 handleHistoryResponse: Loaded \(newMessages.count) new supervisor messages (filtered \(parsedMessages.count - newMessages.count) duplicates), hasMore=\(hasMore)")
+            } else {
+                print("🔄 handleHistoryResponse: All \(parsedMessages.count) supervisor messages were duplicates, skipping")
+            }
         } else {
+            // Filter out duplicates by message ID
             let existingMessages = agentMessages[sessionId!] ?? []
-            agentMessages[sessionId!] = parsedMessages + existingMessages
-            print("🔄 handleHistoryResponse: Loaded \(parsedMessages.count) messages for session \(sessionId!), hasMore=\(hasMore)")
+            let existingIds = Set(existingMessages.map { $0.id })
+            
+            let newMessages = parsedMessages.filter { !existingIds.contains($0.id) }
+            
+            if !newMessages.isEmpty {
+                agentMessages[sessionId!] = newMessages + existingMessages
+                print("🔄 handleHistoryResponse: Loaded \(newMessages.count) new messages for session \(sessionId!) (filtered \(parsedMessages.count - newMessages.count) duplicates), hasMore=\(hasMore)")
+            } else {
+                print("🔄 handleHistoryResponse: All \(parsedMessages.count) messages for session \(sessionId!) were duplicates, skipping")
+            }
         }
     }
     
@@ -1039,14 +1087,7 @@ final class AppState: ObservableObject {
             sessions.insert(Session(id: "supervisor", type: .supervisor, workspace: nil, project: nil), at: 0)
         }
 
-        if supervisorMessages.isEmpty {
-            let welcomeMessage = Message(
-                sessionId: "supervisor",
-                role: .assistant,
-                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
-            )
-            supervisorMessages = [welcomeMessage]
-        }
+        // Empty state is handled by ChatEmptyState view - no welcome message needed
         print("🔄 handleSyncStateMessage: v1.13 - history loaded on-demand via history.request")
 
         // Restore agent session loading states from server
@@ -1219,18 +1260,8 @@ final class AppState: ObservableObject {
             restoredMessages.append(message)
         }
 
-        // Only update if we got messages
-        if !restoredMessages.isEmpty {
-            supervisorMessages = restoredMessages
-        } else {
-            // Add welcome message if no history
-            let welcomeMessage = Message(
-                sessionId: "supervisor",
-                role: .assistant,
-                content: "Hello! I'm your Supervisor agent. I can help you manage your coding sessions, create new agent instances, and navigate your workspace. What would you like to do?"
-            )
-            supervisorMessages = [welcomeMessage]
-        }
+        // Update messages - empty state is handled by ChatEmptyState view
+        supervisorMessages = restoredMessages
     }
 
     private func restoreAgentHistories(_ histories: [String: [[String: Any]]]) {
@@ -1302,6 +1333,8 @@ final class AppState: ObservableObject {
         guard let payload = message["payload"] as? [String: Any] else { return }
 
         let isComplete = payload["is_complete"] as? Bool ?? false
+        // Extract streaming_message_id from server for deduplication across devices
+        let serverStreamingMessageId = message["streaming_message_id"] as? String
 
         // Parse content blocks if available
         var blocks: [MessageContentBlock] = []
@@ -1326,27 +1359,32 @@ final class AppState: ObservableObject {
             return
         }
 
-        // Update or create streaming message
-        if let streamingId = supervisorStreamingMessageId,
-           let index = supervisorMessages.firstIndex(where: { $0.id == streamingId }) {
-            // Server now sends full accumulated state on each update
-            // Just replace all content blocks with the new ones
+        // Determine message ID: use server's streaming_message_id if available, otherwise local tracking
+        let messageId = serverStreamingMessageId ?? supervisorStreamingMessageId
+
+        // Check if message already exists (deduplication across devices)
+        if let messageId = messageId,
+           let index = supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+            // Update existing message with new content
             var updatedMessage = supervisorMessages[index]
             updatedMessage.contentBlocks = blocks
             updatedMessage.isStreaming = !isComplete
             supervisorMessages[index] = updatedMessage
+            supervisorStreamingMessageId = messageId
             // Trigger scroll on content update
             supervisorScrollTrigger += 1
         } else {
-            // Create new assistant message
+            // Create new assistant message with server's ID if available
+            let newMessageId = serverStreamingMessageId ?? UUID().uuidString
             let newMessage = Message(
+                id: newMessageId,
                 sessionId: "supervisor",
                 role: .assistant,
                 contentBlocks: blocks,
                 isStreaming: !isComplete
             )
             supervisorMessages.append(newMessage)
-            supervisorStreamingMessageId = newMessage.id
+            supervisorStreamingMessageId = newMessageId
             // Trigger scroll on new message
             supervisorScrollTrigger += 1
         }
@@ -1394,18 +1432,10 @@ final class AppState: ObservableObject {
     }
 
     private func handleSupervisorContextCleared(_ message: [String: Any]) {
-        // Clear all messages
+        // Clear all messages - empty state is handled by ChatEmptyState view
         supervisorMessages.removeAll()
         supervisorStreamingMessageId = nil
         supervisorIsLoading = false
-
-        // Show welcome message
-        let welcomeMessage = Message(
-            sessionId: "supervisor",
-            role: .assistant,
-            content: "Context cleared. How can I help you?"
-        )
-        supervisorMessages = [welcomeMessage]
     }
 
     private func handleSupervisorTranscription(_ message: [String: Any]) {
@@ -1516,6 +1546,8 @@ final class AppState: ObservableObject {
               session.type.isAgent else { return }
 
         let isComplete = payload["is_complete"] as? Bool ?? false
+        // Extract streaming_message_id from server for deduplication across devices
+        let serverStreamingMessageId = message["streaming_message_id"] as? String
 
         // Parse content blocks if available
         var blocks: [MessageContentBlock] = []
@@ -1547,9 +1579,12 @@ final class AppState: ObservableObject {
             return
         }
 
-        // Update or create streaming message
-        if let streamingId = agentStreamingMessageIds[sessionId],
-           let index = agentMessages[sessionId]?.firstIndex(where: { $0.id == streamingId }) {
+        // Determine message ID: use server's streaming_message_id if available, otherwise local tracking
+        let messageId = serverStreamingMessageId ?? agentStreamingMessageIds[sessionId]
+
+        // Check if message already exists (deduplication across devices)
+        if let messageId = messageId,
+           let index = agentMessages[sessionId]?.firstIndex(where: { $0.id == messageId }) {
             // Agent sends full accumulated content blocks state on each update
             // Replace entire contentBlocks array, but preserve tool block statuses from results
             var mergedBlocks = blocks
@@ -1589,18 +1624,21 @@ final class AppState: ObservableObject {
 
             agentMessages[sessionId]?[index].contentBlocks = mergedBlocks
             agentMessages[sessionId]?[index].isStreaming = !isComplete
+            agentStreamingMessageIds[sessionId] = messageId
             // Trigger scroll on content update
             agentScrollTriggers[sessionId, default: 0] += 1
         } else {
-            // Create new assistant message
+            // Create new assistant message with server's ID if available
+            let newMessageId = serverStreamingMessageId ?? UUID().uuidString
             let newMessage = Message(
+                id: newMessageId,
                 sessionId: sessionId,
                 role: .assistant,
                 contentBlocks: blocks,
                 isStreaming: !isComplete
             )
             agentMessages[sessionId]?.append(newMessage)
-            agentStreamingMessageIds[sessionId] = newMessage.id
+            agentStreamingMessageIds[sessionId] = newMessageId
             // Trigger scroll on new message
             agentScrollTriggers[sessionId, default: 0] += 1
         }

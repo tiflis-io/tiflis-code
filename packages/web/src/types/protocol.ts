@@ -206,6 +206,7 @@ export interface SupervisorCommandMessage extends BaseMessage {
 
 export interface SupervisorOutputMessage extends BaseMessage {
   type: 'supervisor.output';
+  streaming_message_id?: string; // Stable ID for deduplication across clients
   payload: {
     content_type: 'supervisor';
     content: string;
@@ -268,6 +269,7 @@ export interface SessionSubscribedMessage extends BaseMessage {
   is_executing?: boolean;
   history?: HistoryEntry[];
   current_streaming_blocks?: ServerContentBlock[];
+  streaming_message_id?: string; // Stable ID for deduplication across clients
 }
 
 export interface SessionExecuteMessage extends BaseMessage {
@@ -288,6 +290,7 @@ export interface SessionExecuteMessage extends BaseMessage {
 export interface SessionOutputMessage extends BaseMessage {
   type: 'session.output';
   session_id: string;
+  streaming_message_id?: string; // Stable ID for deduplication across clients
   payload: {
     content_type: 'agent' | 'terminal' | 'transcription';
     content: string;
@@ -421,6 +424,7 @@ export interface HistoryResponseMessage extends BaseMessage {
     newest_sequence?: number; // Sequence of newest message in response
     is_executing?: boolean; // Is currently processing?
     current_streaming_blocks?: ServerContentBlock[]; // In-progress blocks
+    streaming_message_id?: string; // Stable ID for deduplication across clients
     error?: string; // Error message if failed
   };
 }

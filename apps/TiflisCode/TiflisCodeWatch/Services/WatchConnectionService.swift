@@ -663,6 +663,33 @@ final class WatchConnectionService {
             if let isExecuting = payload["is_executing"] as? Bool {
                 updateLoadingStateFromServer(sessionId: "supervisor", isExecuting: isExecuting)
             }
+            
+            // Handle current streaming blocks if joining mid-stream (supervisor)
+            // Use streaming_message_id from server for deduplication across clients
+            if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+                let serverStreamingMessageId = payload["streaming_message_id"] as? String
+                let messageId = serverStreamingMessageId ?? UUID().uuidString
+                let blocks = parseContentBlocks(streamingBlocks)
+                
+                // Check if message with this ID already exists (deduplication)
+                if appState?.supervisorMessages.contains(where: { $0.id == messageId }) == true {
+                    NSLog("⌚️ WatchConnectionService: history.response supervisor streaming message %@ already exists, updating", messageId)
+                    if let idx = appState?.supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                        appState?.supervisorMessages[idx].contentBlocks = blocks
+                        appState?.supervisorMessages[idx].isStreaming = true
+                    }
+                } else {
+                    let streamingMessage = Message(
+                        id: messageId,
+                        sessionId: "supervisor",
+                        role: .assistant,
+                        contentBlocks: blocks,
+                        isStreaming: true
+                    )
+                    appState?.addSupervisorMessage(streamingMessage)
+                    NSLog("⌚️ WatchConnectionService: history.response created supervisor streaming message %@", messageId)
+                }
+            }
         } else if let sessionId = sessionId {
             // Save pending user messages:
             // 1. Those with voiceInput blocks waiting for transcription
@@ -701,16 +728,33 @@ final class WatchConnectionService {
                 updateLoadingStateFromServer(sessionId: sessionId, isExecuting: isExecuting)
             }
             // Handle current streaming blocks if joining mid-stream
+            // Use streaming_message_id from server for deduplication across clients
             if let streamingBlocks = payload["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+                let serverStreamingMessageId = payload["streaming_message_id"] as? String
+                let messageId = serverStreamingMessageId ?? UUID().uuidString
                 let blocks = parseContentBlocks(streamingBlocks)
-                let streamingMessage = Message(
-                    id: UUID().uuidString,
-                    sessionId: sessionId,
-                    role: .assistant,
-                    contentBlocks: blocks,
-                    isStreaming: true
-                )
-                appState?.addAgentMessage(streamingMessage, for: sessionId)
+                
+                // Check if message with this ID already exists (deduplication)
+                let existingMessages = appState?.agentMessages[sessionId] ?? []
+                if existingMessages.contains(where: { $0.id == messageId }) {
+                    NSLog("⌚️ WatchConnectionService: history.response streaming message %@ already exists, updating", messageId)
+                    if var messages = appState?.agentMessages[sessionId],
+                       let idx = messages.firstIndex(where: { $0.id == messageId }) {
+                        messages[idx].contentBlocks = blocks
+                        messages[idx].isStreaming = true
+                        appState?.agentMessages[sessionId] = messages
+                    }
+                } else {
+                    let streamingMessage = Message(
+                        id: messageId,
+                        sessionId: sessionId,
+                        role: .assistant,
+                        contentBlocks: blocks,
+                        isStreaming: true
+                    )
+                    appState?.addAgentMessage(streamingMessage, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: history.response created streaming message %@", messageId)
+                }
             }
         }
 
@@ -783,10 +827,22 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: supervisor.output setting supervisorIsLoading=true")
         }
 
-        // Get or create assistant message
-        let messageId = message["id"] as? String ?? UUID().uuidString
+        // IMPORTANT: Use streaming_message_id from server for deduplication across clients
+        // This ensures all clients use the same ID for the same streaming response
+        let serverStreamingMessageId = message["streaming_message_id"] as? String
+        let messageId = serverStreamingMessageId ?? UUID().uuidString
 
-        if let existingIndex = appState?.supervisorMessages.firstIndex(where: { $0.id == messageId && $0.role == .assistant }) {
+        // First, try to find by server's streaming_message_id
+        var existingIndex: Int? = nil
+        if let serverStreamingMessageId = serverStreamingMessageId {
+            existingIndex = appState?.supervisorMessages.firstIndex(where: { $0.id == serverStreamingMessageId && $0.role == .assistant })
+        }
+        // If not found by server ID, check for any streaming assistant message
+        if existingIndex == nil {
+            existingIndex = appState?.supervisorMessages.firstIndex(where: { $0.isStreaming && $0.role == .assistant })
+        }
+
+        if let existingIndex = existingIndex {
             // Update existing streaming message
             if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
                 let blocks = parseContentBlocks(contentBlocks)
@@ -809,14 +865,23 @@ final class WatchConnectionService {
                 return
             }
 
-            let newMessage = Message(
-                id: messageId,
-                sessionId: "supervisor",
-                role: .assistant,
-                contentBlocks: blocks,
-                isStreaming: !isComplete
-            )
-            appState?.addSupervisorMessage(newMessage)
+            // Check if message with this ID already exists (deduplication)
+            if appState?.supervisorMessages.contains(where: { $0.id == messageId }) == true {
+                NSLog("⌚️ WatchConnectionService: Supervisor message with ID %@ already exists, updating", messageId)
+                if let idx = appState?.supervisorMessages.firstIndex(where: { $0.id == messageId }) {
+                    appState?.supervisorMessages[idx].contentBlocks = blocks
+                    appState?.supervisorMessages[idx].isStreaming = !isComplete
+                }
+            } else {
+                let newMessage = Message(
+                    id: messageId,
+                    sessionId: "supervisor",
+                    role: .assistant,
+                    contentBlocks: blocks,
+                    isStreaming: !isComplete
+                )
+                appState?.addSupervisorMessage(newMessage)
+            }
         }
 
         if isComplete {
@@ -841,7 +906,11 @@ final class WatchConnectionService {
 
         // Default to false (streaming) if not specified - server streams incrementally
         let isComplete = payload["is_complete"] as? Bool ?? false
-        let messageId = message["id"] as? String ?? UUID().uuidString
+        
+        // IMPORTANT: Use streaming_message_id from server for deduplication across clients
+        // This ensures all clients use the same ID for the same streaming response
+        let serverStreamingMessageId = message["streaming_message_id"] as? String
+        let messageId = serverStreamingMessageId ?? UUID().uuidString
 
         // Always set loading indicator when streaming (command might be from another device)
         // This ensures progress shows even for first message with empty/filtered blocks
@@ -851,44 +920,65 @@ final class WatchConnectionService {
             NSLog("⌚️ WatchConnectionService: session.output setting agentIsLoading=true for %@", sessionId)
         }
 
-        NSLog("⌚️ WatchConnectionService: session.output for %@, messageId=%@, isComplete=%d",
-              sessionId, messageId, isComplete ? 1 : 0)
+        NSLog("⌚️ WatchConnectionService: session.output for %@, messageId=%@, streamingId=%@, isComplete=%d",
+              sessionId, messageId, serverStreamingMessageId ?? "nil", isComplete ? 1 : 0)
 
-        if var messages = appState?.agentMessages[sessionId],
-           let existingIndex = messages.firstIndex(where: { $0.id == messageId && $0.role == .assistant }) {
-            // Update existing message
-            if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
-                let blocks = parseContentBlocks(contentBlocks)
-                messages[existingIndex].contentBlocks = blocks
-                messages[existingIndex].isStreaming = !isComplete
-                appState?.agentMessages[sessionId] = messages
-                NSLog("⌚️ WatchConnectionService: Updated existing message, blocks=%d", blocks.count)
+        // First, try to find by server's streaming_message_id
+        var existingIndex: Int? = nil
+        if var messages = appState?.agentMessages[sessionId] {
+            if let serverStreamingMessageId = serverStreamingMessageId {
+                existingIndex = messages.firstIndex(where: { $0.id == serverStreamingMessageId && $0.role == .assistant })
             }
-        } else {
-            // Create new assistant message
-            var blocks: [MessageContentBlock] = []
-            if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
-                blocks = parseContentBlocks(contentBlocks)
-            } else if let content = payload["content"] as? String {
-                blocks = [.text(id: UUID().uuidString, text: content)]
+            // If not found by server ID, check for any streaming assistant message
+            if existingIndex == nil {
+                existingIndex = messages.firstIndex(where: { $0.isStreaming && $0.role == .assistant })
             }
+            
+            if let existingIndex = existingIndex {
+                // Update existing message
+                if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
+                    let blocks = parseContentBlocks(contentBlocks)
+                    messages[existingIndex].contentBlocks = blocks
+                    messages[existingIndex].isStreaming = !isComplete
+                    appState?.agentMessages[sessionId] = messages
+                    NSLog("⌚️ WatchConnectionService: Updated existing message, blocks=%d", blocks.count)
+                }
+            } else {
+                // Create new assistant message
+                var blocks: [MessageContentBlock] = []
+                if let contentBlocks = payload["content_blocks"] as? [[String: Any]] {
+                    blocks = parseContentBlocks(contentBlocks)
+                } else if let content = payload["content"] as? String {
+                    blocks = [.text(id: UUID().uuidString, text: content)]
+                }
 
-            // Only create message if we have actual content blocks
-            // Don't create empty streaming messages - they show unwanted dots
-            guard !blocks.isEmpty else {
-                NSLog("⌚️ WatchConnectionService: Skipping empty agent message for %@", sessionId)
-                return
-            }
+                // Only create message if we have actual content blocks
+                // Don't create empty streaming messages - they show unwanted dots
+                guard !blocks.isEmpty else {
+                    NSLog("⌚️ WatchConnectionService: Skipping empty agent message for %@", sessionId)
+                    return
+                }
 
-            let newMessage = Message(
-                id: messageId,
-                sessionId: sessionId,
-                role: .assistant,
-                contentBlocks: blocks,
-                isStreaming: !isComplete
-            )
-            appState?.addAgentMessage(newMessage, for: sessionId)
-            NSLog("⌚️ WatchConnectionService: Created new message, blocks=%d", blocks.count)
+                // Check if message with this ID already exists (deduplication)
+                if messages.contains(where: { $0.id == messageId }) {
+                    NSLog("⌚️ WatchConnectionService: Agent message with ID %@ already exists, updating", messageId)
+                    if let idx = messages.firstIndex(where: { $0.id == messageId }) {
+                        messages[idx].contentBlocks = blocks
+                        messages[idx].isStreaming = !isComplete
+                        appState?.agentMessages[sessionId] = messages
+                    }
+                } else {
+                    let newMessage = Message(
+                        id: messageId,
+                        sessionId: sessionId,
+                        role: .assistant,
+                        contentBlocks: blocks,
+                        isStreaming: !isComplete
+                    )
+                    appState?.addAgentMessage(newMessage, for: sessionId)
+                    NSLog("⌚️ WatchConnectionService: Created new message, blocks=%d", blocks.count)
+                }
+            }
         }
 
         if isComplete {
@@ -1260,17 +1350,33 @@ final class WatchConnectionService {
         }
 
         // Handle current streaming blocks if joining mid-stream (at root level)
+        // Use streaming_message_id from server for deduplication across clients
         if let streamingBlocks = message["current_streaming_blocks"] as? [[String: Any]], !streamingBlocks.isEmpty {
+            let serverStreamingMessageId = message["streaming_message_id"] as? String
+            let messageId = serverStreamingMessageId ?? UUID().uuidString
             let blocks = parseContentBlocks(streamingBlocks)
-            let streamingMessage = Message(
-                id: UUID().uuidString,
-                sessionId: sessionId,
-                role: .assistant,
-                contentBlocks: blocks,
-                isStreaming: true
-            )
-            appState?.addAgentMessage(streamingMessage, for: sessionId)
-            NSLog("⌚️ WatchConnectionService: session.subscribed added streaming message with %d blocks", blocks.count)
+            
+            // Check if message with this ID already exists (deduplication)
+            let existingMessages = appState?.agentMessages[sessionId] ?? []
+            if existingMessages.contains(where: { $0.id == messageId }) {
+                NSLog("⌚️ WatchConnectionService: session.subscribed streaming message %@ already exists, updating", messageId)
+                if var messages = appState?.agentMessages[sessionId],
+                   let idx = messages.firstIndex(where: { $0.id == messageId }) {
+                    messages[idx].contentBlocks = blocks
+                    messages[idx].isStreaming = true
+                    appState?.agentMessages[sessionId] = messages
+                }
+            } else {
+                let streamingMessage = Message(
+                    id: messageId,
+                    sessionId: sessionId,
+                    role: .assistant,
+                    contentBlocks: blocks,
+                    isStreaming: true
+                )
+                appState?.addAgentMessage(streamingMessage, for: sessionId)
+                NSLog("⌚️ WatchConnectionService: session.subscribed added streaming message %@ with %d blocks", messageId, blocks.count)
+            }
         }
     }
 
