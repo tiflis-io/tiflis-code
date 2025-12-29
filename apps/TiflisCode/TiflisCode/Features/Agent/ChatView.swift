@@ -8,7 +8,11 @@
 
 import SwiftUI
 
-/// Unified chat interface for Supervisor and Agent sessions
+private struct ScrollPositionData: Equatable {
+    let isAtBottom: Bool
+    let isNearTop: Bool
+}
+
 struct ChatView: View {
     let session: Session
     @Binding var columnVisibility: NavigationSplitViewVisibility
@@ -20,11 +24,9 @@ struct ChatView: View {
     @State private var showTerminateConfirmation = false
     @State private var showClearContextConfirmation = false
 
-    // Scroll state - hybrid approach:
-    // - ScrollPosition for programmatic scrollTo (reliable)
-    // - onScrollGeometryChange for detecting position (reliable)
     @State private var scrollPosition = ScrollPosition(edge: .bottom)
     @State private var isAtBottom = true
+    @State private var isNearTop = false
     @State private var lastScrollTime: Date = .distantPast
 
     /// Minimum interval between throttled scroll calls (100ms)
@@ -59,9 +61,10 @@ struct ChatView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Messages or Empty State
-            if viewModel.messages.isEmpty && !viewModel.isLoading {
-                // Empty state
+            if viewModel.messages.isEmpty && viewModel.isHistoryLoading {
+                ProgressView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if viewModel.messages.isEmpty && !viewModel.isLoading {
                 ChatEmptyState(session: session)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .onTapGesture {
@@ -71,6 +74,13 @@ struct ChatView: View {
                 ZStack(alignment: .bottomTrailing) {
                     ScrollView {
                         LazyVStack(spacing: 16) {
+                            if viewModel.isHistoryLoading {
+                                ProgressView()
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 8)
+                                    .id("history-loading")
+                            }
+
                             ForEach(viewModel.displaySegments) { segment in
                                 MessageSegmentBubble(
                                     segment: segment,
@@ -81,13 +91,11 @@ struct ChatView: View {
                                 .id(segment.id)
                             }
 
-                            // Typing indicator - show when waiting for response or during streaming
                             if isStreaming {
                                 TypingIndicator(sessionType: session.type)
                                     .id("typing-indicator")
                             }
 
-                            // Bottom anchor - invisible view for scroll target
                             Color.clear
                                 .frame(height: 1)
                                 .id("bottom-anchor")
@@ -98,21 +106,23 @@ struct ChatView: View {
                     .onTapGesture {
                         hideKeyboard()
                     }
-                    // Track scroll position to detect when user scrolls away from bottom
-                    .onScrollGeometryChange(for: Bool.self) { geometry in
-                        // Consider "at bottom" if within threshold of the bottom
-                        // Accounts for: overscroll bounce, content padding, and input bar overlap
+                    .onScrollGeometryChange(for: ScrollPositionData.self) { geometry in
                         let distanceFromBottom = geometry.contentSize.height - geometry.contentOffset.y - geometry.containerSize.height
-                        return distanceFromBottom <= 200
-                    } action: { _, newIsAtBottom in
-                        // Always update state - geometry callback fires during scroll interactions
-                        isAtBottom = newIsAtBottom
+                        let distanceFromTop = geometry.contentOffset.y
+                        return ScrollPositionData(
+                            isAtBottom: distanceFromBottom <= 200,
+                            isNearTop: distanceFromTop <= 100
+                        )
+                    } action: { _, newData in
+                        isAtBottom = newData.isAtBottom
+                        if newData.isNearTop && !isNearTop {
+                            viewModel.loadMoreHistory()
+                        }
+                        isNearTop = newData.isNearTop
                     }
-                    // Force scroll to bottom on any content update
                     .onChange(of: viewModel.scrollTrigger) { _, _ in
                         forceScrollToBottom()
                     }
-                    // Initial scroll to bottom when view appears with messages
                     .onAppear {
                         if !viewModel.messages.isEmpty {
                             scrollPosition.scrollTo(id: "bottom-anchor", anchor: .bottom)
@@ -242,8 +252,8 @@ struct ChatView: View {
             Text("This will clear all conversation history with the Supervisor. This action cannot be undone.")
         }
         .onAppear {
-            // Refresh session state to sync messages from other devices
             viewModel.refreshSession()
+            viewModel.loadHistory()
         }
     }
     

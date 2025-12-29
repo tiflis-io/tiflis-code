@@ -4,7 +4,7 @@
  * @license FSL-1.1-NC
  */
 
-import { eq, desc, gt, and, max } from 'drizzle-orm';
+import { eq, desc, gt, lt, and, max, count } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { getDatabase } from '../database/client.js';
 import { messages, type MessageRow, type NewMessageRow } from '../database/schema.js';
@@ -56,10 +56,6 @@ export class MessageRepository {
     return { ...newMessage, createdAt: newMessage.createdAt } as MessageRow;
   }
 
-  /**
-   * Gets messages for a session with pagination.
-   * Returns messages ordered by sequence descending (newest first).
-   */
   getBySession(sessionId: string, limit = 100): MessageRow[] {
     const db = getDatabase();
     return db
@@ -71,9 +67,41 @@ export class MessageRepository {
       .all();
   }
 
-  /**
-   * Gets messages after a specific timestamp.
-   */
+  getBySessionPaginated(
+    sessionId: string,
+    options: { beforeSequence?: number; limit?: number } = {}
+  ): { messages: MessageRow[]; hasMore: boolean; totalCount: number } {
+    const db = getDatabase();
+    const limit = Math.min(options.limit ?? 20, 50);
+
+    const totalResult = db
+      .select({ count: count() })
+      .from(messages)
+      .where(eq(messages.sessionId, sessionId))
+      .get();
+    const totalCount = totalResult?.count ?? 0;
+
+    const whereClause = options.beforeSequence
+      ? and(
+          eq(messages.sessionId, sessionId),
+          lt(messages.sequence, options.beforeSequence)
+        )
+      : eq(messages.sessionId, sessionId);
+
+    const rows = db
+      .select()
+      .from(messages)
+      .where(whereClause)
+      .orderBy(desc(messages.sequence))
+      .limit(limit + 1)
+      .all();
+
+    const hasMore = rows.length > limit;
+    const resultMessages = hasMore ? rows.slice(0, limit) : rows;
+
+    return { messages: resultMessages, hasMore, totalCount };
+  }
+
   getAfterTimestamp(sessionId: string, timestamp: Date, limit = 100): MessageRow[] {
     const db = getDatabase();
     return db

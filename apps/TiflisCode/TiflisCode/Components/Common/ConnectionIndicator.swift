@@ -73,6 +73,8 @@ struct ConnectionPopover: View {
     @State private var magicLink = ""
     @State private var showDisconnectConfirmation = false
     
+    private let keychainManager = KeychainManager()
+    
     /// App version from Bundle
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
@@ -158,11 +160,11 @@ struct ConnectionPopover: View {
                     )
                 }
                 
-                // 7. Disconnect button with confirmation
+                // 7. Disconnect & Forget button with confirmation
                 Button {
                     showDisconnectConfirmation = true
                 } label: {
-                    Text("Disconnect")
+                    Text("Disconnect & Forget")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -190,14 +192,25 @@ struct ConnectionPopover: View {
         }
         .padding()
         .frame(width: 320)
-        .alert("Disconnect", isPresented: $showDisconnectConfirmation) {
-            Button("Disconnect", role: .destructive) {
+        .alert("Disconnect & Forget", isPresented: $showDisconnectConfirmation) {
+            Button("Disconnect & Forget", role: .destructive) {
+                // Clear stored credentials
+                tunnelURL = ""
+                tunnelId = ""
+                try? keychainManager.deleteAuthKey()
+                UserDefaults.standard.removeObject(forKey: "debug_auth_key")
+                
+                // Disconnect from server
                 appState.disconnect()
+                
+                // Sync cleared credentials to Watch
+                WatchConnectivityManager.shared.updateApplicationContext()
+                
                 dismiss()
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Are you sure you want to disconnect from the workstation?")
+            Text("This will disconnect and delete all stored connection data. You will need to scan a QR code or paste a magic link again to reconnect.")
         }
         .sheet(isPresented: $showQRScanner) {
             QRScannerView { result in

@@ -57,7 +57,9 @@ export const SyncMessageSchema = z.object({
 // ============================================================================
 
 export const HistoryRequestPayloadSchema = z.object({
-  session_id: z.string().optional(), // If omitted, returns supervisor history
+  session_id: z.string().nullable().optional(),
+  before_sequence: z.number().int().optional(),
+  limit: z.number().int().min(1).max(50).optional(),
 });
 
 export const HistoryRequestSchema = z.object({
@@ -106,7 +108,7 @@ export const TerminateSessionSchema = z.object({
 export const SupervisorCommandPayloadSchema = z.object({
   command: z.string().optional(),
   audio: z.string().optional(),
-  audio_format: z.enum(['m4a', 'wav', 'mp3']).optional(),
+  audio_format: z.enum(['m4a', 'wav', 'mp3', 'webm', 'opus']).optional(),
   message_id: z.string().optional(),
   language: z.string().optional(),
 }).refine(
@@ -157,7 +159,7 @@ export const SessionExecutePayloadSchema = z.object({
   content: z.string().optional(), // Primary field for text content
   text: z.string().optional(),    // Alias for content (backward compat)
   audio: z.string().optional(),
-  audio_format: z.enum(['m4a', 'wav', 'mp3']).optional(),
+  audio_format: z.enum(['m4a', 'wav', 'mp3', 'webm', 'opus']).optional(),
   message_id: z.string().optional(), // For linking transcription back to voice message
   language: z.string().optional(),
   tts_enabled: z.boolean().optional(),
@@ -340,6 +342,18 @@ export function parseClientMessage(data: unknown) {
     return result.data;
   }
   return undefined;
+}
+
+export type ParseClientMessageResult =
+  | { success: true; data: z.infer<typeof IncomingClientMessageSchema> }
+  | { success: false; errors: z.ZodIssue[] };
+
+export function parseClientMessageWithErrors(data: unknown): ParseClientMessageResult {
+  const result = IncomingClientMessageSchema.safeParse(data);
+  if (result.success) {
+    return { success: true, data: result.data };
+  }
+  return { success: false, errors: result.error.issues };
 }
 
 /**

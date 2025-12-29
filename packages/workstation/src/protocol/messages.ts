@@ -145,6 +145,7 @@ export interface AuthErrorMessage {
 export interface SyncMessage {
   type: 'sync';
   id: string;
+  lightweight?: boolean; // If true, excludes message histories (for performance)
 }
 
 /**
@@ -193,6 +194,21 @@ export interface TerminateSessionMessage {
   id: string;
   payload: {
     session_id: string;
+  };
+}
+
+/**
+ * Mobile → Workstation: Execute supervisor command
+ */
+export interface SupervisorCommandMessage {
+  type: 'supervisor.command';
+  id: string;
+  payload: {
+    command?: string;
+    audio?: string;
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
+    message_id?: string;
+    language?: string;
   };
 }
 
@@ -253,7 +269,7 @@ export interface SessionExecuteMessage {
   payload: {
     text?: string;
     audio?: string;
-    audio_format?: 'm4a' | 'wav' | 'mp3';
+    audio_format?: 'm4a' | 'wav' | 'mp3' | 'webm' | 'opus';
     language?: string;
     tts_enabled?: boolean;
   };
@@ -500,6 +516,7 @@ export type IncomingClientMessage =
   | ListSessionsMessage
   | CreateSessionMessage
   | TerminateSessionMessage
+  | SupervisorCommandMessage
   | SupervisorCancelMessage
   | SessionSubscribeMessage
   | SessionUnsubscribeMessage

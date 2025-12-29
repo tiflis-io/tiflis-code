@@ -215,6 +215,8 @@ class ConnectionService @Inject constructor(
         val payload = message["payload"]?.jsonObject
         val sessionId = message["session_id"]?.jsonPrimitive?.contentOrNull
         val requestId = message["id"]?.jsonPrimitive?.contentOrNull
+        // Extract streaming_message_id from root level for deduplication across devices
+        val streamingMessageId = message["streaming_message_id"]?.jsonPrimitive?.contentOrNull
 
         Log.d(TAG, "Handling message type: $type")
 
@@ -226,8 +228,8 @@ class ConnectionService @Inject constructor(
             // Session events
             "session.created" -> emitMessage(WebSocketMessage.SessionCreated(sessionId, payload))
             "session.terminated" -> emitMessage(WebSocketMessage.SessionTerminated(sessionId, payload))
-            "session.output" -> emitMessage(WebSocketMessage.SessionOutput(sessionId, payload))
-            "session.subscribed" -> emitMessage(WebSocketMessage.SessionSubscribed(sessionId, payload))
+            "session.output" -> emitMessage(WebSocketMessage.SessionOutput(sessionId, payload, streamingMessageId))
+            "session.subscribed" -> emitMessage(WebSocketMessage.SessionSubscribed(sessionId, payload, streamingMessageId))
             "session.unsubscribed" -> emitMessage(WebSocketMessage.SessionUnsubscribed(sessionId))
             "session.resized" -> emitMessage(WebSocketMessage.SessionResized(sessionId, payload))
             "session.replay.data" -> emitMessage(WebSocketMessage.SessionReplayData(sessionId, payload))
@@ -236,7 +238,7 @@ class ConnectionService @Inject constructor(
             "session.voice_output" -> emitMessage(WebSocketMessage.SessionVoiceOutput(sessionId, payload))
 
             // Supervisor events
-            "supervisor.output" -> emitMessage(WebSocketMessage.SupervisorOutput(payload))
+            "supervisor.output" -> emitMessage(WebSocketMessage.SupervisorOutput(payload, streamingMessageId))
             "supervisor.sessions" -> emitMessage(WebSocketMessage.SupervisorSessions(payload))
             "supervisor.user_message" -> emitMessage(WebSocketMessage.SupervisorUserMessage(payload))
             "supervisor.transcription" -> emitMessage(WebSocketMessage.SupervisorTranscription(payload))
@@ -248,6 +250,12 @@ class ConnectionService @Inject constructor(
 
             // Message acknowledgment
             "message.ack" -> emitMessage(WebSocketMessage.MessageAck(payload))
+
+            // History response (Protocol v1.13) - streaming_message_id is in payload for history
+            "history.response" -> {
+                val historyStreamingId = payload?.get("streaming_message_id")?.jsonPrimitive?.contentOrNull
+                emitMessage(WebSocketMessage.HistoryResponse(requestId, payload, historyStreamingId))
+            }
 
             // Response/Error
             "response" -> emitMessage(WebSocketMessage.Response(requestId, payload))
@@ -387,8 +395,10 @@ sealed class WebSocketMessage {
     // Session messages
     data class SessionCreated(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
     data class SessionTerminated(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
-    data class SessionOutput(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
-    data class SessionSubscribed(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
+    /** Session output with optional streaming_message_id for deduplication across devices */
+    data class SessionOutput(val sessionId: String?, val payload: JsonObject?, val streamingMessageId: String? = null) : WebSocketMessage()
+    /** Session subscribed with optional streaming_message_id for current streaming response */
+    data class SessionSubscribed(val sessionId: String?, val payload: JsonObject?, val streamingMessageId: String? = null) : WebSocketMessage()
     data class SessionUnsubscribed(val sessionId: String?) : WebSocketMessage()
     data class SessionResized(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
     data class SessionReplayData(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
@@ -397,7 +407,8 @@ sealed class WebSocketMessage {
     data class SessionVoiceOutput(val sessionId: String?, val payload: JsonObject?) : WebSocketMessage()
 
     // Supervisor messages
-    data class SupervisorOutput(val payload: JsonObject?) : WebSocketMessage()
+    /** Supervisor output with optional streaming_message_id for deduplication across devices */
+    data class SupervisorOutput(val payload: JsonObject?, val streamingMessageId: String? = null) : WebSocketMessage()
     data class SupervisorSessions(val payload: JsonObject?) : WebSocketMessage()
     data class SupervisorUserMessage(val payload: JsonObject?) : WebSocketMessage()
     data class SupervisorTranscription(val payload: JsonObject?) : WebSocketMessage()
@@ -416,4 +427,7 @@ sealed class WebSocketMessage {
     // Response/Error
     data class Response(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
     data class Error(val requestId: String?, val payload: JsonObject?) : WebSocketMessage()
+
+    // History response (Protocol v1.13) with optional streaming_message_id for current streaming response
+    data class HistoryResponse(val requestId: String?, val payload: JsonObject?, val streamingMessageId: String? = null) : WebSocketMessage()
 }

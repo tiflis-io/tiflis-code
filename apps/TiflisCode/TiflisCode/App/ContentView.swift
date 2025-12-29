@@ -14,9 +14,20 @@ struct ContentView: View {
     @State private var showCreateSessionSheet = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     
+    /// Check if we should show the connect screen
+    /// Show ConnectView when:
+    /// 1. No connection config exists (first launch or after disconnect & forget)
+    /// 2. Not in screenshot testing mode (screenshots need full app)
+    private var shouldShowConnectView: Bool {
+        !appState.hasConnectionConfig && !AppState.isScreenshotTesting
+    }
+    
     var body: some View {
         Group {
-            if horizontalSizeClass == .compact {
+            if shouldShowConnectView {
+                // Not connected: Show connect screen
+                ConnectView()
+            } else if horizontalSizeClass == .compact {
                 // iPhone: Custom drawer navigation
                 DrawerNavigationView(showCreateSessionSheet: $showCreateSessionSheet)
             } else {

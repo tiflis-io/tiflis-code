@@ -59,7 +59,6 @@ struct WatchSessionListView: View {
                             .scaledToFit()
                     ),
                     title: "Supervisor",
-                    subtitle: nil,
                     isActive: appState.connectionState.isConnected && appState.workstationOnline,
                     hasUnread: appState.supervisorIsLoading
                 )
@@ -76,8 +75,7 @@ struct WatchSessionListView: View {
                 } label: {
                     WatchSessionRow(
                         icon: AnyView(sessionIcon(for: session)),
-                        title: session.displayName,
-                        subtitle: sessionSubtitle(for: session),
+                        title: session.fullDisplayName(relativeTo: appState.workspacesRoot),
                         isActive: session.status == .active,
                         hasUnread: appState.agentIsLoading[session.id] ?? false
                     )
@@ -117,23 +115,12 @@ struct WatchSessionListView: View {
             return .secondary
         }
     }
-
-    private func sessionSubtitle(for session: Session) -> String? {
-        if let workspace = session.workspace, let project = session.project {
-            if let worktree = session.worktree {
-                return "\(workspace)/\(project)--\(worktree)"
-            }
-            return "\(workspace)/\(project)"
-        }
-        return nil
-    }
 }
 
 /// Row displaying a single session in the list
 struct WatchSessionRow: View {
     let icon: AnyView
     let title: String
-    let subtitle: String?
     let isActive: Bool
     let hasUnread: Bool
 
@@ -143,16 +130,8 @@ struct WatchSessionRow: View {
             icon
                 .frame(width: 20, height: 20)
 
-            VStack(alignment: .leading, spacing: 1) {
-                // Session name with marquee scrolling
-                MarqueeText(text: title, font: .system(size: 13), height: 16)
-
-                // Project/workspace info (workspace/project) with marquee scrolling
-                if let subtitle = subtitle {
-                    MarqueeText(text: subtitle, font: .system(size: 10), height: 12)
-                        .foregroundStyle(.secondary)
-                }
-            }
+            // Session name with marquee scrolling (includes workspace/project for agents)
+            MarqueeText(text: title, font: .system(size: 13), height: 16)
 
             Spacer()
 

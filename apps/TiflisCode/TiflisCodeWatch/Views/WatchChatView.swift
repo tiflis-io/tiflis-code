@@ -433,34 +433,35 @@ struct WatchChatView: View {
     }
 
     /// Load chat history and subscribe to session updates (on-demand)
-    /// For agent sessions, subscribes to receive real-time session.output messages
+    /// Protocol v1.13: Always use history.request for lazy loading
+    /// For agent sessions, also subscribes to receive real-time session.output messages
     private func loadHistory() async {
         switch destination {
         case .supervisor:
-            // Only load if no messages yet (supervisor history is usually pre-loaded)
-            if appState.supervisorMessages.isEmpty {
-                NSLog("⌚️ WatchChatView.loadHistory: requesting supervisor history")
-                await appState.requestHistory(sessionId: nil)
-            }
+            // Always request history on view appear (lazy loading per v1.13)
+            // Server will return paginated results (limit=10 by default for watchOS)
+            NSLog("⌚️ WatchChatView.loadHistory: requesting supervisor history")
+            await appState.requestHistory(sessionId: nil)
+
         case .agent(let session):
             // Subscribe to agent session to receive real-time updates
             // This is critical - without subscription, session.output messages won't be received
             // because workstation broadcasts agent messages only to subscribed clients
             NSLog("⌚️ WatchChatView.loadHistory: subscribing to agent session %@", session.id)
             await appState.connectionService?.subscribeToSession(sessionId: session.id)
-            // Note: session.subscribed response includes history, so no separate history request needed
+            // Note: subscribeToSession now triggers history.request internally (v1.13)
         }
     }
 
     // MARK: - Computed Properties
 
-    /// Navigation title string
+    /// Navigation title string (includes workspace/project for agent sessions)
     private var navTitle: String {
         switch destination {
         case .supervisor:
             return "Supervisor"
         case .agent(let session):
-            return session.displayName
+            return session.fullDisplayName(relativeTo: appState.workspacesRoot)
         }
     }
 

@@ -42,6 +42,13 @@ const EnvSchema = z.object({
    * Custom WebSocket path (defaults to /ws).
    */
   WS_PATH: z.string().default('/ws'),
+
+  /**
+   * Optional path to web client static files directory.
+   * When set, the tunnel server will serve the web client at the root path.
+   * Example: "./node_modules/@tiflis-io/tiflis-code-web/dist"
+   */
+  WEB_CLIENT_PATH: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

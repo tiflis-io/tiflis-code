@@ -67,6 +67,9 @@ final class WatchAppState: ObservableObject {
     /// STT language (synced from iPhone)
     @Published var sttLanguage: String = "en"
 
+    /// Workspaces root directory from workstation (for computing relative paths)
+    @Published var workspacesRoot: String = ""
+
     // MARK: - Debug State (visible in UI when logs don't work)
 
     @Published var debugAppStartTime: Date = Date()
@@ -392,15 +395,25 @@ final class WatchAppState: ObservableObject {
 
     // MARK: - Message Management
 
-    /// Add a supervisor message (with limit)
+    /// Add a supervisor message (with deduplication and limit)
     func addSupervisorMessage(_ message: Message) {
+        // Deduplicate by message ID
+        if supervisorMessages.contains(where: { $0.id == message.id }) {
+            NSLog("⌚️ WatchAppState: Skipping duplicate supervisor message id=%@", message.id)
+            return
+        }
         supervisorMessages.append(message)
         trimSupervisorMessages()
     }
 
-    /// Add an agent message (with limit)
+    /// Add an agent message (with deduplication and limit)
     func addAgentMessage(_ message: Message, for sessionId: String) {
         var messages = agentMessages[sessionId] ?? []
+        // Deduplicate by message ID
+        if messages.contains(where: { $0.id == message.id }) {
+            NSLog("⌚️ WatchAppState: Skipping duplicate agent message id=%@ for session=%@", message.id, sessionId)
+            return
+        }
         messages.append(message)
         if messages.count > maxMessagesPerSession {
             messages.removeFirst(messages.count - maxMessagesPerSession)

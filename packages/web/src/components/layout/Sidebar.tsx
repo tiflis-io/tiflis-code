@@ -1,0 +1,459 @@
+// Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+// Licensed under the FSL-1.1-NC.
+
+import { useState, useCallback } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
+import { useAppStore } from '@/store/useAppStore';
+import { useSettingsStore } from '@/store/useSettingsStore';
+import { useWebSocket } from '@/hooks/useWebSocket';
+import { CreateSessionDialog } from '@/components/session/CreateSessionDialog';
+import { cn } from '@/lib/utils';
+import {
+  Settings,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+} from 'lucide-react';
+import {
+  SupervisorIcon,
+  ClaudeIcon,
+  OpenCodeIcon,
+  CursorIcon,
+  TerminalIcon,
+  AgentIcon,
+} from '@/components/icons';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toastFunctions as toast } from '@/components/ui/toast';
+import type { Session, SessionStatus } from '@/types';
+
+/**
+ * Session status indicator dot
+ */
+function StatusIndicator({ status }: { status: SessionStatus }) {
+  const statusConfig = {
+    active: {
+      className: 'bg-green-500',
+      label: 'Active',
+    },
+    busy: {
+      className: 'bg-blue-500 animate-pulse',
+      label: 'Processing',
+    },
+    idle: {
+      className: 'bg-yellow-500',
+      label: 'Idle',
+    },
+  };
+
+  const config = statusConfig[status] || statusConfig.idle;
+
+  return (
+    <span
+      className={cn('w-2 h-2 rounded-full shrink-0', config.className)}
+      title={config.label}
+      aria-label={`Status: ${config.label}`}
+    />
+  );
+}
+
+export function Sidebar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const sessions = useAppStore((state) => state.sessions);
+  const selectedSessionId = useAppStore((state) => state.selectedSessionId);
+  const selectSession = useAppStore((state) => state.selectSession);
+  const removeSession = useAppStore((state) => state.removeSession);
+  const workstationInfo = useAppStore((state) => state.workstationInfo);
+  const sidebarCollapsed = useSettingsStore((state) => state.sidebarCollapsed);
+  const toggleSidebar = useSettingsStore((state) => state.toggleSidebar);
+  const { terminateSession } = useWebSocket();
+
+  const [sessionToDelete, setSessionToDelete] = useState<Session | null>(null);
+
+  const workspacesRoot = workstationInfo?.workspacesRoot ?? '';
+
+  const handleDeleteSession = useCallback((session: Session, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSessionToDelete(session);
+  }, []);
+
+  const confirmDeleteSession = useCallback(() => {
+    if (!sessionToDelete) return;
+    
+    terminateSession(sessionToDelete.id);
+    removeSession(sessionToDelete.id);
+    
+    if (selectedSessionId === sessionToDelete.id) {
+      navigate('/chat');
+    }
+    
+    toast.success('Session Terminated', `${getTypeDisplayName(sessionToDelete.type)} session has been closed.`);
+    setSessionToDelete(null);
+  }, [sessionToDelete, terminateSession, removeSession, selectedSessionId, navigate]);
+
+  const supervisorActive = !selectedSessionId && location.pathname === '/chat';
+  
+  const settingsActive = location.pathname === '/settings';
+  
+  // Check if the current session is active
+  const isSessionActive = (sessionId: string) => {
+    return selectedSessionId === sessionId && location.pathname === `/chat/${sessionId}`;
+  };
+  
+  // Get the base path and session ID for navigation
+  const getCurrentPathBase = () => {
+    return '/chat';
+  };
+  
+  const getSessionPath = (sessionId: string) => {
+    return `/chat/${sessionId}`;
+  };
+
+  const agentSessions = sessions.filter((s) => s.type !== 'terminal');
+  const terminalSessions = sessions.filter((s) => s.type === 'terminal');
+
+  const handleSupervisorClick = () => {
+    selectSession(null);
+    navigate(getCurrentPathBase());
+  };
+
+  const handleSessionClick = (session: Session) => {
+    selectSession(session.id);
+    if (session.type === 'terminal') {
+      navigate(`/terminal/${session.id}`);
+    } else {
+      navigate(getSessionPath(session.id));
+    }
+  };
+
+  const handleSettingsClick = () => {
+    navigate('/settings');
+  };
+  
+  
+
+  const getSessionIcon = (session: Session) => {
+    switch (session.type) {
+      case 'terminal':
+        return <TerminalIcon className="w-4 h-4" />;
+      case 'claude':
+        return <ClaudeIcon className="w-4 h-4" />;
+      case 'cursor':
+        return <CursorIcon className="w-4 h-4" />;
+      case 'opencode':
+        return <OpenCodeIcon className="w-4 h-4" />;
+      default:
+        return <AgentIcon className="w-4 h-4" />;
+    }
+  };
+
+  // Get display name for session type
+  const getTypeDisplayName = (type: string): string => {
+    switch (type) {
+      case 'claude':
+        return 'Claude Code';
+      case 'cursor':
+        return 'Cursor';
+      case 'opencode':
+        return 'OpenCode';
+      case 'terminal':
+        return 'Terminal';
+      case 'supervisor':
+        return 'Supervisor';
+      default:
+        return type.charAt(0).toUpperCase() + type.slice(1);
+    }
+  };
+
+  // Get display name for session (with alias in parentheses if present)
+  const getSessionDisplayName = (session: Session): string => {
+    const typeName = getTypeDisplayName(session.type);
+    if (session.agentName && session.agentName !== session.type) {
+      return `${typeName} (${session.agentName})`;
+    }
+    return typeName;
+  };
+
+  // Get subtitle for session (workspace/project path relative to workspacesRoot)
+  const getSessionSubtitle = (session: Session): string | null => {
+    // Check if we have real workspace/project (not sentinel values used for terminal defaults)
+    const hasRealWorkspace = session.workspace && session.workspace !== 'home';
+    const hasRealProject = session.project && session.project !== 'default';
+
+    // If we have real workspace/project, show that format (relative by nature)
+    if (hasRealWorkspace && hasRealProject) {
+      if (session.worktree) {
+        return `${session.workspace}/${session.project}--${session.worktree}`;
+      }
+      return `${session.workspace}/${session.project}`;
+    }
+
+    // Otherwise compute relative path from workspaces root
+    if (!session.workingDir) {
+      // No working dir - return "~" if using sentinel values (terminal at home)
+      return (!hasRealWorkspace && !hasRealProject) ? '~' : null;
+    }
+
+    if (!workspacesRoot) {
+      // No root known - fallback to absolute path
+      return session.workingDir;
+    }
+
+    // Remove root prefix to get relative path
+    if (session.workingDir.startsWith(workspacesRoot)) {
+      let relative = session.workingDir.slice(workspacesRoot.length);
+      // Remove leading slash if present
+      if (relative.startsWith('/')) {
+        relative = relative.slice(1);
+      }
+      // Return "~" for empty relative path (at root)
+      return relative || '~';
+    }
+
+    // Path doesn't start with root - return as-is
+    return session.workingDir;
+  };
+
+  return (
+    <aside className="flex flex-col h-full" aria-label="Session navigation">
+      {/* Header */}
+      <div className="p-4 border-b space-y-2">
+        <div className="flex items-center justify-between">
+          {!sidebarCollapsed && (
+            <h1 className="font-semibold text-lg">Tiflis Code</h1>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleSidebar}
+            className={cn(sidebarCollapsed && 'mx-auto')}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+          >
+            {sidebarCollapsed ? (
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            ) : (
+              <ChevronLeft className="w-4 h-4" aria-hidden="true" />
+            )}
+          </Button>
+        </div>
+        
+        
+      </div>
+
+      {/* Navigation */}
+      <nav className="flex-1 overflow-auto p-2 space-y-1" aria-label="Sessions">
+        {/* Supervisor */}
+        <Button
+          variant={supervisorActive ? 'secondary' : 'ghost'}
+          className={cn(
+            'w-full justify-start',
+            sidebarCollapsed && 'justify-center px-2'
+          )}
+          onClick={handleSupervisorClick}
+          aria-current={supervisorActive ? 'page' : undefined}
+          aria-label={sidebarCollapsed ? 'Supervisor' : undefined}
+        >
+          <SupervisorIcon className="w-4 h-4" aria-hidden="true" />
+          {!sidebarCollapsed && <span className="ml-2">Supervisor</span>}
+        </Button>
+
+        {/* Agent Sessions */}
+        {agentSessions.length > 0 && (
+          <section className="pt-4" aria-label="Agent sessions">
+            {!sidebarCollapsed && (
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
+                Agent Sessions
+              </h2>
+            )}
+            <ul role="list" className="space-y-1">
+              {agentSessions.map((session) => {
+                const subtitle = getSessionSubtitle(session);
+                const displayName = getSessionDisplayName(session);
+                return (
+                  <li key={session.id} className="group relative">
+                    <Button
+                      variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full justify-start h-auto py-2 pr-8',
+                        sidebarCollapsed && 'justify-center px-2 pr-2'
+                      )}
+                      onClick={() => handleSessionClick(session)}
+                      aria-current={isSessionActive(session.id) ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? `${displayName}${subtitle ? ` - ${subtitle}` : ''}` : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <span aria-hidden="true">{getSessionIcon(session)}</span>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={session.status} />
+                        </span>
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium">
+                            {displayName}
+                          </span>
+                          {subtitle && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {subtitle}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </Button>
+                    {!sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(session, e)}
+                        className={cn(
+                          'absolute right-1 top-1/2 -translate-y-1/2',
+                          'p-1.5 rounded-md',
+                          'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                          'transition-opacity'
+                        )}
+                        aria-label={`Delete ${displayName} session`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* Terminal Sessions */}
+        {terminalSessions.length > 0 && (
+          <section className="pt-4" aria-label="Terminal sessions">
+            {!sidebarCollapsed && (
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
+                Terminals
+              </h2>
+            )}
+            <ul role="list" className="space-y-1">
+              {terminalSessions.map((session) => {
+                const subtitle = getSessionSubtitle(session);
+                return (
+                  <li key={session.id} className="group relative">
+                    <Button
+                      variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full justify-start h-auto py-2 pr-8',
+                        sidebarCollapsed && 'justify-center px-2 pr-2'
+                      )}
+                      onClick={() => handleSessionClick(session)}
+                      aria-current={isSessionActive(session.id) ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? `Terminal${subtitle ? ` - ${subtitle}` : ''}` : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <span aria-hidden="true">{getSessionIcon(session)}</span>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={session.status} />
+                        </span>
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium">Terminal</span>
+                          {subtitle && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {subtitle}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </Button>
+                    {!sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(session, e)}
+                        className={cn(
+                          'absolute right-1 top-1/2 -translate-y-1/2',
+                          'p-1.5 rounded-md',
+                          'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                          'transition-opacity'
+                        )}
+                        aria-label="Delete terminal session"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
+        {/* New Session Button */}
+        <div className="pt-4">
+          <CreateSessionDialog>
+            <Button
+              variant="outline"
+              className={cn(
+                'w-full justify-start',
+                sidebarCollapsed && 'justify-center px-2'
+              )}
+              aria-label={sidebarCollapsed ? 'Create new session' : undefined}
+            >
+              <Plus className="w-4 h-4" aria-hidden="true" />
+              {!sidebarCollapsed && <span className="ml-2">New Session</span>}
+            </Button>
+          </CreateSessionDialog>
+        </div>
+      </nav>
+
+      {/* Footer */}
+      <div className="p-2 border-t">
+        <Button
+          variant={settingsActive ? 'secondary' : 'ghost'}
+          className={cn(
+            'w-full justify-start',
+            sidebarCollapsed && 'justify-center px-2'
+          )}
+          onClick={handleSettingsClick}
+          aria-current={settingsActive ? 'page' : undefined}
+          aria-label={sidebarCollapsed ? 'Settings' : undefined}
+        >
+          <Settings className="w-4 h-4" aria-hidden="true" />
+          {!sidebarCollapsed && <span className="ml-2">Settings</span>}
+        </Button>
+      </div>
+
+      <AlertDialog open={!!sessionToDelete} onOpenChange={(open) => !open && setSessionToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Terminate Session?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will end the {sessionToDelete ? getTypeDisplayName(sessionToDelete.type) : ''} session
+              {sessionToDelete?.project && ` for ${sessionToDelete.project}`}.
+              You will need to create a new session to continue.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteSession}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Terminate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </aside>
+  );
+}

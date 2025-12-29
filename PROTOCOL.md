@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.12-blue" alt="Version 1.12">
+  <img src="https://img.shields.io/badge/version-1.13-blue" alt="Version 1.13">
   <img src="https://img.shields.io/badge/status-Draft-orange" alt="Draft">
   <img src="https://img.shields.io/badge/transport-WebSocket%20%7C%20HTTP-green" alt="WebSocket | HTTP">
 </p>
@@ -26,7 +26,15 @@
 
 ## Changelog
 
-### Version 1.12 (Current)
+### Version 1.13 (Current)
+- **Breaking:** `sync.state` no longer includes `supervisorHistory` or `agentHistories` — clients must use `history.request` for lazy loading
+- **Breaking:** `session.subscribed` no longer includes `history` array — clients must use `history.request` after subscribing
+- **Added:** Pagination support in `history.request` with `before_sequence` and `limit` parameters
+- **Added:** `has_more`, `oldest_sequence`, `newest_sequence` fields in `history.response` for pagination
+- **Removed:** `lightweight` flag from `sync` message — all syncs are now lightweight by default
+- **Performance:** Sync payload reduced from ~100KB-1MB to ~5-10KB, enabling instant session list display
+
+### Version 1.12
 - **Added:** `message.ack` message for delivery status confirmation (pending → sent → failed)
 - **Optimized:** Connection timing for faster disconnect detection (~5-8 seconds instead of ~40 seconds)
 - **Changed:** `PING_INTERVAL` reduced from 20s to 5s for faster liveness detection
@@ -941,13 +949,9 @@ Audio data is excluded from `sync.state` to reduce message size. Clients can req
 
     // For agent sessions:
     is_executing?: boolean,           // Is agent currently executing a command?
-    history?: Array<{                 // Message history (last 50 messages)
-      role: "user" | "assistant",
-      content: string,
-      content_blocks?: ContentBlock[],
-      timestamp: number
-    }>,
     current_streaming_blocks?: ContentBlock[]  // In-progress response blocks (if is_executing=true)
+
+    // Note: history removed in v1.13 — use history.request for lazy loading
   }
 }
 
@@ -1358,12 +1362,14 @@ Sent after TTS synthesis of agent response:
 
 ### 7.1 State Synchronization (after reconnect)
 
+Sync provides session metadata only — **no message histories**. Clients must use `history.request` to load chat messages on-demand.
+
 ```typescript
 // Request
 {
   type: "sync",
-  id: string,
-  lightweight?: boolean  // If true, excludes message histories (for watchOS)
+  id: string
+  // Note: lightweight flag removed in v1.13 — all syncs are lightweight
 }
 
 // Response
@@ -1382,93 +1388,169 @@ Sent after TTS synthesis of agent response:
       agent_alias?: string      // Custom alias name (e.g., "zai")
     }>,
     subscriptions: string[],    // Session IDs client was subscribed to
-    supervisorHistory?: Array<{
-      role: "user" | "assistant",
-      content: string,
-      content_blocks?: ContentBlock[],
-      sequence: number,
-      createdAt: string
-    }>,
 
     // Execution state (for UI indicators)
     supervisorIsExecuting?: boolean,       // Is supervisor currently processing?
     executingStates?: Record<string, boolean>,  // Map of session_id → is_executing
 
-    // In-progress streaming (for devices joining mid-generation)
-    currentStreamingBlocks?: ContentBlock[]    // Supervisor's current response blocks
+    // In-progress streaming ONLY (for devices joining mid-generation)
+    currentStreamingBlocks?: ContentBlock[]    // Supervisor's current response blocks (only if supervisorIsExecuting=true)
+
+    // Available resources
+    availableAgents?: Array<{
+      name: string,
+      base_type: string,
+      description?: string,
+      is_alias: boolean
+    }>,
+    workspaces?: Array<{
+      name: string,
+      projects: Array<{ name: string, is_git_repo: boolean, default_branch?: string }>
+    }>,
+    hiddenBaseTypes?: string[]  // Agent types to hide from UI (e.g., ["terminal"])
   }
 }
 ```
 
-#### Audio Optimization in Sync
+#### Why No History in Sync?
 
-To reduce `sync.state` message size, audio data is **not included** during synchronization:
+**Performance optimization** — sync.state is sent on every reconnect and app launch:
 
-- `voice_input` and `voice_output` blocks have `has_audio: true` instead of `audio_base64`
-- Clients should display audio controls when `has_audio: true`
-- Audio can be requested on-demand via separate API (future enhancement)
+| Before (v1.12) | After (v1.13) |
+|----------------|---------------|
+| ~100KB - 1MB payload | ~5-10KB payload |
+| Includes all chat messages | Session metadata only |
+| Slow on mobile networks | Instant response |
 
-This optimization prevents "Message too long" errors when reconnecting with large chat histories containing voice messages.
+Clients load history on-demand when user opens a specific chat via `history.request`.
 
-#### Lightweight Sync (watchOS)
+#### Sync Flow (v1.13)
 
-When `lightweight: true` is set in the sync request, the response **excludes**:
-- `supervisorHistory` (supervisor chat messages)
-- `agentHistories` (agent session messages)
-- `currentStreamingBlocks` (in-progress response blocks)
+```
+1. App Launch / Reconnect
+   → Client sends: sync
+   ← Server sends: sync.state (sessions, agents, workspaces — NO history)
+   → UI shows session list immediately
 
-This is used by watchOS clients to:
-1. Get session list quickly without transferring chat histories
-2. Load chat history on-demand when user opens a specific chat
+2. User Opens Chat
+   → Client sends: history.request { limit: 20 }
+   ← Server sends: history.response { history: [...], has_more: true }
+   → UI shows last 20 messages
 
-### 7.2 History Request (On-Demand Chat Loading)
+3. User Scrolls Up
+   → Client sends: history.request { before_sequence: 15, limit: 20 }
+   ← Server sends: history.response { history: [...], has_more: true/false }
+   → UI prepends older messages
+```
 
-Used by watchOS and other resource-constrained clients to load chat history on-demand.
+### 7.2 History Request (Paginated Chat Loading)
+
+**All clients** must use `history.request` to load chat messages. Supports pagination for efficient loading.
 
 ```typescript
-// Request supervisor history
-{
-  type: "history.request",
-  id: string,
-  payload: {}  // Empty or omit payload for supervisor
-}
-
-// Request agent session history
+// Request (with pagination)
 {
   type: "history.request",
   id: string,
   payload: {
-    session_id: string  // Target session
+    session_id?: string,       // Target session (omit or null for supervisor)
+    before_sequence?: number,  // Load messages BEFORE this sequence (for scroll-up pagination)
+    limit?: number             // Max messages to return (default: 20, max: 50)
   }
 }
 
-// Response
+// Response (with pagination metadata)
 {
   type: "history.response",
   id: string,
   payload: {
     session_id: string | null,  // null = supervisor
     history: Array<{
-      sequence: number,
+      message_id: string,       // Unique message ID
+      sequence: number,         // For ordering and pagination
       role: "user" | "assistant",
       content: string,
       content_blocks?: ContentBlock[],
       createdAt: string
     }>,
+
+    // Pagination metadata
+    has_more: boolean,          // Are there older messages?
+    oldest_sequence?: number,   // Sequence of oldest message in response (use for next before_sequence)
+    newest_sequence?: number,   // Sequence of newest message in response
+
+    // Execution state
     is_executing?: boolean,           // Is currently processing?
     current_streaming_blocks?: ContentBlock[],  // In-progress blocks (if is_executing)
-    error?: string                    // Error message if failed
+
+    error?: string              // Error message if failed
   }
 }
 ```
 
-**Client Implementation:**
+#### Pagination Examples
 
-1. On app launch, send `sync` with `lightweight: true`
-2. Display session list from `sync.state` (no message data)
-3. When user opens a chat, send `history.request` for that session
-4. On `history.response`, populate the chat UI with messages
-5. Continue receiving real-time updates via normal message flow
+**Initial load (newest messages):**
+```typescript
+// Request
+{ type: "history.request", id: "1", payload: { limit: 20 } }
+
+// Response
+{
+  type: "history.response",
+  id: "1",
+  payload: {
+    session_id: null,
+    history: [/* messages seq 81-100 */],
+    has_more: true,
+    oldest_sequence: 81,
+    newest_sequence: 100
+  }
+}
+```
+
+**Load older messages (scroll up):**
+```typescript
+// Request — load messages before sequence 81
+{ type: "history.request", id: "2", payload: { before_sequence: 81, limit: 20 } }
+
+// Response
+{
+  type: "history.response",
+  id: "2",
+  payload: {
+    session_id: null,
+    history: [/* messages seq 61-80 */],
+    has_more: true,
+    oldest_sequence: 61,
+    newest_sequence: 80
+  }
+}
+```
+
+**End of history:**
+```typescript
+// Response when no more messages
+{
+  type: "history.response",
+  id: "3",
+  payload: {
+    session_id: null,
+    history: [/* messages seq 1-20 */],
+    has_more: false,  // No older messages
+    oldest_sequence: 1,
+    newest_sequence: 20
+  }
+}
+```
+
+#### Client Implementation
+
+1. **On app launch:** Send `sync` → receive session list (no history)
+2. **When user opens chat:** Send `history.request { limit: 20 }` → display newest messages
+3. **When user scrolls to top:** Send `history.request { before_sequence: oldest, limit: 20 }` → prepend older messages
+4. **Continue until `has_more: false`**
+5. **Real-time updates:** Continue receiving `supervisor.output` / `session.output` for new messages
 
 ### 7.3 Message Replay (recover missed messages)
 
@@ -1577,8 +1659,8 @@ function handleTerminalOutput(payload) {
 |------|-------------|
 | `auth` | Authenticate client |
 | `ping` | Heartbeat |
-| `sync` | Request state sync (supports `lightweight` flag for watchOS) |
-| `history.request` | Request chat history for a session (on-demand loading) |
+| `sync` | Request state sync (sessions, agents, workspaces — no history) |
+| `history.request` | Request paginated chat history for a session (with before_sequence, limit) |
 | `supervisor.list_sessions` | List active sessions |
 | `supervisor.create_session` | Create new session |
 | `supervisor.terminate_session` | Terminate session |
@@ -1607,11 +1689,11 @@ function handleTerminalOutput(payload) {
 | `heartbeat.ack` | Heartbeat acknowledgment with workstation uptime |
 | `message.ack` | Message delivery acknowledgment (for send status UI) |
 | `audio.response` | Audio data response (or error if unavailable) |
-| `sync.state` | State sync data (audio excluded, use `has_audio` flags; histories excluded if `lightweight`) |
-| `history.response` | Chat history for a session (supervisor or agent) |
+| `sync.state` | State sync data (sessions, agents, workspaces — NO histories, use `history.request`) |
+| `history.response` | Paginated chat history with `has_more`, `oldest_sequence`, `newest_sequence` |
 | `session.created` | Session was created |
 | `session.terminated` | Session was terminated |
-| `session.subscribed` | Subscribed to session (terminals: `is_master`/`cols`/`rows`; agents: `history`/`is_executing`/`current_streaming_blocks`) |
+| `session.subscribed` | Subscribed to session (terminals: `is_master`/`cols`/`rows`; agents: `is_executing`/`current_streaming_blocks` — NO history) |
 | `session.unsubscribed` | Unsubscribed from session |
 | `session.resized` | Terminal resize result (success/failure, actual size) |
 | `session.output` | Session output (agent/terminal/transcription), includes `sequence` for terminal |

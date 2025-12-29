@@ -51,6 +51,7 @@
 		6F2817BFF2C37637D26D474A /* ChatViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB75449B21DE78202E5D2CB4 /* ChatViewModel.swift */; };
 		70A77CCF3CED2FF7CD4CE34A /* MessageContentBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C5054E9EFCEE85C0182BD5D /* MessageContentBlock.swift */; };
 		7529F5D406D6A8638BD2E797 /* CommandSendError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50742433ABF0EB4FA817D389 /* CommandSendError.swift */; };
+		7806FCABD9CF4E056EA2BE71 /* ConnectView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F3E6268B89771B7677926DB /* ConnectView.swift */; };
 		7B167969FE14DD38AD0387B4 /* String+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DF7BC9FF0D2FE6159FE95E /* String+Extensions.swift */; };
 		7C6A53B16A79D15E212CE32C /* TerminalView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E45A48D49667369980A068E8 /* TerminalView.swift */; };
 		7E0C0A236161F8340AB76CA0 /* TerminalToolbarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E763AC6E5F196C7C42A88923 /* TerminalToolbarView.swift */; };
@@ -159,6 +160,7 @@
 		1EB369A0324105A5DCC91A1C /* KeychainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainManager.swift; sourceTree = "<group>"; };
 		29FC17194FE43A5058DCC060 /* WatchScreenshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchScreenshotTests.swift; sourceTree = "<group>"; };
 		2D35A999999055053D03394B /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		2F3E6268B89771B7677926DB /* ConnectView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectView.swift; sourceTree = "<group>"; };
 		2FD23EFAA7CD1C122DF89A3E /* AudioPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerView.swift; sourceTree = "<group>"; };
 		308C9D6BE0BF345A41C8A1E5 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		32E60A01A6CD8188BE8F9028 /* ContentParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentParser.swift; sourceTree = "<group>"; };
@@ -340,6 +342,14 @@
 			path = Models;
 			sourceTree = "<group>";
 		};
+		3862F911D2E4411852FA7ADD /* Connect */ = {
+			isa = PBXGroup;
+			children = (
+				2F3E6268B89771B7677926DB /* ConnectView.swift */,
+			);
+			path = Connect;
+			sourceTree = "<group>";
+		};
 		3F125140FF4FB3EC00F3C699 /* Services */ = {
 			isa = PBXGroup;
 			children = (
@@ -518,6 +528,7 @@
 			isa = PBXGroup;
 			children = (
 				B81897029C3100B7B359C0C3 /* Agent */,
+				3862F911D2E4411852FA7ADD /* Connect */,
 				320908D6F72242F4943ECF03 /* Navigation */,
 				EC5071502C357389EF2548F4 /* Settings */,
 				47B9610030BC0EA6B32CEC71 /* Terminal */,
@@ -853,6 +864,7 @@
 				9C45B42BBFA9B0B2119F292D /* CommandSendError.swift in Sources */,
 				7ED799C96E1C58CC78FB9EBB /* CommandSender.swift in Sources */,
 				07B747C219E03769286FCADA /* CommandSending.swift in Sources */,
+				7806FCABD9CF4E056EA2BE71 /* ConnectView.swift in Sources */,
 				82BA132FEEB1B99AA9733464 /* ConnectionIndicator.swift in Sources */,
 				1AA46119450009A543FBD9D1 /* ConnectionService.swift in Sources */,
 				0B39AC7F60AA3708C559E64E /* ConnectionState.swift in Sources */,

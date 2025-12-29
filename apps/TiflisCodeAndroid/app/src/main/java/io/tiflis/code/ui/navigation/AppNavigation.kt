@@ -27,6 +27,7 @@ import androidx.navigation.navArgument
 import io.tiflis.code.MainActivity
 import io.tiflis.code.domain.models.SessionType
 import io.tiflis.code.ui.chat.ChatScreen
+import io.tiflis.code.ui.connect.ConnectScreen
 import io.tiflis.code.ui.settings.QRScannerScreen
 import io.tiflis.code.ui.settings.SettingsScreen
 import io.tiflis.code.ui.sidebar.SidebarScreen
@@ -41,6 +42,7 @@ import kotlinx.coroutines.launch
  */
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
+    data object Connect : Screen("connect")
     data object Supervisor : Screen("supervisor")
     data object Settings : Screen("settings")
     data object QRScanner : Screen("qr_scanner")
@@ -98,6 +100,15 @@ fun AppNavigation(
         }
     }
 
+    // Track if credentials exist to show/hide drawer
+    val hasCredentials = remember { mutableStateOf(appState.hasCredentials()) }
+    
+    // Update hasCredentials when connection state changes
+    val connectionState by appState.connectionState.collectAsState()
+    LaunchedEffect(connectionState) {
+        hasCredentials.value = appState.hasCredentials()
+    }
+
     // Auto-connect on app start if credentials exist
     LaunchedEffect(Unit) {
         if (appState.hasCredentials()) {
@@ -132,7 +143,16 @@ fun AppNavigation(
         }
     }
 
-    if (isExpandedScreen) {
+    // Show ConnectScreen without drawer when no credentials
+    // Skip this check in screenshot testing mode
+    if (!hasCredentials.value && !ScreenshotTestConfig.isScreenshotTesting) {
+        NavigationContent(
+            navController = navController,
+            appState = appState,
+            onMenuClick = { /* No-op when not connected */ },
+            showConnectScreen = true
+        )
+    } else if (isExpandedScreen) {
         // Tablet: Permanent drawer/rail layout
         PermanentNavigationDrawer(
             drawerContent = {
@@ -151,14 +171,15 @@ fun AppNavigation(
             NavigationContent(
                 navController = navController,
                 appState = appState,
-                onMenuClick = { /* No-op for tablet */ }
+                onMenuClick = { /* No-op for tablet */ },
+                showConnectScreen = false
             )
         }
     } else {
         // Phone: Modal drawer
         ModalNavigationDrawer(
             drawerState = drawerState,
-            gesturesEnabled = true,
+            gesturesEnabled = hasCredentials.value, // Disable drawer gestures when not connected
             drawerContent = {
                 ModalDrawerSheet {
                     SidebarScreen(
@@ -173,7 +194,8 @@ fun AppNavigation(
             NavigationContent(
                 navController = navController,
                 appState = appState,
-                onMenuClick = { scope.launch { drawerState.open() } }
+                onMenuClick = { scope.launch { drawerState.open() } },
+                showConnectScreen = false
             )
         }
     }
@@ -183,13 +205,14 @@ fun AppNavigation(
 private fun NavigationContent(
     navController: NavHostController,
     appState: AppState,
-    onMenuClick: () -> Unit
+    onMenuClick: () -> Unit,
+    showConnectScreen: Boolean = false
 ) {
-    // Skip splash screen in screenshot testing mode for faster test execution
-    val startDestination = if (ScreenshotTestConfig.isScreenshotTesting) {
-        Screen.Supervisor.route
-    } else {
-        Screen.Splash.route
+    // Determine start destination based on credentials and testing mode
+    val startDestination = when {
+        ScreenshotTestConfig.isScreenshotTesting -> Screen.Supervisor.route
+        showConnectScreen -> Screen.Connect.route
+        else -> Screen.Splash.route
     }
 
     NavHost(
@@ -197,11 +220,37 @@ private fun NavigationContent(
         startDestination = startDestination,
         modifier = Modifier.fillMaxSize()
     ) {
+        // Connect screen (shown when no credentials)
+        composable(Screen.Connect.route) {
+            // Track connection state to detect when credentials become available
+            val connectionState by appState.connectionState.collectAsState()
+            
+            ConnectScreen(
+                appState = appState,
+                onScanQR = { navController.navigate(Screen.QRScanner.route) }
+            )
+            
+            // Navigate to Supervisor when connected successfully
+            LaunchedEffect(connectionState) {
+                if (connectionState.isConnected && appState.hasCredentials()) {
+                    navController.navigate(Screen.Supervisor.route) {
+                        popUpTo(Screen.Connect.route) { inclusive = true }
+                    }
+                }
+            }
+        }
+        
         // Splash screen
         composable(Screen.Splash.route) {
             SplashScreen(
                 onSplashComplete = {
-                    navController.navigate(Screen.Supervisor.route) {
+                    // After splash, check if we have credentials
+                    val destination = if (appState.hasCredentials()) {
+                        Screen.Supervisor.route
+                    } else {
+                        Screen.Connect.route
+                    }
+                    navController.navigate(destination) {
                         popUpTo(Screen.Splash.route) { inclusive = true }
                     }
                 }

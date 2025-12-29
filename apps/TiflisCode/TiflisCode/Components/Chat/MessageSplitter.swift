@@ -173,7 +173,7 @@ enum MessageSplitter {
 
     /// Estimate the height of a block in "line units"
     /// 1 unit ≈ 1 line of text height
-    private static func estimatedHeightUnits(of block: MessageContentBlock) -> Int {
+    private static func estimatedHeightUnits(of block: MessageContentBlock) -> Int {    
         switch block {
         case .text(_, let text):
             // Count actual newlines + estimate wrapped lines

@@ -357,8 +357,33 @@ enum CommandBuilder {
 
     // MARK: - System Commands
 
-    /// Request state synchronization
-    /// - Returns: Command configuration with 3 retries and queue enabled
+    static func historyRequest(
+        sessionId: String?,
+        beforeSequence: Int? = nil,
+        limit: Int = 20
+    ) -> CommandConfig {
+        var payload: [String: Any] = [:]
+        if let sessionId = sessionId {
+            payload["session_id"] = sessionId
+        }
+        if let beforeSequence = beforeSequence {
+            payload["before_sequence"] = beforeSequence
+        }
+        payload["limit"] = limit
+
+        let message: [String: Any] = [
+            "type": "history.request",
+            "id": UUID().uuidString,
+            "payload": payload
+        ]
+        return CommandConfig(
+            message: message,
+            maxRetries: 3,
+            shouldQueue: true,
+            debugName: "history.request"
+        )
+    }
+
     static func sync() -> CommandConfig {
         let message: [String: Any] = [
             "type": "sync",

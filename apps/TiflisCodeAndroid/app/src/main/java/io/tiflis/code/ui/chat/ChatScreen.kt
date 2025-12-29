@@ -159,13 +159,15 @@ fun ChatScreen(
         }
     }
 
-    // Subscribe to agent session and refresh state to sync from other devices
+    // Subscribe to agent session and request history (Protocol v1.13)
     LaunchedEffect(sessionId, sessionType) {
         if (sessionType != SessionType.SUPERVISOR) {
-            // Always refresh to get latest state from server
-            // This ensures we sync messages from other devices
+            // Subscribe to session for real-time updates
             appState.refreshSession(sessionId)
+            // Request history for this session (Protocol v1.13 lazy loading)
+            appState.requestHistory(sessionId)
         }
+        // Note: Supervisor history is requested automatically in handleSyncState
     }
 
     // Note: TTS auto-play is now handled directly in AppState voice output handlers

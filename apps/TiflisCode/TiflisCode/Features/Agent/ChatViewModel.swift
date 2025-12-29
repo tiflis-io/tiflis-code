@@ -226,6 +226,9 @@ final class ChatViewModel: ObservableObject {
         let isExecuting = message["is_executing"] as? Bool ?? false
         isLoading = isExecuting
 
+        // Extract streaming_message_id from server for deduplication across devices
+        let serverStreamingMessageId = message["streaming_message_id"] as? String
+
         // Restore history from server if we don't have local messages
         // This ensures messages are not lost on reconnection or when opening chat
         if let history = message["history"] as? [[String: Any]], !history.isEmpty {
@@ -252,17 +255,31 @@ final class ChatViewModel: ObservableObject {
         if isExecuting,
            let streamingBlocks = message["current_streaming_blocks"] as? [[String: Any]],
            !streamingBlocks.isEmpty {
-            restoreStreamingBlocks(streamingBlocks, sessionId: sessionId)
+            restoreStreamingBlocks(streamingBlocks, sessionId: sessionId, serverStreamingMessageId: serverStreamingMessageId)
         }
     }
 
     /// Restore current streaming blocks when joining mid-stream (mirror device) or reconnecting
-    private func restoreStreamingBlocks(_ blocks: [[String: Any]], sessionId: String) {
+    private func restoreStreamingBlocks(_ blocks: [[String: Any]], sessionId: String, serverStreamingMessageId: String? = nil) {
         let parsedBlocks = ContentParser.parseContentBlocks(blocks)
         guard !parsedBlocks.isEmpty else { return }
 
         // Get current messages for this session
         var currentMessages = appState?.getAgentMessages(for: sessionId) ?? []
+
+        // Use server's streaming_message_id for deduplication across devices
+        let messageId = serverStreamingMessageId ?? UUID().uuidString
+
+        // Check if message with this ID already exists (deduplication)
+        if let existingIndex = currentMessages.firstIndex(where: { $0.id == messageId }) {
+            // Update existing message with new content
+            currentMessages[existingIndex].contentBlocks = parsedBlocks
+            currentMessages[existingIndex].isStreaming = true
+            appState?.setAgentMessages(currentMessages, for: sessionId)
+            appState?.setAgentStreamingMessageId(messageId, for: sessionId)
+            print("📱 ChatViewModel: Updated existing streaming message \(messageId) with \(parsedBlocks.count) blocks")
+            return
+        }
 
         // Check if last message is a partial streaming message that needs to be replaced
         // This handles reconnection where we had partial content before disconnect
@@ -273,8 +290,9 @@ final class ChatViewModel: ObservableObject {
             currentMessages.removeLast()
         }
 
-        // Create a new streaming message with the current blocks from server
+        // Create a new streaming message with server's ID for deduplication
         let streamingMessage = Message(
+            id: messageId,
             sessionId: sessionId,
             role: .assistant,
             contentBlocks: parsedBlocks,
@@ -284,9 +302,9 @@ final class ChatViewModel: ObservableObject {
         // Add to messages and track as streaming
         currentMessages.append(streamingMessage)
         appState?.setAgentMessages(currentMessages, for: sessionId)
-        appState?.setAgentStreamingMessageId(streamingMessage.id, for: sessionId)
+        appState?.setAgentStreamingMessageId(messageId, for: sessionId)
 
-        print("📱 ChatViewModel: Restored streaming blocks (\(parsedBlocks.count) blocks) for session \(sessionId)")
+        print("📱 ChatViewModel: Restored streaming blocks (\(parsedBlocks.count) blocks) for session \(sessionId) with ID \(messageId)")
     }
 
     /// Restore agent message history from session.subscribed response
@@ -480,15 +498,73 @@ final class ChatViewModel: ObservableObject {
         }
     }
 
-    /// Refresh session state by re-subscribing to get latest messages from server
-    /// Call this when the view appears to sync state from other devices
     func refreshSession() {
         guard session.type.isAgent else { return }
         guard connectionService.connectionState == .authenticated else { return }
-
-        // Always re-subscribe to get latest state from server
-        // This ensures we sync messages from other devices
         subscribeToSession()
+    }
+
+    // MARK: - History Loading
+
+    var isHistoryLoading: Bool {
+        let sessionId = session.type == .supervisor ? nil : session.id
+        return appState?.isHistoryLoading(for: sessionId) ?? false
+    }
+
+    var hasMoreHistory: Bool {
+        let sessionId = session.type == .supervisor ? nil : session.id
+        return appState?.hasMoreHistory(for: sessionId) ?? true
+    }
+
+    func loadHistory() {
+        guard connectionService.connectionState == .authenticated || connectionService.connectionState == .verified else { return }
+        guard !isHistoryLoading else { return }
+        guard messages.isEmpty else { return }
+
+        let sessionId = session.type == .supervisor ? nil : session.id
+        setHistoryLoading(true, for: sessionId)
+
+        let config = CommandBuilder.historyRequest(sessionId: sessionId, limit: 20)
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure = result {
+                self.setHistoryLoading(false, for: sessionId)
+            }
+        }
+    }
+
+    func loadMoreHistory() {
+        guard connectionService.connectionState == .authenticated || connectionService.connectionState == .verified else { return }
+        guard !isHistoryLoading else { return }
+        guard hasMoreHistory else { return }
+
+        let sessionId = session.type == .supervisor ? nil : session.id
+        let beforeSequence = appState?.oldestLoadedSequence(for: sessionId)
+        setHistoryLoading(true, for: sessionId)
+
+        let config = CommandBuilder.historyRequest(sessionId: sessionId, beforeSequence: beforeSequence, limit: 20)
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+            let result = await self.commandSender.send(config)
+            if case .failure = result {
+                self.setHistoryLoading(false, for: sessionId)
+            }
+        }
+    }
+
+    private func setHistoryLoading(_ loading: Bool, for sessionId: String?) {
+        let key = sessionId ?? "supervisor"
+        if var state = appState?.historyPaginationState[key] {
+            state.isLoading = loading
+            appState?.historyPaginationState[key] = state
+        } else {
+            appState?.historyPaginationState[key] = AppState.HistoryPaginationState(
+                oldestSequence: nil,
+                hasMore: true,
+                isLoading: loading
+            )
+        }
     }
 
     func startRecording() {

@@ -23,7 +23,7 @@ jobs:
   typescript:
     name: TypeScript CI
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -40,17 +40,29 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint
+      - name: Lint Tunnel
         run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" lint
 
-      - name: Type check
+      - name: Lint Web
+        run: pnpm --filter "@tiflis-io/tiflis-code-web" lint
+
+      - name: Type check Tunnel
         run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" typecheck
 
-      - name: Build
+      - name: Type check Web
+        run: pnpm --filter "@tiflis-io/tiflis-code-web" typecheck
+
+      - name: Build Tunnel
         run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" build
 
-      - name: Test
+      - name: Build Web
+        run: pnpm --filter "@tiflis-io/tiflis-code-web" build
+
+      - name: Test Tunnel
         run: pnpm --filter "@tiflis-io/tiflis-code-tunnel" test
+
+      - name: Test Web
+        run: pnpm --filter "@tiflis-io/tiflis-code-web" test
 
   # ─────────────────────────────────────────────────────────────
   # Docker Build Test (no push, just verify it builds)
