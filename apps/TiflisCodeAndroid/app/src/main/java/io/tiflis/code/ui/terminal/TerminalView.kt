@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.res.ResourcesCompat
 import io.tiflis.code.R
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharedFlow
 
 /**
@@ -114,12 +115,29 @@ fun TerminalView(
         }
     }
 
-    // Collect terminal output
+    // Batch terminal output for smooth rendering
+    // Accumulates output and flushes every 8ms (120fps cadence, leaves room for 60fps display)
+    var pendingOutput by remember { mutableStateOf("") }
+    var flushScheduled by remember { mutableStateOf(false) }
+
+    // Collect terminal output with batching
     LaunchedEffect(Unit) {
         terminalOutput.collect { data ->
-            emulator.write(data)
-            screen = emulator.getScreen()
-            cursor = emulator.getCursor()
+            pendingOutput += data
+
+            // Schedule a flush if not already scheduled
+            if (!flushScheduled) {
+                flushScheduled = true
+                // Use a small delay to batch multiple rapid updates
+                delay(8) // 8ms batch interval
+                if (pendingOutput.isNotEmpty()) {
+                    emulator.write(pendingOutput)
+                    screen = emulator.getScreen()
+                    cursor = emulator.getCursor()
+                    pendingOutput = ""
+                }
+                flushScheduled = false
+            }
         }
     }
 

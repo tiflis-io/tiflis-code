@@ -73,6 +73,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   // Resize debounce ref
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Write batching refs - batch terminal writes to reduce redraws
+  // Uses requestAnimationFrame to sync with display refresh (60fps)
+  const pendingWriteDataRef = useRef<string>('');
+  const writeRafIdRef = useRef<number | null>(null);
+
   const { sendTerminalInput, resizeTerminal, subscribeToSession } = useWebSocket();
   const connectionState = useAppStore((state) => state.connectionState);
   const { resolvedTheme } = useTheme();
@@ -154,6 +159,23 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, isConnected, sendTerminalInput, subscribeToSession]);
 
+  // Queue terminal data for batched writing
+  // Uses requestAnimationFrame to batch multiple writes into a single render
+  const queueTerminalWrite = useCallback((data: string) => {
+    pendingWriteDataRef.current += data;
+
+    // Schedule a write on the next animation frame if not already scheduled
+    if (writeRafIdRef.current === null) {
+      writeRafIdRef.current = requestAnimationFrame(() => {
+        if (terminalRef.current && pendingWriteDataRef.current) {
+          terminalRef.current.write(pendingWriteDataRef.current);
+        }
+        pendingWriteDataRef.current = '';
+        writeRafIdRef.current = null;
+      });
+    }
+  }, []);
+
   // Handle resize with debouncing
   const handleResize = useCallback(() => {
     if (resizeTimeoutRef.current !== null) {
@@ -201,13 +223,14 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     }
   }, [terminalTheme]);
 
-  // Write terminal output from WebSocket
+  // Write terminal output from WebSocket using batched writes
   useEffect(() => {
     if (!terminalRef.current) return;
 
     const handleTerminalOutput = (event: CustomEvent<{ sessionId: string; data: string }>) => {
-      if (event.detail.sessionId === sessionId && terminalRef.current) {
-        terminalRef.current.write(event.detail.data);
+      if (event.detail.sessionId === sessionId) {
+        // Use batched write to reduce redraws and improve performance
+        queueTerminalWrite(event.detail.data);
       }
     };
 
@@ -215,8 +238,18 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
     return () => {
       window.removeEventListener('terminal-output', handleTerminalOutput as EventListener);
+      // Cancel any pending animation frame on cleanup
+      if (writeRafIdRef.current !== null) {
+        cancelAnimationFrame(writeRafIdRef.current);
+        writeRafIdRef.current = null;
+      }
+      // Flush any pending data before cleanup
+      if (terminalRef.current && pendingWriteDataRef.current) {
+        terminalRef.current.write(pendingWriteDataRef.current);
+        pendingWriteDataRef.current = '';
+      }
     };
-  }, [sessionId]);
+  }, [sessionId, queueTerminalWrite]);
 
   // Expose clear function via custom event for external control (e.g., from header menu)
   useEffect(() => {

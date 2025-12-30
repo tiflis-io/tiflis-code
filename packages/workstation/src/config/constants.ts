@@ -82,7 +82,27 @@ export const SESSION_CONFIG = {
   DATA_RETENTION_MS: 30 * 24 * 60 * 60 * 1000,
 
   /** Default terminal output buffer size (number of messages) */
-  DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE: 100,
+  DEFAULT_TERMINAL_OUTPUT_BUFFER_SIZE: 10000,
+} as const;
+
+/**
+ * Terminal output batching configuration.
+ * Reduces WebSocket message frequency by batching PTY output chunks.
+ */
+export const TERMINAL_BATCH_CONFIG = {
+  /**
+   * Default batch interval in milliseconds.
+   * How long to wait before flushing accumulated output.
+   * 64ms (~15fps) prioritizes reduced message frequency over responsiveness.
+   */
+  DEFAULT_BATCH_INTERVAL_MS: 64,
+
+  /**
+   * Default max batch size in bytes.
+   * Flush immediately when buffer exceeds this size.
+   * 4KB balances between message size and latency.
+   */
+  DEFAULT_BATCH_MAX_SIZE: 4096,
 } as const;
 
 /**

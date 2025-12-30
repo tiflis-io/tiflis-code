@@ -1140,6 +1140,17 @@ All events are sent only to clients subscribed to the session.
 | `terminal` | PTY | Raw terminal output (uses `content` only) |
 | `transcription` | STT | Speech-to-text result |
 
+**Terminal Output Batching:**
+
+Terminal output (`content_type: "terminal"`) is batched by the workstation server to reduce message frequency and improve client rendering performance:
+
+- **Server-side batching**: PTY output chunks are accumulated and flushed every 64ms (configurable via `TERMINAL_BATCH_INTERVAL_MS`)
+- **Adaptive behavior**: Low throughput (typing) flushes quickly (8ms), high throughput uses full interval (64ms)
+- **Size-based flush**: Large outputs (>4KB) flush immediately without waiting
+- **Client-side batching**: Clients should also batch `terminal.write()` calls using `requestAnimationFrame` (web) or similar mechanisms (iOS/Android) to reduce redraws
+
+This batching significantly reduces WebSocket message frequency from 100+/second to ~15/second during high-throughput terminal output, eliminating flickering and improving responsiveness.
+
 #### Content Blocks (for `content_type: "agent"`)
 
 When `content_type` is `"agent"`, the `content_blocks` array provides structured typed blocks for rich UI rendering:

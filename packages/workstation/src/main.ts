@@ -28,6 +28,7 @@ import {
 } from "./infrastructure/websocket/message-router.js";
 import { FileSystemWorkspaceDiscovery } from "./infrastructure/workspace/workspace-discovery.js";
 import { PtyManager } from "./infrastructure/terminal/pty-manager.js";
+import { TerminalOutputBatcher } from "./infrastructure/terminal/terminal-output-batcher.js";
 import {
   AgentSessionManager,
   type AgentSessionState,
@@ -738,7 +739,7 @@ async function bootstrap(): Promise<void> {
       let currentStreamingBlocks: unknown[] | undefined;
       if (supervisorIsExecuting) {
         const blocks = supervisorMessageAccumulator.get();
-        if (blocks && blocks.length > 0) {
+        if (blocks.length > 0) {
           currentStreamingBlocks = blocks;
         }
       }
@@ -2154,7 +2155,7 @@ async function bootstrap(): Promise<void> {
           let streamingMessageId: string | undefined;
           if (isExecuting && !beforeSequence) {
             const blocks = supervisorMessageAccumulator.get();
-            if (blocks && blocks.length > 0) {
+            if (blocks.length > 0) {
               currentStreamingBlocks = blocks;
               streamingMessageId = supervisorMessageAccumulator.getStreamingMessageId() ?? undefined;
             }
@@ -2944,26 +2945,44 @@ async function bootstrap(): Promise<void> {
     };
     broadcaster.broadcastToAll(JSON.stringify(broadcastMessage));
 
-    // Attach output handler for streaming
-    session.onOutput((data: string) => {
-      const outputMessage = session.addOutputToBuffer(data);
+    // Create output batcher for this session to reduce message frequency
+    // Batches small PTY chunks into larger messages for smoother client rendering
+    const batcher = new TerminalOutputBatcher({
+      batchIntervalMs: env.TERMINAL_BATCH_INTERVAL_MS,
+      maxBatchSize: env.TERMINAL_BATCH_MAX_SIZE,
+      onFlush: (batchedData: string) => {
+        // Add batched output to buffer and get sequence number
+        const outputMessage = session.addOutputToBuffer(batchedData);
 
-      const outputEvent = {
-        type: "session.output",
-        session_id: sessionId.value,
-        payload: {
-          content_type: "terminal",
-          content: data,
-          timestamp: outputMessage.timestamp,
-          sequence: outputMessage.sequence,
-        },
-      };
+        const outputEvent = {
+          type: "session.output",
+          session_id: sessionId.value,
+          payload: {
+            content_type: "terminal",
+            content: batchedData,
+            timestamp: outputMessage.timestamp,
+            sequence: outputMessage.sequence,
+          },
+        };
 
-      broadcaster.broadcastToSubscribers(
-        sessionId.value,
-        JSON.stringify(outputEvent)
-      );
+        broadcaster.broadcastToSubscribers(
+          sessionId.value,
+          JSON.stringify(outputEvent)
+        );
+      },
     });
+
+    // Attach output handler that feeds into batcher
+    session.onOutput((data: string) => {
+      batcher.append(data);
+    });
+
+    // Ensure batcher is flushed when session terminates
+    const originalTerminate = session.terminate.bind(session);
+    session.terminate = async () => {
+      batcher.dispose();
+      return originalTerminate();
+    };
   });
 
   // Create mock terminal session for screenshots (after event handlers are set up)

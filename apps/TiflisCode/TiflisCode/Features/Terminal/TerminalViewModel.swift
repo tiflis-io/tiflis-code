@@ -100,6 +100,16 @@ final class TerminalViewModel: ObservableObject {
     /// Maximum number of items in pending feed buffer
     private let maxPendingFeedBufferSize = 1000
 
+    // MARK: - Write Batching (Performance Optimization)
+
+    /// Accumulated terminal output for batched rendering
+    /// Reduces CPU usage by batching multiple small writes into single render
+    private var pendingTerminalOutput = ""
+    /// Task that flushes pending output after batch interval
+    private var terminalRenderTask: Task<Void, Never>?
+    /// Batch interval in nanoseconds (8ms = ~120fps, leaves headroom for 60fps display)
+    private let terminalBatchIntervalNs: UInt64 = 8_000_000
+
     // MARK: - Alternate Screen Mode (TUI Apps)
 
     /// Flag indicating terminal is in alternate screen mode (TUI apps like vim, htop, claude code)
@@ -332,6 +342,11 @@ final class TerminalViewModel: ObservableObject {
         pendingResize = nil
         lastResizeSentTime = nil  // Reset so next subscription gets immediate resize
         lastSentServerSize = nil  // Reset so next subscription will send size
+
+        // Cancel pending render task and flush any buffered output
+        terminalRenderTask?.cancel()
+        terminalRenderTask = nil
+        pendingTerminalOutput = ""
 
         // Clear terminal view reference to prevent feeding to disposed view
         swiftTermView = nil
@@ -731,9 +746,62 @@ final class TerminalViewModel: ObservableObject {
     }
 
     /// Feeds content to terminal view
+    /// Uses batching for live output to reduce CPU usage
+    /// Falls back to immediate feeding during replay for faster history loading
+    private func feedToTerminal(_ content: String) {
+        // During replay, feed immediately without batching for faster history loading
+        // Once live, use batching to reduce CPU usage from frequent small updates
+        if isInReplayMode || terminalState == .replaying || terminalState == .buffering {
+            feedToTerminalImmediate(content)
+        } else {
+            queueTerminalWrite(content)
+        }
+    }
+
+    /// Queues content for batched terminal writing
+    /// Accumulates output and flushes on next render cycle (8ms intervals)
+    /// This reduces CPU usage by batching multiple small writes into single render
+    private func queueTerminalWrite(_ content: String) {
+        pendingTerminalOutput += content
+
+        // Schedule a flush if not already scheduled
+        if terminalRenderTask == nil {
+            terminalRenderTask = Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                do {
+                    try await Task.sleep(nanoseconds: self.terminalBatchIntervalNs)
+                } catch {
+                    // Task cancelled, flush immediately
+                    self.flushPendingTerminalOutput()
+                    return
+                }
+
+                // Flush accumulated output
+                self.flushPendingTerminalOutput()
+            }
+        }
+    }
+
+    /// Flushes pending terminal output to the terminal view
+    private func flushPendingTerminalOutput() {
+        guard !pendingTerminalOutput.isEmpty else {
+            terminalRenderTask = nil
+            return
+        }
+
+        let output = pendingTerminalOutput
+        pendingTerminalOutput = ""
+        terminalRenderTask = nil
+
+        // Feed to terminal using the existing logic
+        feedToTerminalImmediate(output)
+    }
+
+    /// Feeds content to terminal view immediately (bypasses batching)
+    /// Used for replay data and after batching flush
     /// Thread-safe: Only feeds if terminal view is available and we're in a valid state
     /// If terminal view is not ready, buffers content for later delivery
-    private func feedToTerminal(_ content: String) {
+    private func feedToTerminalImmediate(_ content: String) {
         // Early exit if we're not subscribed (view may be disappearing)
         guard isSubscribed else {
             #if DEBUG

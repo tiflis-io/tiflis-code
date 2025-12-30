@@ -121,7 +121,11 @@ const EnvSchema = z.object({
   // Terminal Configuration
   // ─────────────────────────────────────────────────────────────
   /** Terminal output buffer size (number of messages, in-memory only, does not survive restarts) */
-  TERMINAL_OUTPUT_BUFFER_SIZE: z.coerce.number().default(100),
+  TERMINAL_OUTPUT_BUFFER_SIZE: z.coerce.number().default(10000),
+  /** Terminal output batch interval in milliseconds (how long to wait before flushing) */
+  TERMINAL_BATCH_INTERVAL_MS: z.coerce.number().default(64),
+  /** Terminal output batch max size in bytes (flush immediately when exceeded) */
+  TERMINAL_BATCH_MAX_SIZE: z.coerce.number().default(4096),
 
   // Legacy (fallback for STT/TTS if specific keys not set)
   OPENAI_API_KEY: z.string().optional(),

@@ -834,9 +834,19 @@ AGENT_ALIAS_CURSOR_PRO=cursor-agent --experimental-features
 
 ### Terminal Configuration
 
-| Variable                      | Required | Default | Description                           |
-| ----------------------------- | -------- | ------- | ------------------------------------- |
-| `TERMINAL_OUTPUT_BUFFER_SIZE` | No       | `100`   | Messages stored in memory per session |
+| Variable                      | Required | Default | Description                                        |
+| ----------------------------- | -------- | ------- | -------------------------------------------------- |
+| `TERMINAL_OUTPUT_BUFFER_SIZE` | No       | `10000` | Messages stored in memory per session              |
+| `TERMINAL_BATCH_INTERVAL_MS`  | No       | `32`    | Max ms to wait before flushing output batch        |
+| `TERMINAL_BATCH_MAX_SIZE`     | No       | `4096`  | Max bytes to accumulate before immediate flush     |
+
+**Terminal Output Batching:**
+
+The workstation server batches terminal output to reduce WebSocket message frequency and improve client rendering performance:
+
+- **Adaptive batching**: Low throughput (typing) flushes quickly (8ms), high throughput (command output) uses full interval (32ms)
+- **Size-based flush**: Large outputs (>4KB) flush immediately without waiting
+- **~30fps batching**: 32ms default interval reduces message frequency while maintaining smooth rendering
 
 > See `packages/*/env.example` for full configuration.
 
