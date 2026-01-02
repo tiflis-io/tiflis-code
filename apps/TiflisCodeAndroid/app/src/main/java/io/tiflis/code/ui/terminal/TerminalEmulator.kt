@@ -13,10 +13,14 @@ import androidx.compose.ui.graphics.Color
  */
 class TerminalEmulator(
     private var cols: Int = 80,
-    private var rows: Int = 24
+    private var rows: Int = 24,
+    private val scrollbackSize: Int = 1000
 ) {
     // Screen buffer: List of rows, each row is a list of cells
     private val screenBuffer = mutableListOf<MutableList<TerminalCell>>()
+
+    // Scrollback buffer: stores lines that scrolled off the top of the screen
+    private val scrollbackBuffer = mutableListOf<MutableList<TerminalCell>>()
 
     // Cursor position
     private var cursorX = 0
@@ -287,7 +291,16 @@ class TerminalEmulator(
                     }
                 }
             }
-            2, 3 -> { // Erase entire display
+            2 -> { // Erase entire display
+                for (y in 0 until rows) {
+                    ensureRow(y)
+                    for (x in 0 until cols) {
+                        screenBuffer[y][x] = TerminalCell()
+                    }
+                }
+            }
+            3 -> { // Erase entire display AND scrollback buffer
+                scrollbackBuffer.clear()
                 for (y in 0 until rows) {
                     ensureRow(y)
                     for (x in 0 until cols) {
@@ -371,7 +384,14 @@ class TerminalEmulator(
     private fun scrollUp(n: Int) {
         for (i in 0 until n) {
             if (scrollTop < screenBuffer.size) {
-                screenBuffer.removeAt(scrollTop)
+                // Save the line being scrolled off to scrollback buffer
+                val scrolledLine = screenBuffer.removeAt(scrollTop)
+                scrollbackBuffer.add(scrolledLine)
+
+                // Trim scrollback buffer if it exceeds the limit
+                while (scrollbackBuffer.size > scrollbackSize) {
+                    scrollbackBuffer.removeAt(0)
+                }
             }
             val insertPos = minOf(scrollBottom, screenBuffer.size)
             screenBuffer.add(insertPos, createEmptyRow())
@@ -496,6 +516,7 @@ class TerminalEmulator(
     }
 
     private fun reset() {
+        scrollbackBuffer.clear()
         initializeBuffer()
         cursorX = 0
         cursorY = 0
@@ -547,9 +568,27 @@ class TerminalEmulator(
     }
 
     /**
+     * Get full buffer including scrollback history.
+     * Returns scrollback + screen buffer concatenated.
+     */
+    fun getFullBuffer(): List<List<TerminalCell>> {
+        return scrollbackBuffer + screenBuffer
+    }
+
+    /**
+     * Get the number of lines in scrollback buffer.
+     */
+    fun getScrollbackLineCount(): Int = scrollbackBuffer.size
+
+    /**
      * Get cursor position.
      */
     fun getCursor(): Pair<Int, Int> = Pair(cursorX, cursorY)
+
+    /**
+     * Get cursor position in full buffer (accounting for scrollback).
+     */
+    fun getCursorInFullBuffer(): Pair<Int, Int> = Pair(cursorX, cursorY + scrollbackBuffer.size)
 
     /**
      * Get terminal dimensions.

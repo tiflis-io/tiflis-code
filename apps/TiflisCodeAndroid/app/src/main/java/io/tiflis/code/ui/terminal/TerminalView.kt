@@ -79,10 +79,13 @@ fun TerminalView(
 
     // Terminal emulator state
     val emulator = remember { TerminalEmulator() }
-    var screen by remember { mutableStateOf(emulator.getScreen()) }
-    var cursor by remember { mutableStateOf(emulator.getCursor()) }
+    var fullBuffer by remember { mutableStateOf(emulator.getFullBuffer()) }
+    var cursor by remember { mutableStateOf(emulator.getCursorInFullBuffer()) }
     var hasFocus by remember { mutableStateOf(false) }
     var viewSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Scroll state for scrollback support
+    val scrollState = rememberScrollState()
 
     // Hidden text field for keyboard input
     var hiddenInput by remember { mutableStateOf("") }
@@ -109,8 +112,8 @@ fun TerminalView(
             if (cols != currentCols || rows != currentRows) {
                 emulator.resize(cols, rows)
                 onResize(cols, rows)
-                screen = emulator.getScreen()
-                cursor = emulator.getCursor()
+                fullBuffer = emulator.getFullBuffer()
+                cursor = emulator.getCursorInFullBuffer()
             }
         }
     }
@@ -132,12 +135,23 @@ fun TerminalView(
                 delay(8) // 8ms batch interval
                 if (pendingOutput.isNotEmpty()) {
                     emulator.write(pendingOutput)
-                    screen = emulator.getScreen()
-                    cursor = emulator.getCursor()
+                    fullBuffer = emulator.getFullBuffer()
+                    cursor = emulator.getCursorInFullBuffer()
                     pendingOutput = ""
                 }
                 flushScheduled = false
             }
+        }
+    }
+
+    // Calculate total content height for scrolling
+    val totalLines = fullBuffer.size
+    val contentHeightPx = (totalLines * charHeight).toInt()
+
+    // Auto-scroll to bottom when new content arrives
+    LaunchedEffect(fullBuffer.size) {
+        if (fullBuffer.isNotEmpty()) {
+            scrollState.animateScrollTo(scrollState.maxValue)
         }
     }
 
@@ -156,13 +170,20 @@ fun TerminalView(
                 )
             }
     ) {
-        // Terminal canvas
-        Canvas(
+        // Terminal canvas with vertical scroll support
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(4.dp)
+                .verticalScroll(scrollState)
         ) {
-            drawTerminalScreen(screen, cursor, hasFocus, charWidth, charHeight, fontSizePx, terminalTypeface, terminalTypefaceBold)
+            Canvas(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(with(density) { contentHeightPx.coerceAtLeast(viewSize.height).toDp() })
+                    .padding(horizontal = 4.dp)
+            ) {
+                drawTerminalScreen(fullBuffer, cursor, hasFocus, charWidth, charHeight, fontSizePx, terminalTypeface, terminalTypefaceBold)
+            }
         }
 
         // Hidden text field for keyboard input

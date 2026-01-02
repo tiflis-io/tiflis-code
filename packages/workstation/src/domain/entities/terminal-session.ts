@@ -58,9 +58,9 @@ export interface ResizeResult {
  * Entity representing a PTY terminal session.
  * Provides direct shell access to the workstation.
  *
- * Terminal size is controlled by the "master" client - the first device to subscribe.
- * Other clients receive the terminal output but cannot change its size.
- * This prevents resize storms when multiple devices are connected.
+ * Terminal size is controlled by the "master" client - the most recent device to subscribe.
+ * When a new client subscribes, it becomes the master and can resize the terminal.
+ * This ensures the active client always has control over terminal dimensions.
  */
 export class TerminalSession extends Session {
   private _pty: IPty;
@@ -113,15 +113,12 @@ export class TerminalSession extends Session {
   }
 
   /**
-   * Sets the master device ID. Only sets if not already set (first subscriber wins).
-   * @returns true if this device became master, false if master was already set
+   * Sets the master device ID. Always overrides the current master (new subscriber wins).
+   * @returns true (new subscriber always becomes master)
    */
   setMaster(deviceId: string): boolean {
-    if (this._masterDeviceId === null) {
-      this._masterDeviceId = deviceId;
-      return true;
-    }
-    return this._masterDeviceId === deviceId;
+    this._masterDeviceId = deviceId;
+    return true;
   }
 
   /**

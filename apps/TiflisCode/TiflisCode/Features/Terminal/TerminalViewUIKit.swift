@@ -171,6 +171,13 @@ final class TerminalViewUIKit: UIView {
         // When true, backspace sends Control-H (^H, ASCII 8)
         // When false, backspace sends DEL (ASCII 127)
         terminalView.backspaceSendsControlH = true
+
+        // Enable scrolling for scrollback buffer
+        // SwiftTerm's TerminalView inherits from UIScrollView
+        terminalView.isScrollEnabled = true
+        terminalView.alwaysBounceVertical = true
+        terminalView.showsVerticalScrollIndicator = true
+        terminalView.showsHorizontalScrollIndicator = false
     }
     
     /// Optimizes text input settings for terminal use

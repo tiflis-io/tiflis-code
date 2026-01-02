@@ -612,8 +612,20 @@ final class TerminalViewModel: ObservableObject {
             if let cols = payload["cols"] as? Int, let rows = payload["rows"] as? Int {
                 serverTerminalSize = (cols: cols, rows: rows)
 
-                // If not master, sync local terminal to server size
-                if !isMaster {
+                if isMaster {
+                    // We are master - send our local size to the server
+                    // This ensures the terminal uses our screen dimensions
+                    if terminalSize.cols > 0 && terminalSize.rows > 0 {
+                        #if DEBUG
+                        print("[TerminalVM:\(session.id.prefix(8))] Master: sending local size \(terminalSize.cols)×\(terminalSize.rows) to server")
+                        #endif
+                        // Reset last sent size to force sending
+                        lastSentServerSize = nil
+                        pendingResize = (cols: terminalSize.cols, rows: terminalSize.rows)
+                        sendResizeToServer()
+                    }
+                } else {
+                    // Not master - sync local terminal to server size
                     terminalSize = (cols: cols, rows: rows)
                     threadSafeTerminalSize = (cols: cols, rows: rows)
 
