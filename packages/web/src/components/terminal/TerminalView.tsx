@@ -86,7 +86,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const pendingWriteDataRef = useRef<string>('');
   const writeRafIdRef = useRef<number | null>(null);
 
-  const { sendTerminalInput, resizeTerminal, subscribeToSession } = useWebSocket();
+  const { sendTerminalInput, resizeTerminal, subscribeToSession, requestTerminalReplay } = useWebSocket();
   const { resolvedTheme } = useTheme();
 
   // Memoize the theme to avoid recalculating on every render
@@ -156,7 +156,13 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // Subscribe to session for terminal output
     subscribeToSession(sessionId);
 
+    // Request terminal history replay after a short delay to ensure subscription is processed
+    const replayTimeout = setTimeout(() => {
+      requestTerminalReplay(sessionId, 0, 500);
+    }, 100);
+
     return () => {
+      clearTimeout(replayTimeout);
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
@@ -164,7 +170,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // Note: terminalTheme is intentionally excluded - we don't want to reinitialize
     // the terminal on theme changes. Theme updates are handled by a separate effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, sendTerminalInput, subscribeToSession]);
+  }, [sessionId, sendTerminalInput, subscribeToSession, requestTerminalReplay]);
 
   // Queue terminal data for batched writing
   // Uses requestAnimationFrame to batch multiple writes into a single render
@@ -190,7 +196,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // Cooldown check - don't resize more than once per 500ms
     const now = Date.now();
     if (now - lastResizeTimeRef.current < 500) {
-      console.log('[Terminal] Cooldown active, skipping resize');
       return;
     }
 
@@ -205,11 +210,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       return;
     }
 
-    console.log('[Terminal] Container size changed:', {
-      from: lastSize,
-      to: { width, height }
-    });
-
     lastContainerSizeRef.current = { width, height };
 
     // Set fitting flag to prevent ResizeObserver from triggering again
@@ -223,13 +223,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
       // Only send resize if terminal dimensions actually changed from what we last sent
       const lastDims = lastSentDimensionsRef.current;
-      console.log('[Terminal] After fit:', {
-        cols,
-        rows,
-        lastDims,
-        willSend: !lastDims || lastDims.cols !== cols || lastDims.rows !== rows
-      });
-
       if (!lastDims || lastDims.cols !== cols || lastDims.rows !== rows) {
         lastSentDimensionsRef.current = { cols, rows };
         lastResizeTimeRef.current = now;
@@ -269,7 +262,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     const resizeObserver = new ResizeObserver((entries) => {
       // Skip if we're currently fitting the terminal (to prevent infinite loop)
       if (isFittingRef.current) {
-        console.log('[Terminal] ResizeObserver: skipping - isFitting=true');
         return;
       }
 
@@ -299,13 +291,6 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         // Container size unchanged, skip resize entirely
         return;
       }
-
-      console.log('[Terminal] ResizeObserver triggered:', {
-        roundedWidth,
-        roundedHeight,
-        lastSize,
-        isFitting: isFittingRef.current
-      });
 
       // Note: Don't update lastContainerSizeRef here - let performFitAndResize do it
       // This ensures we have a consistent state between container size and terminal dimensions

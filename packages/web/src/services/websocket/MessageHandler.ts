@@ -22,6 +22,7 @@ import type {
   SupervisorTranscriptionMessage,
   SessionTranscriptionMessage,
   HistoryResponseMessage,
+  SessionReplayDataMessage,
 } from '@/types/protocol';
 import type { Session, Message, ContentBlock, AgentConfig, WorkspaceConfig, SessionType } from '@/types';
 
@@ -103,6 +104,10 @@ export function handleWebSocketMessage(message: unknown): void {
 
     case 'session.output':
       handleSessionOutput(msg as SessionOutputMessage);
+      break;
+
+    case 'session.replay.data':
+      handleSessionReplayData(msg as SessionReplayDataMessage);
       break;
 
     case 'session.user_message':
@@ -522,6 +527,36 @@ function handleSupervisorUserMessage(msg: SupervisorUserMessage): void {
 function handleSupervisorContextCleared(): void {
   const chatStore = useChatStore.getState();
   chatStore.clearSupervisorMessages();
+}
+
+function handleSessionReplayData(msg: SessionReplayDataMessage): void {
+  const sessionId = msg.session_id;
+  const { messages } = msg.payload;
+
+  logger.debug('Terminal replay received', {
+    sessionId,
+    messageCount: messages.length,
+    hasMore: msg.payload.has_more,
+    firstSequence: msg.payload.first_sequence,
+    lastSequence: msg.payload.last_sequence,
+  });
+
+  if (messages.length === 0) {
+    return;
+  }
+
+  // Sort messages by sequence to ensure correct order
+  const sortedMessages = [...messages].sort((a, b) => a.sequence - b.sequence);
+
+  // Concatenate all terminal content
+  const terminalContent = sortedMessages.map((m) => m.content).join('');
+
+  // Dispatch terminal output event for TerminalView
+  window.dispatchEvent(
+    new CustomEvent('terminal-output', {
+      detail: { sessionId, data: terminalContent },
+    })
+  );
 }
 
 function handleSessionOutput(msg: SessionOutputMessage): void {

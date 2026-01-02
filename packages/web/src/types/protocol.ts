@@ -340,6 +340,25 @@ export interface SessionReplayMessage extends BaseMessage {
   };
 }
 
+export interface ReplayedTerminalMessage {
+  content_type: 'terminal';
+  content: string;
+  timestamp: number;
+  sequence: number;
+}
+
+export interface SessionReplayDataMessage extends BaseMessage {
+  type: 'session.replay.data';
+  session_id: string;
+  payload: {
+    messages: ReplayedTerminalMessage[];
+    has_more: boolean;
+    first_sequence: number;
+    last_sequence: number;
+    current_sequence: number;
+  };
+}
+
 // Error messages
 export interface ErrorMessage extends BaseMessage {
   type: 'error';

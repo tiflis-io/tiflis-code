@@ -16,6 +16,7 @@ import type {
   SessionSubscribeMessage,
   SessionInputMessage,
   SessionResizeMessage,
+  SessionReplayMessage,
   SyncMessage,
   HistoryRequestMessage,
 } from '@/types/protocol';
@@ -281,6 +282,21 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     WebSocketService.send(message);
   }, []);
 
+  // Request terminal replay (history)
+  const requestTerminalReplay = useCallback((sessionId: string, sinceSequence: number = 0, limit: number = 500) => {
+    const message: SessionReplayMessage = {
+      type: 'session.replay',
+      session_id: sessionId,
+      payload: {
+        since_sequence: sinceSequence,
+        limit,
+      },
+    };
+
+    WebSocketService.send(message);
+    logger.debug('Requested terminal replay', { sessionId, sinceSequence, limit });
+  }, []);
+
   // Cancel supervisor
   const cancelSupervisor = useCallback(() => {
     WebSocketService.send({
@@ -518,6 +534,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     subscribeToSession,
     sendTerminalInput,
     resizeTerminal,
+    requestTerminalReplay,
     cancelSupervisor,
     cancelAgent,
     clearSupervisorContext,
