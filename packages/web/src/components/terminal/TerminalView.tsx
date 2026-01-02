@@ -72,6 +72,14 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
   // Resize debounce ref
   const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track last sent dimensions to avoid sending duplicate resize messages
+  const lastSentDimensionsRef = useRef<{ cols: number; rows: number } | null>(null);
+  // Track last observed container size to detect actual changes
+  const lastContainerSizeRef = useRef<{ width: number; height: number } | null>(null);
+  // Flag to prevent ResizeObserver from triggering during our own fit() call
+  const isFittingRef = useRef(false);
+  // Cooldown timestamp - prevent rapid-fire resizes
+  const lastResizeTimeRef = useRef<number>(0);
 
   // Write batching refs - batch terminal writes to reduce redraws
   // Uses requestAnimationFrame to sync with display refresh (60fps)
@@ -79,10 +87,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const writeRafIdRef = useRef<number | null>(null);
 
   const { sendTerminalInput, resizeTerminal, subscribeToSession } = useWebSocket();
-  const connectionState = useAppStore((state) => state.connectionState);
   const { resolvedTheme } = useTheme();
-
-  const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
 
   // Memoize the theme to avoid recalculating on every render
   const terminalTheme = useMemo(
@@ -139,9 +144,11 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     fitAddonRef.current = fitAddon;
     setIsInitialized(true);
 
-    // Handle user input
+    // Handle user input - check connection state dynamically
     terminal.onData((data) => {
-      if (isConnected) {
+      const currentState = useAppStore.getState().connectionState;
+      const connected = currentState === 'verified' || currentState === 'authenticated';
+      if (connected) {
         sendTerminalInput(sessionId, data);
       }
     });
@@ -157,7 +164,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     // Note: terminalTheme is intentionally excluded - we don't want to reinitialize
     // the terminal on theme changes. Theme updates are handled by a separate effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, isConnected, sendTerminalInput, subscribeToSession]);
+  }, [sessionId, sendTerminalInput, subscribeToSession]);
 
   // Queue terminal data for batched writing
   // Uses requestAnimationFrame to batch multiple writes into a single render
@@ -176,45 +183,154 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
     }
   }, []);
 
-  // Handle resize with debouncing
-  const handleResize = useCallback(() => {
-    if (resizeTimeoutRef.current !== null) {
-      clearTimeout(resizeTimeoutRef.current);
+  // Perform the actual fit and resize - extracted to avoid recreating on every render
+  const performFitAndResize = useCallback(() => {
+    if (!fitAddonRef.current || !terminalRef.current || !containerRef.current) return;
+
+    // Cooldown check - don't resize more than once per 500ms
+    const now = Date.now();
+    if (now - lastResizeTimeRef.current < 500) {
+      console.log('[Terminal] Cooldown active, skipping resize');
+      return;
     }
-    resizeTimeoutRef.current = setTimeout(() => {
-      resizeTimeoutRef.current = null;
-      if (fitAddonRef.current && terminalRef.current && isConnected) {
-        fitAddonRef.current.fit();
-        const { cols, rows } = terminalRef.current;
+
+    // Check if container size actually changed (ignore sub-pixel differences)
+    const rect = containerRef.current.getBoundingClientRect();
+    const width = Math.floor(rect.width);
+    const height = Math.floor(rect.height);
+
+    const lastSize = lastContainerSizeRef.current;
+    if (lastSize && lastSize.width === width && lastSize.height === height) {
+      // Container size unchanged, skip resize
+      return;
+    }
+
+    console.log('[Terminal] Container size changed:', {
+      from: lastSize,
+      to: { width, height }
+    });
+
+    lastContainerSizeRef.current = { width, height };
+
+    // Set fitting flag to prevent ResizeObserver from triggering again
+    isFittingRef.current = true;
+
+    try {
+      // Now fit the terminal
+      fitAddonRef.current.fit();
+
+      const { cols, rows } = terminalRef.current;
+
+      // Only send resize if terminal dimensions actually changed from what we last sent
+      const lastDims = lastSentDimensionsRef.current;
+      console.log('[Terminal] After fit:', {
+        cols,
+        rows,
+        lastDims,
+        willSend: !lastDims || lastDims.cols !== cols || lastDims.rows !== rows
+      });
+
+      if (!lastDims || lastDims.cols !== cols || lastDims.rows !== rows) {
+        lastSentDimensionsRef.current = { cols, rows };
+        lastResizeTimeRef.current = now;
         resizeTerminal(sessionId, cols, rows);
       }
-    }, 50); // 50ms debounce
-  }, [sessionId, isConnected, resizeTerminal]);
+    } finally {
+      // Reset fitting flag after a small delay to ensure ResizeObserver callbacks are processed
+      // Using setTimeout instead of requestAnimationFrame for more reliable timing
+      setTimeout(() => {
+        isFittingRef.current = false;
+      }, 50);
+    }
+  }, [sessionId, resizeTerminal]);
 
-  // Setup resize observer
+  // Setup resize observer - use refs to avoid recreating on every state change
   useEffect(() => {
     if (!containerRef.current || !isInitialized) return;
 
-    const resizeObserver = new ResizeObserver(() => {
+    const container = containerRef.current;
+
+    // Debounced resize handler
+    const handleResize = () => {
+      if (resizeTimeoutRef.current !== null) {
+        clearTimeout(resizeTimeoutRef.current);
+      }
+      resizeTimeoutRef.current = setTimeout(() => {
+        resizeTimeoutRef.current = null;
+        // Check connection state at execution time, not closure time
+        const currentState = useAppStore.getState().connectionState;
+        const connected = currentState === 'verified' || currentState === 'authenticated';
+        if (connected) {
+          performFitAndResize();
+        }
+      }, 150); // 150ms debounce for stability
+    };
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      // Skip if we're currently fitting the terminal (to prevent infinite loop)
+      if (isFittingRef.current) {
+        console.log('[Terminal] ResizeObserver: skipping - isFitting=true');
+        return;
+      }
+
+      // Check if container size actually changed before triggering debounced resize
+      const entry = entries[0];
+      if (!entry) return;
+
+      // Use borderBoxSize if available, otherwise fall back to contentRect
+      // This ensures we're measuring consistently with getBoundingClientRect()
+      let roundedWidth: number;
+      let roundedHeight: number;
+
+      if (entry.borderBoxSize && entry.borderBoxSize[0]) {
+        roundedWidth = Math.floor(entry.borderBoxSize[0].inlineSize);
+        roundedHeight = Math.floor(entry.borderBoxSize[0].blockSize);
+      } else {
+        // Fallback to contentRect (excludes padding/border)
+        roundedWidth = Math.floor(entry.contentRect.width);
+        roundedHeight = Math.floor(entry.contentRect.height);
+      }
+
+      // Skip if size is zero (element not visible)
+      if (roundedWidth === 0 || roundedHeight === 0) return;
+
+      const lastSize = lastContainerSizeRef.current;
+      if (lastSize && lastSize.width === roundedWidth && lastSize.height === roundedHeight) {
+        // Container size unchanged, skip resize entirely
+        return;
+      }
+
+      console.log('[Terminal] ResizeObserver triggered:', {
+        roundedWidth,
+        roundedHeight,
+        lastSize,
+        isFitting: isFittingRef.current
+      });
+
+      // Note: Don't update lastContainerSizeRef here - let performFitAndResize do it
+      // This ensures we have a consistent state between container size and terminal dimensions
       handleResize();
     });
 
-    resizeObserver.observe(containerRef.current);
+    // Observe using border-box to match getBoundingClientRect() behavior
+    resizeObserver.observe(container, { box: 'border-box' });
 
     // Also handle window resize
-    window.addEventListener('resize', handleResize);
+    const windowResizeHandler = () => handleResize();
+    window.addEventListener('resize', windowResizeHandler);
 
-    // Initial resize
-    handleResize();
+    // Initial resize - delay to ensure layout is stable
+    const initialResizeTimeout = setTimeout(handleResize, 50);
 
     return () => {
       resizeObserver.disconnect();
-      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('resize', windowResizeHandler);
+      clearTimeout(initialResizeTimeout);
       if (resizeTimeoutRef.current !== null) {
         clearTimeout(resizeTimeoutRef.current);
       }
     };
-  }, [handleResize, isInitialized]);
+  }, [isInitialized, performFitAndResize]);
 
   // Update terminal theme when app theme changes
   useEffect(() => {
