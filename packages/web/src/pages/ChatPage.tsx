@@ -29,6 +29,7 @@ export function ChatPage() {
 
   const supervisorMessages = useChatStore((state) => state.supervisorMessages);
   const supervisorIsLoading = useChatStore((state) => state.supervisorIsLoading);
+  const historyPaginationState = useChatStore((state) => state.historyPaginationState);
 
   const agentMessages = useChatStore((state) => state.agentMessages);
   const agentIsLoading = useChatStore((state) => state.agentIsLoading);
@@ -207,10 +208,12 @@ export function ChatPage() {
   };
 
   if (isSupervisor) {
+    const isHistoryLoading = historyPaginationState['supervisor']?.isLoading ?? false;
     return (
       <ChatView
         messages={supervisorMessages}
         isLoading={supervisorIsLoading}
+        isSubscribing={isHistoryLoading}
         onSend={handleSupervisorSend}
         onSendAudio={handleSupervisorAudio}
         onCancel={handleSupervisorCancel}
@@ -226,11 +229,13 @@ export function ChatPage() {
   // Render Agent chat
   const messages = agentMessages[sessionId] ?? [];
   const isLoading = agentIsLoading[sessionId] ?? false;
+  const isHistoryLoading = historyPaginationState[sessionId]?.isLoading ?? false;
 
   return (
     <ChatView
       messages={messages}
       isLoading={isLoading}
+      isSubscribing={isHistoryLoading}
       onSend={handleAgentSend}
       onSendAudio={handleAgentAudio}
       onCancel={handleAgentCancel}

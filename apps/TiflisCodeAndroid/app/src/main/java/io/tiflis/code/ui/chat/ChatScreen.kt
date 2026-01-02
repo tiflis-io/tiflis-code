@@ -9,6 +9,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,24 +18,33 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import io.tiflis.code.R
 import io.tiflis.code.data.audio.AudioPlayerService
 import io.tiflis.code.domain.models.Message
+import io.tiflis.code.domain.models.Session
 import io.tiflis.code.domain.models.SessionType
 import io.tiflis.code.ui.chat.components.MessageBubble
 import io.tiflis.code.ui.chat.components.MessageSegmentBubble
@@ -99,6 +110,14 @@ fun ChatScreen(
         supervisorScrollTrigger
     } else {
         agentScrollTriggersMap[actualSessionId] ?: 0
+    }
+
+    // History loading state
+    val historyLoadingMap by appState.historyLoading.collectAsState()
+    val isHistoryLoading = if (sessionType == SessionType.SUPERVISOR) {
+        historyLoadingMap[null] ?: false
+    } else {
+        historyLoadingMap[actualSessionId] ?: false
     }
 
     // Check if any message is streaming
@@ -292,29 +311,29 @@ fun ChatScreen(
                 .padding(paddingValues)
         ) {
             // Message list
-            if (messages.isEmpty()) {
-                // Empty state
+            if (messages.isEmpty() && isHistoryLoading) {
+                // Loading history state
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxWidth()
-                        // Dismiss keyboard when tapping on empty area (like iOS)
-                        .pointerInput(Unit) {
-                            detectTapGestures(onTap = { focusManager.clearFocus() })
-                        },
+                        .fillMaxWidth(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (sessionType == SessionType.SUPERVISOR) {
-                            stringResource(R.string.chat_empty_supervisor)
-                        } else {
-                            stringResource(R.string.chat_empty_agent)
-                        },
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(32.dp)
-                    )
+                    CircularProgressIndicator()
                 }
+            } else if (messages.isEmpty()) {
+                // Empty state with session icon and info (mirrors iOS ChatEmptyState)
+                ChatEmptyState(
+                    session = currentSession ?: Session.SUPERVISOR,
+                    sessionType = sessionType,
+                    workspacesRoot = workspacesRoot,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectTapGestures(onTap = { focusManager.clearFocus() })
+                        }
+                )
             } else {
                 // Wrap LazyColumn in Box to allow FAB to float over it
                 Box(
@@ -551,4 +570,135 @@ class ChatViewModel @javax.inject.Inject constructor(
     fun stopAudio() {
         audioPlayerService.stop()
     }
+}
+
+// MARK: - Empty State
+
+/**
+ * Empty state for chat screen with session icon and info.
+ * Mirrors iOS ChatEmptyState.
+ */
+@Composable
+private fun ChatEmptyState(
+    session: Session,
+    sessionType: SessionType,
+    workspacesRoot: String?,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Spacer(modifier = Modifier.weight(1f))
+
+        // Session icon (large)
+        SessionIcon(
+            sessionType = sessionType,
+            modifier = Modifier.size(80.dp)
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Session name
+        Text(
+            text = session.displayName,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        // Subtitle (workspace/project path)
+        val subtitle = session.subtitle(workspacesRoot)
+        if (subtitle != null) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Invitation message
+        Text(
+            text = when (sessionType) {
+                SessionType.SUPERVISOR -> stringResource(R.string.chat_empty_supervisor)
+                SessionType.CURSOR, SessionType.CLAUDE, SessionType.OPENCODE -> stringResource(R.string.chat_empty_agent)
+                SessionType.TERMINAL -> ""
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 40.dp)
+        )
+
+        Spacer(modifier = Modifier.weight(2f))
+    }
+}
+
+/**
+ * Session icon composable that uses custom logos for agents.
+ * Mirrors iOS SessionIcon view.
+ */
+@Composable
+private fun SessionIcon(
+    sessionType: SessionType,
+    modifier: Modifier = Modifier
+) {
+    val customLogo = sessionType.customLogoRes()
+
+    if (customLogo != null) {
+        // Custom logo image (Cursor, Claude, OpenCode, Supervisor)
+        Box(
+            modifier = modifier
+                .clip(RoundedCornerShape(16.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Image(
+                painter = painterResource(id = customLogo),
+                contentDescription = sessionType.displayName,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Fit
+            )
+        }
+    } else {
+        // Fallback to Material Icon with colored background (Terminal)
+        Box(
+            modifier = modifier
+                .clip(CircleShape)
+                .background(sessionType.accentColor()),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Terminal,
+                contentDescription = sessionType.displayName,
+                modifier = Modifier.size(40.dp),
+                tint = MaterialTheme.colorScheme.surface
+            )
+        }
+    }
+}
+
+/**
+ * Get custom logo drawable resource for session type.
+ * Returns null for types that should use Material Icon fallback.
+ */
+private fun SessionType.customLogoRes(): Int? = when (this) {
+    SessionType.SUPERVISOR -> R.drawable.ic_tiflis_logo
+    SessionType.CURSOR -> R.drawable.ic_cursor_logo
+    SessionType.CLAUDE -> R.drawable.ic_claude_logo
+    SessionType.OPENCODE -> R.drawable.ic_opencode_logo
+    SessionType.TERMINAL -> null
 }

@@ -38,11 +38,34 @@ struct WatchChatView: View {
     /// Track if view has appeared (to prevent re-scroll on state changes)
     @State private var hasAppeared = false
 
+    /// Whether history is currently loading for this chat
+    private var isHistoryLoading: Bool {
+        switch destination {
+        case .supervisor:
+            return appState.isHistoryLoading(for: nil)
+        case .agent(let session):
+            return appState.isHistoryLoading(for: session.id)
+        }
+    }
+
     var body: some View {
         // Messages list - each content block is a separate bubble (like iOS)
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 6) {
+                    // Show loading indicator while fetching history
+                    if messages.isEmpty && isHistoryLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 40)
+                            .id("history-loading")
+                    }
+                    // Show empty state only after loading completes and chat is empty
+                    else if messages.isEmpty && !isHistoryLoading {
+                        chatEmptyState
+                            .id("empty-state")
+                    }
+
                     ForEach(messages.suffix(15)) { message in
                         // Split message into separate bubbles per content block
                         ForEach(Array(messageBlocks(for: message).enumerated()), id: \.offset) { index, block in
@@ -487,6 +510,73 @@ struct WatchChatView: View {
             return .green
         default:
             return .secondary
+        }
+    }
+
+    // MARK: - Empty State
+
+    /// Compact empty state view for watchOS (fits on single screen)
+    @ViewBuilder
+    private var chatEmptyState: some View {
+        VStack(spacing: 6) {
+            // Session icon - smaller for watch
+            Group {
+                switch destination {
+                case .supervisor:
+                    Image("tiflis-logo")
+                        .resizable()
+                        .scaledToFit()
+                case .agent(let session):
+                    sessionIcon(for: session)
+                }
+            }
+            .frame(width: 36, height: 36)
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+
+            // Session name
+            Text(currentSession?.displayName ?? "Supervisor")
+                .font(.footnote)
+                .fontWeight(.semibold)
+                .multilineTextAlignment(.center)
+
+            // Subtitle (workspace/project path)
+            if let session = currentSession,
+               let subtitle = session.subtitle(relativeTo: appState.workspacesRoot) {
+                Text(subtitle)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            // Short invitation message
+            Text(invitationMessage)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .padding(.horizontal, 4)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+    }
+
+    /// Current session based on destination
+    private var currentSession: Session? {
+        switch destination {
+        case .supervisor:
+            return nil
+        case .agent(let session):
+            return session
+        }
+    }
+
+    /// Invitation message for empty state (short for watchOS)
+    private var invitationMessage: String {
+        switch destination {
+        case .supervisor:
+            return "Tap to start"
+        case .agent:
+            return "Tap to start coding"
         }
     }
 

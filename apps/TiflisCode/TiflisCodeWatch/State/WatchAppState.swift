@@ -59,6 +59,9 @@ final class WatchAppState: ObservableObject {
     /// Loading state for agent sessions
     @Published var agentIsLoading: [String: Bool] = [:]
 
+    /// History loading state - keyed by session ID (use "supervisor" for supervisor)
+    @Published var historyIsLoading: [String: Bool] = [:]
+
     // MARK: - Settings
 
     /// Whether TTS is enabled (synced from iPhone)
@@ -480,7 +483,21 @@ final class WatchAppState: ObservableObject {
     /// Request chat history for a session (on-demand loading)
     /// Called when user opens a chat detail view
     func requestHistory(sessionId: String?) async {
+        let key = sessionId ?? "supervisor"
+        historyIsLoading[key] = true
         await connectionService?.requestHistory(sessionId: sessionId)
+    }
+
+    /// Check if history is loading for a session
+    func isHistoryLoading(for sessionId: String?) -> Bool {
+        let key = sessionId ?? "supervisor"
+        return historyIsLoading[key] ?? false
+    }
+
+    /// Set history loading state for a session
+    func setHistoryLoading(_ loading: Bool, for sessionId: String?) {
+        let key = sessionId ?? "supervisor"
+        historyIsLoading[key] = loading
     }
 
     // MARK: - Session Management

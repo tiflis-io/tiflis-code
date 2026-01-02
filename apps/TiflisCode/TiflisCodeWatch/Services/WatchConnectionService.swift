@@ -605,17 +605,19 @@ final class WatchConnectionService {
             return
         }
 
+        let sessionId = payload["session_id"] as? String  // nil means supervisor
+
         // Check for error
         if let error = payload["error"] as? String {
             NSLog("⌚️ WatchConnectionService: history.response error: %@", error)
+            appState?.setHistoryLoading(false, for: sessionId)
             return
         }
-
-        let sessionId = payload["session_id"] as? String  // nil means supervisor
         let isSupervisor = sessionId == nil
 
         guard let history = payload["history"] as? [[String: Any]] else {
             NSLog("⌚️ WatchConnectionService: history.response has no history array")
+            appState?.setHistoryLoading(false, for: sessionId)
             return
         }
 
@@ -764,6 +766,9 @@ final class WatchConnectionService {
                 }
             }
         }
+
+        // Mark history loading as complete
+        appState?.setHistoryLoading(false, for: sessionId)
 
         NSLog("⌚️ WatchConnectionService: history.response processed - %d messages loaded", history.count)
     }
