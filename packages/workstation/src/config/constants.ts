@@ -177,8 +177,8 @@ export const AGENT_COMMANDS = {
  * Agent execution configuration.
  */
 export const AGENT_EXECUTION_CONFIG = {
-  /** Default execution timeout (seconds) - 15 minutes for complex tasks */
-  DEFAULT_TIMEOUT_SECONDS: 900,
+  /** Default execution timeout (seconds) - 2 hours for complex tasks */
+  DEFAULT_TIMEOUT_SECONDS: 7200,
 
   /** Timeout for waiting on process termination during graceful shutdown (ms) */
   GRACEFUL_SHUTDOWN_TIMEOUT_MS: 2000,

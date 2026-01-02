@@ -93,8 +93,8 @@ const EnvSchema = z.object({
   // ─────────────────────────────────────────────────────────────
   // Headless Agents Configuration
   // ─────────────────────────────────────────────────────────────
-  /** Timeout for agent command execution in seconds (default: 15 minutes) */
-  AGENT_EXECUTION_TIMEOUT: z.coerce.number().default(900),
+  /** Timeout for agent command execution in seconds (default: 2 hours) */
+  AGENT_EXECUTION_TIMEOUT: z.coerce.number().default(7200),
   CLAUDE_SESSION_LOCK_WAIT_MS: z.coerce.number().default(1500),
 
   // ─────────────────────────────────────────────────────────────
