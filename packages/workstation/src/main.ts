@@ -693,14 +693,21 @@ async function bootstrap(): Promise<void> {
       // Protocol v1.13: All syncs are lightweight — no message histories
       // Clients must use history.request for on-demand chat loading
 
-      // Get in-memory sessions (terminal sessions + active agent sessions)
+      // Get in-memory sessions (terminal sessions + active agent sessions + backlog agent sessions)
       const inMemorySessions = sessionManager.getSessionInfos();
 
       // Get persisted agent sessions from database (survives workstation restart)
       const persistedAgentSessions =
         chatHistoryService.getActiveAgentSessions();
       logger.debug(
-        { persistedAgentSessions, inMemoryCount: inMemorySessions.length },
+        {
+          inMemoryCount: inMemorySessions.length,
+          inMemorySessionTypes: inMemorySessions.map((s) => ({
+            id: s.session_id,
+            type: s.session_type,
+          })),
+          persistedAgentCount: persistedAgentSessions.length,
+        },
         "Sync: fetched sessions"
       );
 
