@@ -118,6 +118,9 @@ export class HeadlessAgentExecutor extends EventEmitter {
       },
       stdio: ["ignore", "pipe", "pipe"], // stdin ignored, stdout/stderr piped
       detached: true, // Create new process group for clean termination
+      // Ensure child doesn't interfere with parent's signal handling
+      // @ts-ignore - Node.js 16+ option
+      ignoreParentSignals: true,
     });
 
     // Setup stdout handler - ignore data after kill

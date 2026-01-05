@@ -3208,6 +3208,16 @@ async function bootstrap(): Promise<void> {
   registerSignalHandlers(shutdown);
 }
 
+// Keep stdin open to maintain terminal connection
+// This ensures the parent process continues to receive signals
+// even when child processes are running
+if (process.stdin && !process.stdin.destroyed) {
+  // Ensure stdin is not paused - paused stdin won't deliver signals
+  if (process.stdin.isPaused?.()) {
+    process.stdin.resume();
+  }
+}
+
 // Run the server
 bootstrap().catch((error: unknown) => {
   console.error("Failed to bootstrap:", error);
