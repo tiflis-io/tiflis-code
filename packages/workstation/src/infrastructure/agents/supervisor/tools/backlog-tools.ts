@@ -39,22 +39,35 @@ export function createBacklogTools(
     async (args: {
       workspace: string;
       project: string;
-      worktree: string;
+      worktree?: string;
       backlogId?: string;
     }) => {
       const finalBacklogId = args.backlogId || `${args.project}-${Date.now()}`;
+
+      // Construct working directory path using workspacesRoot if available
+      const root = workspacesRoot || '/workspaces';
+      let workingDir: string;
+
+      if (!args.worktree) {
+        // No worktree specified = use project root (main/master branch)
+        workingDir = join(root, args.workspace, args.project);
+      } else {
+        // Worktree specified = use worktree directory pattern
+        workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
+      }
+
       const workspacePath: WorkspacePath = {
         workspace: args.workspace,
         project: args.project,
         worktree: args.worktree,
       };
-      // Construct working directory path using workspacesRoot if available
-      const root = workspacesRoot || '/workspaces';
-      const workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
 
       // Validate that the project directory exists before creating backlog session
       if (!existsSync(workingDir)) {
-        return `❌ ERROR: Project path does not exist: ${workingDir}\n\nPlease make sure:\n1. The workspace "${args.workspace}" exists\n2. The project "${args.project}" exists\n3. The worktree/branch "${args.worktree}" is checked out\n\nUse list_worktrees to see available branches for the project.`;
+        const details = args.worktree
+          ? `The worktree/branch "${args.worktree}" is checked out`
+          : `The main/master branch is checked out`;
+        return `❌ ERROR: Project path does not exist: ${workingDir}\n\nPlease make sure:\n1. The workspace "${args.workspace}" exists\n2. The project "${args.project}" exists\n3. ${details}\n\nUse list_worktrees to see available branches for the project.`;
       }
 
       // Backlog uses the default model (same as Supervisor)
@@ -94,7 +107,7 @@ export function createBacklogTools(
       schema: z.object({
         workspace: z.string().describe('Workspace name'),
         project: z.string().describe('Project name'),
-        worktree: z.string().describe('Git worktree/branch name'),
+        worktree: z.string().optional().describe('Git worktree/branch name. Omit for main/master branch'),
         backlogId: z.string().optional().describe('Custom backlog identifier'),
       }),
     }
