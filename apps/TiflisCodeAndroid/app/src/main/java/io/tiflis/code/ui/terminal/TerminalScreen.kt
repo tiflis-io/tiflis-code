@@ -57,6 +57,7 @@ fun TerminalScreen(
     val connectionState by appState.connectionState.collectAsState()
     val workstationOnline by appState.workstationOnline.collectAsState()
     val workspacesRoot by appState.workspacesRoot.collectAsState()
+    val isDemoMode by appState.isDemoMode.collectAsState()
 
     val session = appState.sessions.collectAsState().value.find { it.id == sessionId }
     val terminalState by viewModel.state.collectAsState()
@@ -183,9 +184,9 @@ fun TerminalScreen(
                 }
 
                 else -> {
-                    // Show terminal view immediately when WebSocket is connected
+                    // Show terminal view immediately when WebSocket is connected or in demo mode
                     // Loading states are shown as overlay (like iOS)
-                    if (connectionState.isConnected) {
+                    if (connectionState.isConnected || isDemoMode) {
                         val keyboardController = LocalSoftwareKeyboardController.current
                         val density = LocalDensity.current
 

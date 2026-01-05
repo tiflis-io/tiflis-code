@@ -49,6 +49,7 @@ fun SidebarScreen(
     val sessions by appState.sessions.collectAsState()
     val workspacesRoot by appState.workspacesRoot.collectAsState()
     val connectionState by appState.connectionState.collectAsState()
+    val isDemoMode by appState.isDemoMode.collectAsState()
 
     // Group sessions by type
     val agentSessions = sessions.filter { it.type.isAgent }
@@ -157,6 +158,26 @@ fun SidebarScreen(
             },
             modifier = Modifier.clickable { onSettingsClick() }
         )
+
+        // Exit Demo Mode button (only in demo mode)
+        if (isDemoMode) {
+            ListItem(
+                headlineContent = {
+                    Text(
+                        text = "Exit Demo Mode",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                },
+                leadingContent = {
+                    Icon(
+                        Icons.Default.ExitToApp,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                modifier = Modifier.clickable { appState.exitDemoMode() }
+            )
+        }
     }
 
     // Create session dialog

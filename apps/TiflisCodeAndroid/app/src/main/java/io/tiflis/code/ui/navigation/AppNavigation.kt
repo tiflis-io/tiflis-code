@@ -100,13 +100,14 @@ fun AppNavigation(
         }
     }
 
-    // Track if credentials exist to show/hide drawer
+    // Track if credentials exist or demo mode to show/hide drawer
     val hasCredentials = remember { mutableStateOf(appState.hasCredentials()) }
-    
+    val isDemoMode by appState.isDemoMode.collectAsState()
+
     // Update hasCredentials when connection state changes
     val connectionState by appState.connectionState.collectAsState()
-    LaunchedEffect(connectionState) {
-        hasCredentials.value = appState.hasCredentials()
+    LaunchedEffect(connectionState, isDemoMode) {
+        hasCredentials.value = appState.hasCredentials() || isDemoMode
     }
 
     // Auto-connect on app start if credentials exist
@@ -143,9 +144,9 @@ fun AppNavigation(
         }
     }
 
-    // Show ConnectScreen without drawer when no credentials
+    // Show ConnectScreen without drawer when no credentials and not in demo mode
     // Skip this check in screenshot testing mode
-    if (!hasCredentials.value && !ScreenshotTestConfig.isScreenshotTesting) {
+    if (!hasCredentials.value && !ScreenshotTestConfig.isScreenshotTesting && !isDemoMode) {
         NavigationContent(
             navController = navController,
             appState = appState,
@@ -224,15 +225,25 @@ private fun NavigationContent(
         composable(Screen.Connect.route) {
             // Track connection state to detect when credentials become available
             val connectionState by appState.connectionState.collectAsState()
-            
+            val isDemoModeInConnect by appState.isDemoMode.collectAsState()
+
             ConnectScreen(
                 appState = appState,
                 onScanQR = { navController.navigate(Screen.QRScanner.route) }
             )
-            
+
             // Navigate to Supervisor when connected successfully
             LaunchedEffect(connectionState) {
                 if (connectionState.isConnected && appState.hasCredentials()) {
+                    navController.navigate(Screen.Supervisor.route) {
+                        popUpTo(Screen.Connect.route) { inclusive = true }
+                    }
+                }
+            }
+
+            // Navigate to Supervisor when demo mode is activated
+            LaunchedEffect(isDemoModeInConnect) {
+                if (isDemoModeInConnect) {
                     navController.navigate(Screen.Supervisor.route) {
                         popUpTo(Screen.Connect.route) { inclusive = true }
                     }

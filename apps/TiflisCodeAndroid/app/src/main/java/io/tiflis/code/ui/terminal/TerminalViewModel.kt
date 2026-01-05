@@ -10,12 +10,17 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.tiflis.code.data.websocket.ConnectionService
 import io.tiflis.code.data.websocket.WebSocketMessage
+import io.tiflis.code.domain.models.DemoData
 import io.tiflis.code.ui.state.AppState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import javax.inject.Inject
 
 /**
@@ -50,6 +55,10 @@ class TerminalViewModel @Inject constructor(
     private val replayBuffer = mutableListOf<Pair<Long, String>>()
     private var isReplaying = false
 
+    // Demo mode state
+    private var isDemoMode = false
+    private var demoCommandBuffer = StringBuilder()
+
     /**
      * Subscribe to a terminal session.
      * Follows iOS pattern: immediately request replay after subscribe (don't wait for session.subscribed)
@@ -57,6 +66,13 @@ class TerminalViewModel @Inject constructor(
     fun subscribe(sessionId: String, appState: AppState) {
         if (currentSessionId == sessionId && _state.value is TerminalState.Live) {
             Log.d(TAG, "Already subscribed to session: $sessionId")
+            return
+        }
+
+        // Check if we're in demo mode
+        isDemoMode = appState.isDemoMode.value
+        if (isDemoMode) {
+            enterDemoTerminalMode(sessionId)
             return
         }
 
@@ -82,6 +98,22 @@ class TerminalViewModel @Inject constructor(
         // This ensures we load terminal history right away
         _state.value = TerminalState.Replaying
         requestReplayFromBeginning(appState)
+    }
+
+    /**
+     * Enters demo terminal mode with mock output.
+     */
+    private fun enterDemoTerminalMode(sessionId: String) {
+        Log.d(TAG, "Entering demo terminal mode for session: $sessionId")
+        currentSessionId = sessionId
+        isMaster = true
+        demoCommandBuffer.clear()
+
+        viewModelScope.launch {
+            delay(200)
+            _terminalOutput.emit(DemoData.terminalOutput)
+            _state.value = TerminalState.Live
+        }
     }
 
     /**
@@ -126,7 +158,94 @@ class TerminalViewModel @Inject constructor(
      */
     fun sendInput(data: String, appState: AppState) {
         val sessionId = currentSessionId ?: return
+
+        // Demo mode: handle input locally with fake responses
+        if (isDemoMode) {
+            handleDemoInput(data)
+            return
+        }
+
         appState.sendTerminalInput(sessionId, data)
+    }
+
+    /**
+     * Handle input in demo mode with fake command responses.
+     */
+    private fun handleDemoInput(text: String) {
+        viewModelScope.launch {
+            for (char in text) {
+                when (char) {
+                    '\r', '\n' -> {
+                        // Enter pressed - execute command
+                        _terminalOutput.emit("\r\n")
+                        executeDemoCommand()
+                    }
+                    '\u007F', '\b' -> {
+                        // Backspace/Delete - remove last character
+                        if (demoCommandBuffer.isNotEmpty()) {
+                            demoCommandBuffer.deleteCharAt(demoCommandBuffer.length - 1)
+                            _terminalOutput.emit("\b \b")
+                        }
+                    }
+                    '\u0003' -> {
+                        // Ctrl+C - cancel current input
+                        demoCommandBuffer.clear()
+                        _terminalOutput.emit("^C\r\n\$ ")
+                    }
+                    else -> {
+                        // Regular character - echo and buffer
+                        demoCommandBuffer.append(char)
+                        _terminalOutput.emit(char.toString())
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Execute a demo command and show fake output.
+     */
+    private suspend fun executeDemoCommand() {
+        val command = demoCommandBuffer.toString().trim()
+        demoCommandBuffer.clear()
+        val response = generateDemoResponse(command)
+        _terminalOutput.emit(response)
+    }
+
+    /**
+     * Generate fake terminal response for demo commands.
+     */
+    private fun generateDemoResponse(command: String): String {
+        val parts = command.split(" ", limit = 2)
+        val cmd = parts.firstOrNull()?.lowercase() ?: ""
+
+        return when (cmd) {
+            "ls" -> "README.md\r\napps\r\ndocs\r\npackages\r\n\r\n\$ "
+            "pwd" -> "/Users/demo/tiflis/tiflis-code\r\n\r\n\$ "
+            "whoami" -> "demo\r\n\r\n\$ "
+            "echo" -> {
+                val args = if (parts.size > 1) parts[1] else ""
+                "$args\r\n\r\n\$ "
+            }
+            "date" -> {
+                val formatter = SimpleDateFormat("EEE MMM d HH:mm:ss zzz yyyy", Locale.US)
+                "${formatter.format(Date())}\r\n\r\n\$ "
+            }
+            "cat" -> "cat: This is demo mode\r\n\r\n\$ "
+            "git" -> {
+                val subcommand = if (parts.size > 1) parts[1].split(" ").firstOrNull() ?: "" else ""
+                when (subcommand) {
+                    "status" -> "On branch main\r\nnothing to commit, working tree clean\r\n\r\n\$ "
+                    "branch" -> "* main\r\n  feature-auth\r\n  develop\r\n\r\n\$ "
+                    "log" -> "commit abc1234 (HEAD -> main)\r\nAuthor: Demo User <demo@example.com>\r\nDate:   Mon Jan 1 12:00:00 2025\r\n\r\n    Initial commit\r\n\r\n\$ "
+                    else -> "git: '$subcommand' is not available in demo mode\r\n\r\n\$ "
+                }
+            }
+            "help" -> "Demo terminal commands:\r\n  ls, pwd, whoami, echo, date, git, cat, clear, help\r\n\r\n\$ "
+            "clear" -> "\u001b[2J\u001b[H\$ "
+            "" -> "\$ "
+            else -> "$cmd: command not found (demo mode)\r\n\r\n\$ "
+        }
     }
 
     /**
