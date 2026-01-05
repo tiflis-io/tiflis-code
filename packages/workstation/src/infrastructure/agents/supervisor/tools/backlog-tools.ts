@@ -104,7 +104,7 @@ export function createBacklogTools(
       // Broadcast session creation to all clients
       const broadcaster = getMessageBroadcaster?.();
       if (broadcaster) {
-        broadcaster.broadcast({
+        broadcaster.broadcastToAll(JSON.stringify({
           type: 'session.created',
           session_id: session.id.value,
           payload: {
@@ -114,7 +114,7 @@ export function createBacklogTools(
             worktree: args.worktree,
             working_dir: workingDir,
           },
-        });
+        }));
       }
 
       return `✅ Created backlog session "${finalBacklogId}" at ${workingDir}\nSession ID: ${session.id.value}`;
