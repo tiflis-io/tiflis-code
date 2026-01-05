@@ -4,6 +4,7 @@
  * @license FSL-1.1-NC
  */
 
+import { join } from 'path';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
@@ -30,7 +31,8 @@ export interface BacklogToolsRegistry {
 export function createBacklogTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
-  backlogManagers: Map<string, BacklogAgentManager>
+  backlogManagers: Map<string, BacklogAgentManager>,
+  workspacesRoot?: string
 ): BacklogToolsRegistry {
   const createBacklogSession = tool(
     async (args: {
@@ -46,7 +48,9 @@ export function createBacklogTools(
         project: args.project,
         worktree: args.worktree,
       };
-      const workingDir = `/workspaces/${args.workspace}/${args.project}--${args.worktree}`;
+      // Construct working directory path using workspacesRoot if available
+      const root = workspacesRoot || '/workspaces';
+      const workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
 
       // Create backlog session via sessionManager with proper parameters
       const session = await sessionManager.createSession({

@@ -149,7 +149,8 @@ export class SupervisorAgent extends EventEmitter {
       ...Object.values(createBacklogTools(
         config.sessionManager,
         config.agentSessionManager,
-        config.sessionManager.getBacklogManagers?.() ?? new Map()
+        config.sessionManager.getBacklogManagers?.() ?? new Map(),
+        config.workspacesRoot
       )),
     ];
 
