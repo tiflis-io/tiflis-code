@@ -39,7 +39,6 @@ export function createBacklogTools(
       workspace: string;
       project: string;
       worktree: string;
-      agent: 'claude' | 'cursor' | 'opencode';
       backlogId?: string;
     }) => {
       const finalBacklogId = args.backlogId || `${args.project}-${Date.now()}`;
@@ -52,12 +51,16 @@ export function createBacklogTools(
       const root = workspacesRoot || '/workspaces';
       const workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
 
+      // Backlog uses the default model (same as Supervisor)
+      // It doesn't accept a specific agent - uses system defaults
+      const defaultAgent = 'backlog';
+
       // Create backlog session via sessionManager with proper parameters
       const session = await sessionManager.createSession({
         sessionType: 'backlog-agent',
         workspacePath,
         workingDir,
-        backlogAgent: args.agent,
+        backlogAgent: defaultAgent,
         backlogId: finalBacklogId,
       });
 
@@ -77,18 +80,15 @@ export function createBacklogTools(
 
       backlogManagers.set(session.id.value, manager);
 
-      return `✅ Created backlog session "${finalBacklogId}" with ${args.agent} agent in worktree "${args.worktree}". Use this session ID: ${session.id.value}`;
+      return `✅ Created backlog session "${finalBacklogId}" in worktree "${args.worktree}". Use this session ID: ${session.id.value}`;
     },
     {
       name: 'create_backlog_session',
-      description: 'Create a new Backlog Agent session for autonomous development',
+      description: 'Create a new Backlog Agent session for autonomous development (uses system default model)',
       schema: z.object({
         workspace: z.string().describe('Workspace name'),
         project: z.string().describe('Project name'),
         worktree: z.string().describe('Git worktree/branch name'),
-        agent: z
-          .enum(['claude', 'cursor', 'opencode'])
-          .describe('AI agent to use for coding'),
         backlogId: z.string().optional().describe('Custom backlog identifier'),
       }),
     }
