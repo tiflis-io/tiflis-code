@@ -12,6 +12,7 @@ import type { BacklogAgentSession } from '../../domain/entities/backlog-agent-se
 import type { Backlog } from '../../domain/value-objects/backlog.js';
 import { BacklogSchema } from '../../domain/value-objects/backlog.js';
 import { BacklogHarness } from './backlog-harness.js';
+import { BacklogAgent } from './backlog-agent.js';
 import type { AgentSessionManager } from './agent-session-manager.js';
 import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 
@@ -26,6 +27,7 @@ export class BacklogAgentManager extends EventEmitter {
   private workingDir: string;
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
+  private llmAgent: BacklogAgent;
 
   constructor(
     session: BacklogAgentSession,
@@ -40,6 +42,21 @@ export class BacklogAgentManager extends EventEmitter {
     this.workingDir = workingDir;
     this.agentSessionManager = agentSessionManager;
     this.logger = logger;
+
+    // Initialize LLM-based agent with tools context
+    this.llmAgent = new BacklogAgent(
+      {
+        getStatus: () => this.getStatusBlocks(),
+        startHarness: () => this.startHarnessCommand(),
+        stopHarness: () => this.stopHarnessCommand(),
+        pauseHarness: () => this.pauseHarnessCommand(),
+        resumeHarness: () => this.resumeHarnessCommand(),
+        listTasks: () => this.listTasksBlocks(),
+        addTask: (title: string, description: string) =>
+          this.addTaskCommand({ title, description }),
+      },
+      logger
+    );
   }
 
   /**
@@ -82,55 +99,12 @@ export class BacklogAgentManager extends EventEmitter {
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
     this.conversationHistory.push({ role: 'user', content: userMessage });
 
-    const blocks: ContentBlock[] = [];
+    // Use LLM agent to execute command (understands natural language)
+    const blocks = await this.llmAgent.executeCommand(userMessage);
 
-    // Parse command
-    const command = this.parseCommand(userMessage);
-
-    switch (command.type) {
-      case 'get_status':
-        blocks.push(...this.getStatusBlocks());
-        break;
-
-      case 'start_harness':
-        blocks.push(...(await this.startHarnessCommand()));
-        break;
-
-      case 'stop_harness':
-        blocks.push(...this.stopHarnessCommand());
-        break;
-
-      case 'pause_harness':
-        blocks.push(...this.pauseHarnessCommand());
-        break;
-
-      case 'resume_harness':
-        blocks.push(...this.resumeHarnessCommand());
-        break;
-
-      case 'add_task':
-        blocks.push(...this.addTaskCommand(command.params));
-        break;
-
-      case 'reorder_tasks':
-        blocks.push(...this.reorderTasksCommand(command.params));
-        break;
-
-      case 'list_tasks':
-        blocks.push(...this.listTasksBlocks());
-        break;
-
-      case 'help':
-        blocks.push(...this.helpBlocks());
-        break;
-
-      default:
-        blocks.push({
-          id: 'unknown-command',
-          block_type: 'text',
-          content: `I don't understand that command. Type "help" for available commands.`,
-        });
-    }
+    // Record response in history
+    const responseText = blocks.map((b: any) => b.content).join('\n');
+    this.conversationHistory.push({ role: 'assistant', content: responseText });
 
     // Save state
     this.saveBacklog();
