@@ -80,7 +80,7 @@ export const ListSessionsSchema = z.object({
 });
 
 export const CreateSessionPayloadSchema = z.object({
-  session_type: z.enum(['cursor', 'claude', 'opencode', 'terminal']),
+  session_type: z.enum(['cursor', 'claude', 'opencode', 'terminal', 'backlog-agent']),
   agent_name: z.string().optional(), // Custom alias name (e.g., 'zai' for claude with custom config)
   workspace: z.string().min(1, 'Workspace is required'),
   project: z.string().min(1, 'Project is required'),
