@@ -222,7 +222,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
   // Create session
   const createSession = useCallback(
     async (
-      sessionType: 'claude' | 'cursor' | 'opencode' | 'terminal',
+      sessionType: 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent',
       workspace: string,
       project: string,
       worktree?: string,

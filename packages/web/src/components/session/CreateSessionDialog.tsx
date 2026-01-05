@@ -52,7 +52,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
   const [selectedAgent, setSelectedAgent] = useState<string>('claude');
   const [selectedWorkspace, setSelectedWorkspace] = useState<string>('');
   const [selectedProject, setSelectedProject] = useState<string>('');
-  const [isTerminal, setIsTerminal] = useState(false);
+  const [sessionTypeMode, setSessionTypeMode] = useState<'agent' | 'terminal' | 'backlog'>('agent');
 
   const { createSession, subscribeToSession, requestSync } = useWebSocket();
   const selectSession = useAppStore((state) => state.selectSession);
@@ -91,8 +91,8 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
   }, [agents, selectedAgent]);
 
   const handleCreate = useCallback(async () => {
-    if (!isTerminal && (!selectedWorkspace || !selectedProject)) {
-      setError('Workspace and project are required for agent sessions');
+    if (!selectedWorkspace || !selectedProject) {
+      setError('Workspace and project are required');
       return;
     }
 
@@ -101,18 +101,26 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
 
     try {
       const agentConfig = agents.find((a) => a.name === selectedAgent);
-      const sessionType = isTerminal ? 'terminal' : (agentConfig?.baseType ?? 'claude');
+      let sessionType: 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent';
+
+      if (sessionTypeMode === 'terminal') {
+        sessionType = 'terminal';
+      } else if (sessionTypeMode === 'backlog') {
+        sessionType = 'backlog-agent';
+      } else {
+        sessionType = agentConfig?.baseType ?? 'claude';
+      }
 
       // For terminal sessions, use defaults if not provided (matches iOS/Android behavior)
-      const finalWorkspace = isTerminal ? (selectedWorkspace || 'home') : selectedWorkspace;
-      const finalProject = isTerminal ? (selectedProject || 'default') : selectedProject;
+      const finalWorkspace = sessionTypeMode === 'terminal' ? (selectedWorkspace || 'home') : selectedWorkspace;
+      const finalProject = sessionTypeMode === 'terminal' ? (selectedProject || 'default') : selectedProject;
 
       const result = await createSession(
-        sessionType as 'claude' | 'cursor' | 'opencode' | 'terminal',
+        sessionType as 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent',
         finalWorkspace,
         finalProject,
         undefined,
-        isTerminal ? undefined : selectedAgent
+        sessionTypeMode !== 'terminal' && sessionTypeMode !== 'backlog' ? selectedAgent : undefined
       );
 
       const sessionId = result.payload.session_id;
@@ -122,7 +130,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
 
       // Select the session and navigate
       selectSession(sessionId);
-      if (isTerminal) {
+      if (sessionTypeMode === 'terminal') {
         navigate(`/terminal/${sessionId}`);
       } else {
         navigate(`/chat/${sessionId}`);
@@ -133,7 +141,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
       setSelectedWorkspace('');
       setSelectedProject('');
       setSelectedAgent(agents[0]?.name ?? 'claude');
-      setIsTerminal(false);
+      setSessionTypeMode('agent');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create session');
     } finally {
@@ -147,7 +155,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
     selectedAgent,
     selectedWorkspace,
     selectedProject,
-    isTerminal,
+    sessionTypeMode,
     agents,
   ]);
 
@@ -184,18 +192,27 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
             <div className="flex gap-2">
               <Button
                 type="button"
-                variant={!isTerminal ? 'default' : 'outline'}
+                variant={sessionTypeMode === 'agent' ? 'default' : 'outline'}
                 className="flex-1"
-                onClick={() => setIsTerminal(false)}
+                onClick={() => setSessionTypeMode('agent')}
               >
                 <AgentIcon className="w-4 h-4 mr-2" />
                 Agent
               </Button>
               <Button
                 type="button"
-                variant={isTerminal ? 'default' : 'outline'}
+                variant={sessionTypeMode === 'backlog' ? 'default' : 'outline'}
                 className="flex-1"
-                onClick={() => setIsTerminal(true)}
+                onClick={() => setSessionTypeMode('backlog')}
+              >
+                <AgentIcon className="w-4 h-4 mr-2" />
+                Backlog
+              </Button>
+              <Button
+                type="button"
+                variant={sessionTypeMode === 'terminal' ? 'default' : 'outline'}
+                className="flex-1"
+                onClick={() => setSessionTypeMode('terminal')}
               >
                 <TerminalIcon className="w-4 h-4 mr-2" />
                 Terminal
@@ -203,8 +220,8 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
             </div>
           </div>
 
-          {/* Agent Selection (only for non-terminal) */}
-          {!isTerminal && (
+          {/* Agent Selection (only for agent sessions) */}
+          {sessionTypeMode === 'agent' && (
             <div className="grid gap-2">
               <Label htmlFor="agent">Agent</Label>
               <Select value={selectedAgent} onValueChange={setSelectedAgent}>
@@ -233,8 +250,8 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
             </div>
           )}
 
-          {/* Workspace & Project (only for agent sessions) */}
-          {!isTerminal && (
+          {/* Workspace & Project (only for agent and backlog sessions) */}
+          {sessionTypeMode !== 'terminal' && (
             <>
               <div className="grid gap-2">
                 <Label htmlFor="workspace">Workspace</Label>
@@ -306,7 +323,7 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
           </Button>
           <Button
             onClick={handleCreate}
-            disabled={isCreating || (!isTerminal && (!selectedWorkspace || !selectedProject))}
+            disabled={isCreating || (sessionTypeMode !== 'terminal' && (!selectedWorkspace || !selectedProject))}
           >
             {isCreating ? (
               <>

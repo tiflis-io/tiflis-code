@@ -10,4 +10,5 @@ export { createWorkspaceTools } from './workspace-tools.js';
 export { createWorktreeTools } from './worktree-tools.js';
 export { createSessionTools } from './session-tools.js';
 export { createFilesystemTools } from './filesystem-tools.js';
+export { createBacklogTools } from './backlog-tools.js';
 

@@ -7,7 +7,7 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
-import type { BacklogAgentManager } from '../backlog-agent-manager.js';
+import type { BacklogAgentManager } from '../../backlog-agent-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
 import { BacklogAgentSession } from '../../../../domain/entities/backlog-agent-session.js';

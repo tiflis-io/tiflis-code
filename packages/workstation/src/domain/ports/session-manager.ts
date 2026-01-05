@@ -80,6 +80,11 @@ export interface SessionManager {
    * Gets the total count of active sessions.
    */
   count(): number;
+
+  /**
+   * Gets backlog managers for supervisor tools.
+   */
+  getBacklogManagers?.(): Map<string, any>;
 }
 
 /**
