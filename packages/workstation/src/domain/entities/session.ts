@@ -10,7 +10,13 @@ import type { WorkspacePath } from '../value-objects/workspace-path.js';
 /**
  * Session types supported by the workstation.
  */
-export type SessionType = 'supervisor' | 'cursor' | 'claude' | 'opencode' | 'terminal';
+export type SessionType =
+  | 'supervisor'
+  | 'cursor'
+  | 'claude'
+  | 'opencode'
+  | 'terminal'
+  | 'backlog-agent';
 
 /**
  * Session status.

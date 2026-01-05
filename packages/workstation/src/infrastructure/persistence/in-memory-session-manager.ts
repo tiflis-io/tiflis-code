@@ -25,12 +25,15 @@ import type { WorkspacePath } from '../../domain/value-objects/workspace-path.js
 import type { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
+import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session.js';
+import type { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
 
 export interface InMemorySessionManagerConfig {
   ptyManager: TerminalManager;
   agentSessionManager: AgentSessionManager;
   workspacesRoot: string;
   logger: Logger;
+  backlogManagers?: Map<string, BacklogAgentManager>;
 }
 
 /**
@@ -54,12 +57,14 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   private readonly agentSessionManager: AgentSessionManager;
   private readonly logger: Logger;
   private supervisorSession: SupervisorSession | null = null;
+  private readonly backlogManagers: Map<string, BacklogAgentManager>;
 
   constructor(config: InMemorySessionManagerConfig) {
     super();
     this.ptyManager = config.ptyManager;
     this.agentSessionManager = config.agentSessionManager;
     this.logger = config.logger.child({ component: 'session-manager' });
+    this.backlogManagers = config.backlogManagers || new Map();
 
     // Sync agent session events
     this.setupAgentSessionSync();
@@ -108,7 +113,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    * Creates a new session.
    */
   async createSession(params: CreateSessionParams): Promise<Session> {
-    const { sessionType, workingDir, terminalSize, agentName } = params;
+    const { sessionType, workingDir, terminalSize, agentName, backlogAgent, backlogId } = params;
 
     if (sessionType === 'supervisor') {
       return this.getOrCreateSupervisor(workingDir);
@@ -130,6 +135,10 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
       this.emit('terminalSessionCreated', session);
 
       return session;
+    }
+
+    if (sessionType === 'backlog-agent') {
+      return this.createBacklogSession(workingDir, backlogAgent || 'claude', backlogId, params.workspacePath);
     }
 
     // Agent sessions (cursor, claude, opencode)
@@ -336,5 +345,49 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    */
   getAgentSessionManager(): AgentSessionManager {
     return this.agentSessionManager;
+  }
+
+  /**
+   * Creates a backlog agent session.
+   */
+  private async createBacklogSession(
+    workingDir: string,
+    backlogAgent: 'claude' | 'cursor' | 'opencode',
+    backlogId?: string,
+    workspacePath?: WorkspacePath
+  ): Promise<BacklogAgentSession> {
+    const sessionId = new SessionId(`backlog-${nanoid(8)}`);
+    const finalBacklogId = backlogId || `backlog-${nanoid(8)}`;
+
+    const session = new BacklogAgentSession({
+      id: sessionId,
+      type: 'backlog-agent' as any,
+      workspacePath,
+      workingDir,
+      agentName: backlogAgent,
+      backlogId: finalBacklogId,
+    });
+
+    this.sessions.set(sessionId.value, session);
+
+    this.logger.info(
+      {
+        sessionId: sessionId.value,
+        backlogId: finalBacklogId,
+        backlogAgent,
+        workingDir,
+        workspacePath,
+      },
+      'Backlog agent session created'
+    );
+
+    return session;
+  }
+
+  /**
+   * Gets the backlog managers registry.
+   */
+  getBacklogManagers(): Map<string, BacklogAgentManager> {
+    return this.backlogManagers;
   }
 }

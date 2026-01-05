@@ -21,6 +21,7 @@ import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
 import { createFilesystemTools } from './tools/filesystem-tools.js';
+import { createBacklogTools } from './tools/backlog-tools.js';
 import { getEnv } from '../../../config/env.js';
 import {
   createTextBlock,
@@ -145,6 +146,11 @@ export class SupervisorAgent extends EventEmitter {
         terminateSessionCallback
       ),
       ...createFilesystemTools(config.workspacesRoot),
+      ...Object.values(createBacklogTools(
+        config.sessionManager,
+        config.agentSessionManager,
+        config.sessionManager.getBacklogManagers?.() ?? new Map()
+      )),
     ];
 
     this.logger.info({ toolCount: tools.length }, 'Creating Supervisor Agent with tools');

@@ -499,6 +499,18 @@ export interface SessionInfo {
   created_at: number;
   /** Agent name (alias) if different from session_type (e.g., 'zai' for a claude alias) */
   agent_name?: string;
+  /** Backlog-specific: backlog session ID for session_type='backlog-agent' */
+  backlog_id?: string;
+  /** Backlog-specific: whether harness is currently running */
+  harness_running?: boolean;
+  /** Backlog-specific: summary of backlog task status */
+  backlog_summary?: {
+    total: number;
+    completed: number;
+    failed: number;
+    in_progress: number;
+    pending: number;
+  };
 }
 
 // ============================================================================

@@ -30,11 +30,14 @@ export interface CreateSessionDeps {
 
 export interface CreateSessionParams {
   requestId: string;
-  sessionType: 'cursor' | 'claude' | 'opencode' | 'terminal';
+  sessionType: 'cursor' | 'claude' | 'opencode' | 'terminal' | 'backlog-agent';
   agentName?: string; // Custom alias name (e.g., 'zai' for claude with custom config)
   workspace: string;
   project: string;
   worktree?: string;
+  // Backlog-specific parameters
+  backlogAgent?: 'claude' | 'cursor' | 'opencode'; // Which agent to use for backlog
+  backlogId?: string; // Custom backlog identifier
 }
 
 export interface CreateSessionResult {
@@ -58,15 +61,15 @@ export class CreateSessionUseCase {
    * Creates a new session.
    */
   async execute(params: CreateSessionParams): Promise<CreateSessionResult> {
-    const { requestId, sessionType, agentName, workspace, project, worktree } = params;
+    const { requestId, sessionType, agentName, workspace, project, worktree, backlogAgent, backlogId } = params;
 
-    this.logger.info({ requestId, sessionType, agentName, workspace, project, worktree }, 'CreateSession execute called');
+    this.logger.info({ requestId, sessionType, agentName, workspace, project, worktree, backlogAgent, backlogId }, 'CreateSession execute called');
 
     let workingDir: string;
     let workspacePath: WorkspacePath | null = null;
 
-    // Terminal sessions can be created without workspace/project - use workspaces root
-    if (sessionType === 'terminal') {
+    // Backlog and Terminal sessions can be created without workspace/project - use workspaces root
+    if (sessionType === 'terminal' || sessionType === 'backlog-agent') {
       // Determine what working directory to use based on provided workspace/project
       const hasRealWorkspace = workspace && workspace !== 'home';
       const hasRealProject = project && project !== 'default';
@@ -211,6 +214,12 @@ export class CreateSessionUseCase {
       const count = this.deps.sessionManager.countByType('terminal');
       if (count >= SESSION_CONFIG.MAX_TERMINAL_SESSIONS) {
         throw new SessionLimitReachedError('terminal', SESSION_CONFIG.MAX_TERMINAL_SESSIONS);
+      }
+    } else if (sessionType === 'backlog-agent') {
+      // Backlog sessions have their own limit (usually higher, since they're autonomous)
+      const count = this.deps.sessionManager.countByType('backlog-agent');
+      if (count >= (SESSION_CONFIG.MAX_BACKLOG_SESSIONS || 10)) {
+        throw new SessionLimitReachedError('backlog', SESSION_CONFIG.MAX_BACKLOG_SESSIONS || 10);
       }
     } else if (sessionType !== 'supervisor') {
       const agentCount =

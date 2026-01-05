@@ -1514,6 +1514,7 @@ async function bootstrap(): Promise<void> {
           audio?: string;
           audio_format?: string;
           message_id?: string;
+          prompt?: string; // For backlog agent commands
         };
       };
 
@@ -1542,6 +1543,63 @@ async function bootstrap(): Promise<void> {
 
       // Clear any previous cancellation state - new command starts fresh
       cancelledDuringTranscription.delete(sessionId);
+
+      // Check if this is a backlog agent session
+      const backlogManagers = sessionManager.getBacklogManagers?.();
+      if (backlogManagers && backlogManagers.has(sessionId)) {
+        const manager = backlogManagers.get(sessionId)!;
+        const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
+
+        try {
+          const blocks = await manager.executeCommand(prompt);
+
+          // Broadcast output to session subscribers
+          if (messageBroadcaster) {
+            const outputMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              payload: {
+                blocks,
+                isComplete: true,
+                timestamp: Date.now(),
+                message_id: messageId,
+              },
+            };
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(outputMessage)
+            );
+          }
+        } catch (error) {
+          logger.error(
+            { error, sessionId },
+            "Failed to execute backlog command"
+          );
+          if (messageBroadcaster) {
+            const errorMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              payload: {
+                blocks: [
+                  {
+                    id: "error",
+                    block_type: "error",
+                    content: error instanceof Error ? error.message : "Unknown error",
+                  },
+                ],
+                isComplete: true,
+                timestamp: Date.now(),
+                message_id: messageId,
+              },
+            };
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(errorMessage)
+            );
+          }
+        }
+        return;
+      }
 
       // Handle voice message with audio payload
       if (execMessage.payload.audio) {
