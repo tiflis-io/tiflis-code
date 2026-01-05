@@ -27,6 +27,7 @@ import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
 import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session.js';
 import type { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
+import { SessionRepository } from './repositories/session-repository.js';
 
 export interface InMemorySessionManagerConfig {
   ptyManager: TerminalManager;
@@ -34,6 +35,7 @@ export interface InMemorySessionManagerConfig {
   workspacesRoot: string;
   logger: Logger;
   backlogManagers?: Map<string, BacklogAgentManager>;
+  sessionRepository?: SessionRepository;
 }
 
 /**
@@ -58,6 +60,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   private readonly logger: Logger;
   private supervisorSession: SupervisorSession | null = null;
   private readonly backlogManagers: Map<string, BacklogAgentManager>;
+  private readonly sessionRepository: SessionRepository | undefined;
 
   constructor(config: InMemorySessionManagerConfig) {
     super();
@@ -65,6 +68,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.agentSessionManager = config.agentSessionManager;
     this.logger = config.logger.child({ component: 'session-manager' });
     this.backlogManagers = config.backlogManagers || new Map();
+    this.sessionRepository = config.sessionRepository;
 
     // Sync agent session events
     this.setupAgentSessionSync();
@@ -125,6 +129,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
       const session = await this.ptyManager.create(workingDir, cols, rows);
       this.sessions.set(session.id.value, session);
+
+      // Persist terminal session to database
+      if (this.sessionRepository) {
+        this.sessionRepository.create({
+          id: session.id.value,
+          type: 'terminal',
+          workspace: params.workspacePath?.workspace,
+          project: params.workspacePath?.project,
+          worktree: params.workspacePath?.worktree,
+          workingDir,
+        });
+      }
 
       this.logger.info(
         { sessionId: session.id.value, sessionType, workingDir },
@@ -188,6 +204,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
     this.sessions.set(sessionId.value, session);
 
+    // Persist agent session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: agentName || agentType,
+        workspace: workspacePath?.workspace,
+        project: workspacePath?.project,
+        worktree: workspacePath?.worktree,
+        workingDir,
+      });
+    }
+
     this.logger.info(
       { sessionId: sessionId.value, agentType, agentName: resolvedAgentName, workingDir, workspacePath },
       'Agent session created'
@@ -213,6 +241,15 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     });
 
     this.sessions.set(sessionId.value, this.supervisorSession);
+
+    // Persist supervisor session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: 'supervisor',
+        workingDir,
+      });
+    }
 
     this.logger.info(
       { sessionId: sessionId.value },
@@ -369,6 +406,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     });
 
     this.sessions.set(sessionId.value, session);
+
+    // Persist backlog session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: 'backlog-agent',
+        workspace: workspacePath?.workspace,
+        project: workspacePath?.project,
+        worktree: workspacePath?.worktree,
+        workingDir,
+      });
+    }
 
     this.logger.info(
       {

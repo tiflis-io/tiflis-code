@@ -21,6 +21,7 @@ import {
 import { InMemoryClientRegistry } from "./infrastructure/persistence/in-memory-registry.js";
 import { WorkstationMetadataRepository } from "./infrastructure/persistence/repositories/workstation-metadata-repository.js";
 import { SubscriptionRepository } from "./infrastructure/persistence/repositories/subscription-repository.js";
+import { SessionRepository } from "./infrastructure/persistence/repositories/session-repository.js";
 import { TunnelClient } from "./infrastructure/websocket/tunnel-client.js";
 import {
   MessageRouter,
@@ -369,6 +370,7 @@ async function bootstrap(): Promise<void> {
   // Create repositories
   const workstationMetadataRepository = new WorkstationMetadataRepository();
   const subscriptionRepository = new SubscriptionRepository();
+  const sessionRepository = new SessionRepository();
 
   // Create infrastructure components
   const clientRegistry = new InMemoryClientRegistry(logger);
@@ -395,6 +397,7 @@ async function bootstrap(): Promise<void> {
     agentSessionManager,
     workspacesRoot: env.WORKSPACES_ROOT,
     logger,
+    sessionRepository,
   });
 
   // Pre-create mock sessions for screenshot automation (after sessionManager is ready)
