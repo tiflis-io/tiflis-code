@@ -81,15 +81,29 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.logger.info('restoreSessions() called');
 
     if (!this.sessionRepository) {
-      this.logger.debug('No session repository - skipping session restoration');
+      this.logger.warn('No session repository - skipping session restoration');
       return;
     }
 
-    const persistedSessions = this.sessionRepository.getActive();
-    this.logger.info(
-      { count: persistedSessions.length, sessions: persistedSessions.map((s) => ({ id: s.id, type: s.type })) },
-      'Restoring persisted sessions from database'
-    );
+    let persistedSessions: any[] = [];
+    try {
+      persistedSessions = this.sessionRepository.getActive();
+      this.logger.info(
+        { count: persistedSessions.length, sessions: persistedSessions.map((s) => ({ id: s.id, type: s.type })) },
+        'Restoring persisted sessions from database'
+      );
+
+      if (persistedSessions.length === 0) {
+        this.logger.info('No persisted sessions found in database');
+        return;
+      }
+    } catch (dbError) {
+      this.logger.error(
+        { error: dbError instanceof Error ? dbError.message : String(dbError) },
+        'Error fetching sessions from database'
+      );
+      return;
+    }
 
     let backlogRestoreCount = 0;
     for (const persistedSession of persistedSessions) {

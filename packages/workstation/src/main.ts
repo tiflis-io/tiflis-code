@@ -406,7 +406,16 @@ async function bootstrap(): Promise<void> {
   });
 
   // Restore persisted sessions from database (backlog agents, etc.)
-  await sessionManager.restoreSessions();
+  try {
+    logger.info("About to call sessionManager.restoreSessions()");
+    await sessionManager.restoreSessions();
+    logger.info("sessionManager.restoreSessions() completed successfully");
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
+      "Failed to restore sessions from database"
+    );
+  }
 
   // Pre-create mock sessions for screenshot automation (after sessionManager is ready)
   if (env.MOCK_MODE) {
