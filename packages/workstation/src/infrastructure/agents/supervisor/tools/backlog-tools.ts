@@ -39,9 +39,9 @@ export function createBacklogTools(
       project: string;
       worktree: string;
       agent: 'claude' | 'cursor' | 'opencode';
-      backlog_id?: string;
+      backlogId?: string;
     }) => {
-      const backlogId = args.backlog_id || `${project}-${Date.now()}`;
+      const backlogId = args.backlogId || `${args.project}-${Date.now()}`;
       const workspacePath: WorkspacePath = {
         workspace: args.workspace,
         project: args.project,
@@ -100,7 +100,7 @@ export function createBacklogTools(
         agent: z
           .enum(['claude', 'cursor', 'opencode'])
           .describe('AI agent to use for coding'),
-        backlog_id: z.string().optional().describe('Custom backlog identifier'),
+        backlogId: z.string().optional().describe('Custom backlog identifier'),
       }),
     }
   );
@@ -128,10 +128,10 @@ export function createBacklogTools(
   );
 
   const getBacklogStatus = tool(
-    async (args: { session_id: string }) => {
-      const manager = backlogManagers.get(args.session_id);
+    async (args: { sessionId: string }) => {
+      const manager = backlogManagers.get(args.sessionId);
       if (!manager) {
-        return `Backlog session "${args.session_id}" not found`;
+        return `Backlog session "${args.sessionId}" not found`;
       }
 
       const backlog = manager.getBacklog();
@@ -161,21 +161,21 @@ Worktree: ${backlog.worktree}
       name: 'get_backlog_status',
       description: 'Get status of a backlog session',
       schema: z.object({
-        session_id: z.string().describe('Backlog session ID'),
+        sessionId: z.string().describe('Backlog session ID'),
       }),
     }
   );
 
   const addTaskToBacklog = tool(
     async (args: {
-      session_id: string;
+      sessionId: string;
       title: string;
       description: string;
       criteria?: string;
     }) => {
-      const manager = backlogManagers.get(args.session_id);
+      const manager = backlogManagers.get(args.sessionId);
       if (!manager) {
-        return `Backlog session "${args.session_id}" not found`;
+        return `Backlog session "${args.sessionId}" not found`;
       }
 
       const blocks = await manager.executeCommand(
@@ -188,7 +188,7 @@ Worktree: ${backlog.worktree}
       name: 'add_task_to_backlog',
       description: 'Add a task to a backlog',
       schema: z.object({
-        session_id: z.string().describe('Backlog session ID'),
+        sessionId: z.string().describe('Backlog session ID'),
         title: z.string().describe('Task title'),
         description: z.string().describe('Task description'),
         criteria: z.string().optional().describe('Acceptance criteria'),
@@ -197,10 +197,10 @@ Worktree: ${backlog.worktree}
   );
 
   const startBacklogHarness = tool(
-    async (args: { session_id: string }) => {
-      const manager = backlogManagers.get(args.session_id);
+    async (args: { sessionId: string }) => {
+      const manager = backlogManagers.get(args.sessionId);
       if (!manager) {
-        return `Backlog session "${args.session_id}" not found`;
+        return `Backlog session "${args.sessionId}" not found`;
       }
 
       const blocks = await manager.executeCommand('start');
@@ -210,16 +210,16 @@ Worktree: ${backlog.worktree}
       name: 'start_backlog_harness',
       description: 'Start autonomous execution of a backlog',
       schema: z.object({
-        session_id: z.string().describe('Backlog session ID'),
+        sessionId: z.string().describe('Backlog session ID'),
       }),
     }
   );
 
   const stopBacklogHarness = tool(
-    async (args: { session_id: string }) => {
-      const manager = backlogManagers.get(args.session_id);
+    async (args: { sessionId: string }) => {
+      const manager = backlogManagers.get(args.sessionId);
       if (!manager) {
-        return `Backlog session "${args.session_id}" not found`;
+        return `Backlog session "${args.sessionId}" not found`;
       }
 
       const blocks = await manager.executeCommand('stop');
@@ -229,7 +229,7 @@ Worktree: ${backlog.worktree}
       name: 'stop_backlog_harness',
       description: 'Stop autonomous execution of a backlog',
       schema: z.object({
-        session_id: z.string().describe('Backlog session ID'),
+        sessionId: z.string().describe('Backlog session ID'),
       }),
     }
   );
