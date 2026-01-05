@@ -108,12 +108,11 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
           this.sessions.set(persistedSession.id, backlogSession);
 
           // Create backlog manager for this session (will load backlog.json if it exists)
-          const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any;
           const manager = BacklogAgentManager.createAndLoadFromFile(
             backlogSession,
             persistedSession.workingDir,
             this.agentSessionManager,
-            logger
+            this.logger
           );
           this.backlogManagers.set(persistedSession.id, manager);
 

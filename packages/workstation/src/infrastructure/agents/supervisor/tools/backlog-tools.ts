@@ -8,6 +8,7 @@ import { join } from 'path';
 import { existsSync } from 'fs';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
+import type { Logger } from 'pino';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
 import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
 import { BacklogAgentManager } from '../../backlog-agent-manager.js';
@@ -35,7 +36,8 @@ export function createBacklogTools(
   agentSessionManager: AgentSessionManager,
   backlogManagers: Map<string, BacklogAgentManager>,
   workspacesRoot?: string,
-  getMessageBroadcaster?: () => MessageBroadcaster | null
+  getMessageBroadcaster?: () => MessageBroadcaster | null,
+  logger?: Logger
 ): BacklogToolsRegistry {
   const createBacklogSession = tool(
     async (args: {
@@ -91,12 +93,12 @@ export function createBacklogTools(
 
       // Create backlog manager
       const backlogSession = session as BacklogAgentSession;
-      const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any;
+      const backlogLogger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, child: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }) } as any;
       const manager = BacklogAgentManager.createEmpty(
         backlogSession,
         workingDir,
         agentSessionManager,
-        logger
+        backlogLogger
       );
 
       backlogManagers.set(session.id.value, manager);
