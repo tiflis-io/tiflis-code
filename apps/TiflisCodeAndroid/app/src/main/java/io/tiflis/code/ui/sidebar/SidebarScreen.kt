@@ -109,14 +109,14 @@ fun SidebarScreen(
                 )
             }
 
-            // Agent Sessions
-            if (agentSessions.isNotEmpty()) {
-                item(key = "agents-header") {
-                    SectionHeader(title = "Agent Sessions")
+            // Backlog Sessions
+            if (backlogSessions.isNotEmpty()) {
+                item(key = "backlogs-header") {
+                    SectionHeader(title = "Backlog Directions")
                 }
 
                 items(
-                    items = agentSessions,
+                    items = backlogSessions,
                     key = { it.id }
                 ) { session ->
                     SwipeableSessionItem(
@@ -129,14 +129,14 @@ fun SidebarScreen(
                 }
             }
 
-            // Backlog Sessions
-            if (backlogSessions.isNotEmpty()) {
-                item(key = "backlogs-header") {
-                    SectionHeader(title = "Backlog Directions")
+            // Agent Sessions
+            if (agentSessions.isNotEmpty()) {
+                item(key = "agents-header") {
+                    SectionHeader(title = "Agent Sessions")
                 }
 
                 items(
-                    items = backlogSessions,
+                    items = agentSessions,
                     key = { it.id }
                 ) { session ->
                     SwipeableSessionItem(

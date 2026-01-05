@@ -45,11 +45,11 @@ struct SidebarView: View {
                     .accessibilityIdentifier("SupervisorSession")
                 }
             }
-            
-            // Agent Sessions
-            if !agentSessions.isEmpty {
-                Section("Agent Sessions") {
-                    ForEach(agentSessions) { session in
+
+            // Backlog Sessions
+            if !backlogSessions.isEmpty {
+                Section("Backlog Directions") {
+                    ForEach(backlogSessions) { session in
                         Button {
                             selectSession(session.id)
                         } label: {
@@ -57,7 +57,7 @@ struct SidebarView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("AgentSession_\(session.id)")
+                        .accessibilityIdentifier("BacklogSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Disable swipe actions in demo mode
                             if !appState.isDemoMode {
@@ -72,10 +72,10 @@ struct SidebarView: View {
                 }
             }
 
-            // Backlog Sessions
-            if !backlogSessions.isEmpty {
-                Section("Backlog Directions") {
-                    ForEach(backlogSessions) { session in
+            // Agent Sessions
+            if !agentSessions.isEmpty {
+                Section("Agent Sessions") {
+                    ForEach(agentSessions) { session in
                         Button {
                             selectSession(session.id)
                         } label: {
@@ -83,7 +83,7 @@ struct SidebarView: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
-                        .accessibilityIdentifier("BacklogSession_\(session.id)")
+                        .accessibilityIdentifier("AgentSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Disable swipe actions in demo mode
                             if !appState.isDemoMode {

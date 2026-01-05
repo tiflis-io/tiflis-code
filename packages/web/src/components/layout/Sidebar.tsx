@@ -287,16 +287,16 @@ export function Sidebar() {
           {!sidebarCollapsed && <span className="ml-2">Supervisor</span>}
         </Button>
 
-        {/* Agent Sessions */}
-        {agentSessions.length > 0 && (
-          <section className="pt-4" aria-label="Agent sessions">
+        {/* Backlog Sessions */}
+        {backlogSessions.length > 0 && (
+          <section className="pt-4" aria-label="Backlog sessions">
             {!sidebarCollapsed && (
               <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
-                Agent Sessions
+                Backlog Directions
               </h2>
             )}
             <ul role="list" className="space-y-1">
-              {agentSessions.map((session) => {
+              {backlogSessions.map((session) => {
                 const subtitle = getSessionSubtitle(session);
                 const displayName = getSessionDisplayName(session);
                 return (
@@ -353,16 +353,16 @@ export function Sidebar() {
           </section>
         )}
 
-        {/* Backlog Sessions */}
-        {backlogSessions.length > 0 && (
-          <section className="pt-4" aria-label="Backlog sessions">
+        {/* Agent Sessions */}
+        {agentSessions.length > 0 && (
+          <section className="pt-4" aria-label="Agent sessions">
             {!sidebarCollapsed && (
               <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
-                Backlog Directions
+                Agent Sessions
               </h2>
             )}
             <ul role="list" className="space-y-1">
-              {backlogSessions.map((session) => {
+              {agentSessions.map((session) => {
                 const subtitle = getSessionSubtitle(session);
                 const displayName = getSessionDisplayName(session);
                 return (

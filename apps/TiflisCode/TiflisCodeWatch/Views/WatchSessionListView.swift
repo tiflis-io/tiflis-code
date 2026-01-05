@@ -18,14 +18,14 @@ struct WatchSessionListView: View {
             // Supervisor row (always first)
             supervisorSection
 
-            // Agent sessions
-            if !appState.agentSessions.isEmpty {
-                agentSessionsSection
-            }
-
             // Backlog sessions
             if !appState.backlogSessions.isEmpty {
                 backlogSessionsSection
+            }
+
+            // Agent sessions
+            if !appState.agentSessions.isEmpty {
+                agentSessionsSection
             }
         }
         .listStyle(.carousel)
