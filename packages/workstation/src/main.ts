@@ -1401,24 +1401,31 @@ async function bootstrap(): Promise<void> {
             .getActiveAgentSessions()
             .some((s) => s.sessionId === sessionId);
 
-        if (agentSession || isPersistedAgent) {
-          // For agent sessions, just track subscription without sessionManager validation
+        // Check if this is a backlog-agent session
+        const backlogManagers = sessionManager.getBacklogManagers?.();
+        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+        if (agentSession || isPersistedAgent || isBacklogSession) {
+          // For agent and backlog-agent sessions, just track subscription without sessionManager validation
           client.subscribe(new SessionId(sessionId));
           logger.info(
             {
               deviceId: client.deviceId.value,
               sessionId,
+              sessionType: isBacklogSession ? "backlog-agent" : "agent",
               allSubscriptions: client.getSubscriptions(),
               clientStatus: client.status,
             },
-            "Client subscribed to agent session"
+            "Client subscribed to session"
           );
 
-          const isExecuting = agentSessionManager.isExecuting(sessionId);
+          const isExecuting = isBacklogSession
+            ? false // Backlog agents don't track execution the same way
+            : agentSessionManager.isExecuting(sessionId);
 
           const currentStreamingBlocks =
             agentMessageAccumulator.get(sessionId) ?? [];
-          
+
           // Get streaming_message_id if there's an active streaming response
           const streamingMessageId = currentStreamingBlocks.length > 0
             ? agentStreamingMessageIds.get(sessionId)
@@ -1443,11 +1450,12 @@ async function bootstrap(): Promise<void> {
             {
               deviceId: client.deviceId.value,
               sessionId,
+              sessionType: isBacklogSession ? "backlog-agent" : "agent",
               isExecuting,
               streamingBlocksCount: currentStreamingBlocks.length,
               streamingMessageId,
             },
-            "Agent session subscribed (v1.13 - use history.request for messages)"
+            "Session subscribed (use history.request for messages)"
           );
         } else {
           // For terminal sessions, use full subscriptionService with master logic
@@ -1488,7 +1496,6 @@ async function bootstrap(): Promise<void> {
     },
 
     "session.unsubscribe": (socket, message) => {
-      if (!subscriptionService) return Promise.resolve();
       const unsubscribeMessage = message as {
         session_id: string;
         device_id?: string;
@@ -1501,15 +1508,42 @@ async function bootstrap(): Promise<void> {
             )
           : undefined);
       if (client?.isAuthenticated) {
-        const result = subscriptionService.unsubscribe(
-          client.deviceId.value,
-          unsubscribeMessage.session_id
-        );
-        sendToDevice(
-          socket,
-          unsubscribeMessage.device_id,
-          JSON.stringify(result)
-        );
+        const sessionId = unsubscribeMessage.session_id;
+
+        // Check if this is a backlog-agent session
+        const backlogManagers = sessionManager.getBacklogManagers?.();
+        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+        if (isBacklogSession) {
+          // For backlog-agent sessions, just unsubscribe the client
+          client.unsubscribe(new SessionId(sessionId));
+          logger.info(
+            {
+              deviceId: client.deviceId.value,
+              sessionId,
+            },
+            "Client unsubscribed from backlog-agent session"
+          );
+          sendToDevice(
+            socket,
+            unsubscribeMessage.device_id,
+            JSON.stringify({
+              type: "session.unsubscribed",
+              session_id: sessionId,
+            })
+          );
+        } else if (subscriptionService) {
+          // For terminal sessions, use subscriptionService
+          const result = subscriptionService.unsubscribe(
+            client.deviceId.value,
+            sessionId
+          );
+          sendToDevice(
+            socket,
+            unsubscribeMessage.device_id,
+            JSON.stringify(result)
+          );
+        }
       }
       return Promise.resolve();
     },
