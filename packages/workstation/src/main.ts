@@ -1592,8 +1592,43 @@ async function bootstrap(): Promise<void> {
       // Check if this is a backlog agent session
       const backlogManagers = sessionManager.getBacklogManagers?.();
       if (backlogManagers && backlogManagers.has(sessionId)) {
-        const manager = backlogManagers.get(sessionId)!;
+        const manager = backlogManagers.get(sessionId);
+        if (!manager) {
+          logger.error(
+            { sessionId },
+            "Backlog manager found in map but is undefined - this should not happen"
+          );
+          const errorMessage = {
+            type: "session.output",
+            session_id: sessionId,
+            payload: {
+              content_blocks: [
+                {
+                  id: "error",
+                  blockType: "error",
+                  content: "Internal error: backlog manager not properly initialized",
+                },
+              ],
+              content: "Internal error: backlog manager not properly initialized",
+              content_type: "agent",
+              is_complete: true,
+              timestamp: Date.now(),
+              message_id: messageId,
+            },
+          };
+          messageBroadcaster?.broadcastToSubscribers(
+            sessionId,
+            JSON.stringify(errorMessage)
+          );
+          return;
+        }
+
         const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
+
+        logger.debug(
+          { sessionId, promptLength: prompt.length },
+          "Processing backlog agent message"
+        );
 
         // Save user message to chat history
         if (prompt) {
@@ -1641,12 +1676,12 @@ async function bootstrap(): Promise<void> {
             );
           }
         } catch (error) {
+          const errorContent = error instanceof Error ? error.message : "Unknown error";
           logger.error(
-            { error, sessionId },
+            { error, sessionId, errorContent, stack: error instanceof Error ? error.stack : undefined },
             "Failed to execute backlog command"
           );
           // Save error message to chat history
-          const errorContent = error instanceof Error ? error.message : "Unknown error";
           chatHistoryService.saveMessage(
             sessionId,
             createErrorMessage(errorContent),
@@ -1662,10 +1697,10 @@ async function bootstrap(): Promise<void> {
                   {
                     id: "error",
                     blockType: "error",
-                    content: error instanceof Error ? error.message : "Unknown error",
+                    content: errorContent,
                   },
                 ],
-                content: error instanceof Error ? error.message : "Unknown error",
+                content: errorContent,
                 content_type: "agent",
                 is_complete: true,
                 timestamp: Date.now(),

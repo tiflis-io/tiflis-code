@@ -86,6 +86,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     const persistedSessions = this.sessionRepository.getActive();
     this.logger.info({ count: persistedSessions.length }, 'Restoring persisted sessions from database');
 
+    let backlogRestoreCount = 0;
     for (const persistedSession of persistedSessions) {
       try {
         if (persistedSession.type === 'backlog-agent') {
@@ -115,9 +116,10 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
             this.logger
           );
           this.backlogManagers.set(persistedSession.id, manager);
+          backlogRestoreCount++;
 
           this.logger.info(
-            { sessionId: persistedSession.id, project: persistedSession.project },
+            { sessionId: persistedSession.id, project: persistedSession.project, backlogManagersCount: this.backlogManagers.size },
             'Restored backlog-agent session from database'
           );
         } else if (persistedSession.type === 'supervisor') {
@@ -130,11 +132,16 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
         // Agent sessions are managed by AgentSessionManager and will be restored there
       } catch (error) {
         this.logger.error(
-          { sessionId: persistedSession.id, error },
+          { sessionId: persistedSession.id, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
           'Error restoring session from database'
         );
       }
     }
+
+    this.logger.info(
+      { backlogManagersRestored: backlogRestoreCount, totalBacklogManagers: this.backlogManagers.size },
+      'Session restoration complete'
+    );
   }
 
   /**
