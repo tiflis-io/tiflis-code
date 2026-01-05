@@ -7,7 +7,7 @@
  * Handles session persistence, output streaming, and graceful termination.
  */
 
-import { spawn, type ChildProcess } from "child_process";
+import { spawn, type ChildProcess, spawnSync } from "child_process";
 import { platform } from "os";
 import { EventEmitter } from "events";
 import {
@@ -104,12 +104,30 @@ export class HeadlessAgentExecutor extends EventEmitter {
     // Get environment from interactive login shell to include PATH from .zshrc/.bashrc
     const shellEnv = getShellEnv();
 
-    // Spawn subprocess in a way that prevents terminal hijacking
-    // On Unix-like systems (Linux, macOS): use setsid to create new session
-    // On Windows: use detached mode which prevents terminal attachment
+    // Spawn subprocess with proper terminal isolation
+    // Use 'sh -c' on Unix to create a shell session that doesn't hijack terminal
+    // This prevents the subprocess from becoming the foreground process group
     const isUnix = platform() !== "win32";
-    const spawnCommand = isUnix ? "setsid" : command;
-    const spawnArgs = isUnix ? [command, ...args] : args;
+
+    let spawnCommand: string;
+    let spawnArgs: string[];
+
+    if (isUnix) {
+      // On Unix: use 'sh -c' to wrap command in a subshell
+      // This creates proper session isolation without requiring setsid
+      // Quote each argument to preserve spaces and special characters
+      const quotedArgs = args.map((arg) => {
+        // Escape single quotes and wrap in single quotes
+        return `'${arg.replace(/'/g, "'\\''")}'`;
+      });
+      const fullCommand = `${command} ${quotedArgs.join(" ")}`;
+      spawnCommand = "sh";
+      spawnArgs = ["-c", fullCommand];
+    } else {
+      // On Windows: spawn directly, detached mode handles isolation
+      spawnCommand = command;
+      spawnArgs = args;
+    }
 
     this.subprocess = spawn(spawnCommand, spawnArgs, {
       cwd: this.workingDir,
