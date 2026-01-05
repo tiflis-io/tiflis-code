@@ -1684,6 +1684,9 @@ async function bootstrap(): Promise<void> {
 
           // Broadcast output to session subscribers
           if (messageBroadcaster) {
+            // Get or create streaming message ID for this response
+            const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
+
             // Convert blocks from backend format (block_type) to protocol format (blockType) for web client
             const protocolBlocks = blocks.map((block: any) => ({
               id: block.id,
@@ -1695,6 +1698,7 @@ async function bootstrap(): Promise<void> {
             const outputMessage = {
               type: "session.output",
               session_id: sessionId,
+              streaming_message_id: streamingMessageId,
               payload: {
                 content_blocks: protocolBlocks,
                 content: protocolBlocks.map((b: any) => b.content).join("\n"),
@@ -1708,6 +1712,9 @@ async function bootstrap(): Promise<void> {
               sessionId,
               JSON.stringify(outputMessage)
             );
+
+            // Clear streaming message ID after response is complete
+            clearBacklogStreamingMessageId(sessionId);
           }
         } catch (error) {
           const errorContent = error instanceof Error ? error.message : "Unknown error";
@@ -1723,9 +1730,12 @@ async function bootstrap(): Promise<void> {
           );
 
           if (messageBroadcaster) {
+            const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
+
             const errorMessage = {
               type: "session.output",
               session_id: sessionId,
+              streaming_message_id: streamingMessageId,
               payload: {
                 content_blocks: [
                   {
@@ -1745,6 +1755,9 @@ async function bootstrap(): Promise<void> {
               sessionId,
               JSON.stringify(errorMessage)
             );
+
+            // Clear streaming message ID after error response
+            clearBacklogStreamingMessageId(sessionId);
           }
         }
         return;
@@ -2752,6 +2765,23 @@ async function bootstrap(): Promise<void> {
   // Helper to clear streaming_message_id when response completes
   const clearAgentStreamingMessageId = (sessionId: string): void => {
     agentStreamingMessageIds.delete(sessionId);
+  };
+
+  // Streaming message ID tracking for backlog agent sessions
+  // Used to track response streaming and enable client-side deduplication
+  const backlogStreamingMessageIds = new Map<string, string>();
+
+  const getOrCreateBacklogStreamingMessageId = (sessionId: string): string => {
+    let messageId = backlogStreamingMessageIds.get(sessionId);
+    if (!messageId) {
+      messageId = randomUUID();
+      backlogStreamingMessageIds.set(sessionId, messageId);
+    }
+    return messageId;
+  };
+
+  const clearBacklogStreamingMessageId = (sessionId: string): void => {
+    backlogStreamingMessageIds.delete(sessionId);
   };
 
   agentSessionManager.on(
