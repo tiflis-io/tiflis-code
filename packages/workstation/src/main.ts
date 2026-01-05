@@ -1257,7 +1257,7 @@ async function bootstrap(): Promise<void> {
         id: string;
         device_id?: string;
         payload: {
-          session_type: "cursor" | "claude" | "opencode" | "terminal";
+          session_type: "cursor" | "claude" | "opencode" | "terminal" | "backlog-agent";
           agent_name?: string;
           workspace: string;
           project: string;
