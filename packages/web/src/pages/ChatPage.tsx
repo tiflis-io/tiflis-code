@@ -267,7 +267,7 @@ export function ChatPage() {
       disabled={!isConnected}
       emptyMessage={`Start a conversation with ${session?.agentName ?? 'the agent'}...`}
       emptyIcon={getSessionIcon(session ?? null)}
-      agentType={session?.type as 'claude' | 'cursor' | 'opencode' | 'terminal' | undefined}
+      agentType={session?.type as 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent' | undefined}
       hasMore={hasMore}
       isLoadingMore={isHistoryLoading && messages.length > 0}
       onLoadMore={handleAgentLoadMore}

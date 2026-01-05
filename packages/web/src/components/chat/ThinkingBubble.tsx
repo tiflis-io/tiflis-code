@@ -13,7 +13,7 @@ import {
 } from '@/components/icons';
 
 interface ThinkingBubbleProps {
-  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent';
   className?: string;
 }
 

@@ -19,7 +19,7 @@ interface MessageBubbleProps {
   message: Message;
   isCurrentDevice?: boolean;
   onRetry?: () => void;
-  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent';
 }
 
 interface SegmentBubbleProps {
@@ -32,7 +32,7 @@ interface SegmentBubbleProps {
   isCurrentDevice: boolean;
   fromDeviceId?: string;
   onRetry?: () => void;
-  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent';
 }
 
 function AgentAvatar({ agentType }: { agentType?: string }) {
