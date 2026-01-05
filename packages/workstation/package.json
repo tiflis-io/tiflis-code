@@ -33,7 +33,8 @@
     "dist"
   ],
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "pnpm build && node --watch dist/main.js",
+    "dev:tsx": "tsx watch src/main.ts",
     "build": "tsup",
     "start": "node dist/main.js",
     "test": "vitest run",
