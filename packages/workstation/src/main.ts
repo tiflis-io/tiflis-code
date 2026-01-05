@@ -283,6 +283,25 @@ function handleAuthMessageViaTunnel(
 }
 
 /**
+ * Emergency signal handlers - these fire immediately without waiting for async operations
+ * This ensures Ctrl+C always works, even if the event loop is blocked
+ */
+let emergencySignalCount = 0;
+process.on("SIGINT", () => {
+  emergencySignalCount++;
+  console.log("\n[SIGINT received]");
+  if (emergencySignalCount >= 2) {
+    console.log("[Force exit on repeated Ctrl+C]");
+    process.exit(1);
+  }
+});
+
+process.on("SIGTERM", () => {
+  console.log("\n[SIGTERM received]");
+  process.exit(1);
+});
+
+/**
  * Bootstraps and starts the workstation server.
  */
 async function bootstrap(): Promise<void> {

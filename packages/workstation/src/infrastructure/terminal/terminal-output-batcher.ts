@@ -98,6 +98,10 @@ export class TerminalOutputBatcher {
           : Math.min(8, this.batchIntervalMs);
 
       this.timeout = setTimeout(() => this.flush(), adaptiveInterval);
+      // Allow process to exit even if batcher timeout is pending
+      if (this.timeout.unref) {
+        this.timeout.unref();
+      }
     }
   }
 
