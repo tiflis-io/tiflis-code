@@ -1590,6 +1590,11 @@ async function bootstrap(): Promise<void> {
       cancelledDuringTranscription.delete(sessionId);
 
       // Check if this is a backlog agent session
+      if (!sessionManager) {
+        logger.error({ sessionId }, "sessionManager not initialized");
+        return;
+      }
+
       const backlogManagers = sessionManager.getBacklogManagers?.();
       logger.debug(
         { sessionId, hasBacklogManagersMethod: !!sessionManager.getBacklogManagers, backlogManagersCount: backlogManagers?.size ?? 0, isBacklogSession: backlogManagers?.has(sessionId) ?? false },
