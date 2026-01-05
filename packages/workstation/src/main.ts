@@ -283,25 +283,6 @@ function handleAuthMessageViaTunnel(
 }
 
 /**
- * Emergency signal handlers - these fire immediately without waiting for async operations
- * This ensures Ctrl+C always works, even if the event loop is blocked
- */
-let emergencySignalCount = 0;
-process.on("SIGINT", () => {
-  emergencySignalCount++;
-  console.log("\n[SIGINT received]");
-  if (emergencySignalCount >= 2) {
-    console.log("[Force exit on repeated Ctrl+C]");
-    process.exit(1);
-  }
-});
-
-process.on("SIGTERM", () => {
-  console.log("\n[SIGTERM received]");
-  process.exit(1);
-});
-
-/**
  * Bootstraps and starts the workstation server.
  */
 async function bootstrap(): Promise<void> {
@@ -335,33 +316,34 @@ async function bootstrap(): Promise<void> {
 
   // Set up signal handling early, before any server operations
   // This ensures Ctrl+C is caught immediately
+  let shutdownInProgress = false;
+  let signalCount = 0;
+
   const registerSignalHandlers = (shutdown: (signal: string) => Promise<void>) => {
-    let signalCount = 0;
     const handleSignal = (signal: string) => {
       signalCount++;
-      logger.info({ signal, count: signalCount }, "Signal received, initiating shutdown");
-
-      if (signalCount === 1) {
-        // First signal: start graceful shutdown
-        console.log("\nShutting down gracefully...");
-        shutdown(signal).then(() => {
-          process.exit(0);
-        }).catch((error) => {
-          logger.error({ error }, "Error during shutdown");
-          process.exit(1);
-        });
-      } else {
-        // Second signal: force exit immediately
-        console.log("\nForce exiting...");
+      if (shutdownInProgress) {
+        // Already shutting down, force exit on repeat signal
         process.exit(1);
       }
+
+      shutdownInProgress = true;
+      logger.info({ signal, count: signalCount }, "Signal received");
+      console.log("\nShutting down...");
+
+      // Start graceful shutdown
+      shutdown(signal).catch((error) => {
+        logger.error({ error }, "Shutdown error");
+      }).finally(() => {
+        process.exit(0);
+      });
     };
 
     process.on("SIGTERM", () => handleSignal("SIGTERM"));
     process.on("SIGINT", () => handleSignal("SIGINT"));
 
-    process.on("unhandledRejection", (reason, promise) => {
-      logger.error({ reason, promise }, "Unhandled rejection");
+    process.on("unhandledRejection", (reason) => {
+      logger.error({ reason }, "Unhandled rejection");
     });
 
     process.on("uncaughtException", (error) => {
