@@ -44,26 +44,46 @@ Be helpful and informative. Always confirm actions and provide status updates.`;
  */
 export class BacklogAgent {
   private readonly logger: Logger;
-  private readonly agent: ReturnType<typeof createReactAgent>;
+  private agent: ReturnType<typeof createReactAgent> | null = null;
+  private readonly toolsContext: BacklogToolsContext;
+  private initializationError: Error | null = null;
 
   constructor(toolsContext: BacklogToolsContext, logger: Logger) {
     this.logger = logger.child({ component: 'BacklogAgent' });
+    this.toolsContext = toolsContext;
 
-    // Create LLM
-    const env = getEnv();
-    const llm = this.createLLM(env);
+    // Defer agent initialization to first use to avoid blocking session restoration
+    this.initializeAgent();
+  }
 
-    // Create tools
-    const tools: StructuredToolInterface[] = createBacklogAgentTools(toolsContext);
+  /**
+   * Initializes the agent lazily on first use.
+   */
+  private initializeAgent(): void {
+    if (this.agent || this.initializationError) {
+      return; // Already initialized or failed
+    }
 
-    this.logger.info({ toolCount: tools.length }, 'Creating Backlog Agent with tools');
+    try {
+      // Create LLM
+      const env = getEnv();
+      const llm = this.createLLM(env);
 
-    // Create LangGraph ReAct agent with max iterations to prevent infinite loops
-    this.agent = createReactAgent({
-      llm,
-      tools,
-      maxIterations: 5,
-    });
+      // Create tools
+      const tools: StructuredToolInterface[] = createBacklogAgentTools(this.toolsContext);
+
+      this.logger.info({ toolCount: tools.length }, 'Creating Backlog Agent with tools');
+
+      // Create LangGraph ReAct agent with max iterations to prevent infinite loops
+      this.agent = createReactAgent({
+        llm,
+        tools,
+        maxIterations: 5,
+      });
+    } catch (error) {
+      this.initializationError = error instanceof Error ? error : new Error(String(error));
+      this.logger.error({ error: this.initializationError }, 'Failed to initialize BacklogAgent');
+    }
   }
 
   /**
@@ -98,6 +118,32 @@ export class BacklogAgent {
    * Executes a command through the backlog agent.
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
+    // Ensure agent is initialized
+    this.initializeAgent();
+
+    // Check for initialization errors
+    if (this.initializationError) {
+      this.logger.error({ error: this.initializationError }, 'Cannot execute command - agent initialization failed');
+      return [
+        {
+          id: 'backlog-error',
+          block_type: 'error',
+          content: `Failed to initialize backlog agent: ${this.initializationError.message}`,
+        },
+      ];
+    }
+
+    if (!this.agent) {
+      this.logger.error('Agent is not initialized');
+      return [
+        {
+          id: 'backlog-error',
+          block_type: 'error',
+          content: 'Backlog agent is not initialized',
+        },
+      ];
+    }
+
     this.logger.info({ message: userMessage.slice(0, 100) }, 'Executing backlog command via LLM');
 
     try {
