@@ -2003,6 +2003,8 @@ final class AppState: ObservableObject {
             sessionType = "opencode"
         case .terminal:
             sessionType = "terminal"
+        case .backlogAgent:
+            sessionType = "backlog-agent"
         case .supervisor:
             // Supervisor is created automatically, shouldn't call this
             print("❌ AppState: Cannot create supervisor session via createSession")
