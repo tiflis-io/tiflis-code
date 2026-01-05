@@ -11,10 +11,10 @@ import type {
   Backlog,
   Task,
   TaskStatus,
-} from '../domain/value-objects/backlog.js';
-import { recalculateSummary } from '../domain/value-objects/backlog.js';
+} from '../../domain/value-objects/backlog.js';
+import { recalculateSummary } from '../../domain/value-objects/backlog.js';
 import type { AgentSessionManager } from './agent-session-manager.js';
-import type { ContentBlock } from '../domain/value-objects/content-block.js';
+import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 import type { Logger } from 'pino';
 
 /**
