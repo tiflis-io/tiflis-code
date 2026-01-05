@@ -26,7 +26,7 @@ import type { TerminalSession } from '../../domain/entities/terminal-session.js'
 import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
 import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session.js';
-import type { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
+import { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
 import { SessionRepository } from './repositories/session-repository.js';
 
 export interface InMemorySessionManagerConfig {
@@ -520,7 +520,6 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.sessions.set(sessionId.value, session);
 
     // Create and register BacklogAgentManager for this session
-    const { BacklogAgentManager } = await import('../agents/backlog-agent-manager.js');
     const manager = BacklogAgentManager.createEmpty(
       session,
       workingDir,
