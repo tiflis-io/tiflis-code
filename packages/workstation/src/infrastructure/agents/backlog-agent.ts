@@ -35,6 +35,8 @@ Guidelines:
 - If the user wants to see tasks → use list_backlog_tasks
 - If the user describes something to do or wants to add a task → use add_backlog_task
 
+IMPORTANT: Always use exactly ONE tool call to complete the user's request. Do not call multiple tools or loop. After the tool returns its result, immediately provide a concise response to the user summarizing what was done. Do not ask follow-up questions or suggest additional actions.
+
 Be helpful and informative. Always confirm actions and provide status updates.`;
 
 /**
@@ -56,10 +58,11 @@ export class BacklogAgent {
 
     this.logger.info({ toolCount: tools.length }, 'Creating Backlog Agent with tools');
 
-    // Create LangGraph ReAct agent
+    // Create LangGraph ReAct agent with max iterations to prevent infinite loops
     this.agent = createReactAgent({
       llm,
       tools,
+      maxIterations: 5,
     });
   }
 
@@ -107,10 +110,15 @@ export class BacklogAgent {
         new HumanMessage(userMessage),
       ];
 
-      // Execute the agent
-      const result = (await this.agent.invoke({
-        messages,
-      })) as { messages: BaseMessage[] };
+      // Execute the agent with timeout (30 seconds max)
+      const timeoutPromise = new Promise<{ messages: BaseMessage[] }>((_, reject) =>
+        setTimeout(() => reject(new Error('Backlog agent execution timeout (30s)')), 30000)
+      );
+
+      const result = (await Promise.race([
+        this.agent.invoke({ messages }),
+        timeoutPromise,
+      ])) as { messages: BaseMessage[] };
 
       // Extract the final response
       const agentMessages = result.messages;
