@@ -8,6 +8,7 @@
  */
 
 import { spawn, type ChildProcess } from "child_process";
+import { platform } from "os";
 import { EventEmitter } from "events";
 import {
   AGENT_COMMANDS,
@@ -103,11 +104,14 @@ export class HeadlessAgentExecutor extends EventEmitter {
     // Get environment from interactive login shell to include PATH from .zshrc/.bashrc
     const shellEnv = getShellEnv();
 
-    // Spawn subprocess in its own session using setsid
-    // This completely detaches it from the parent's terminal
-    // so it can't intercept Ctrl+C signals meant for the parent
-    // setsid creates a new session leader, preventing terminal hijacking
-    this.subprocess = spawn("setsid", [command, ...args], {
+    // Spawn subprocess in a way that prevents terminal hijacking
+    // On Unix-like systems (Linux, macOS): use setsid to create new session
+    // On Windows: use detached mode which prevents terminal attachment
+    const isUnix = platform() !== "win32";
+    const spawnCommand = isUnix ? "setsid" : command;
+    const spawnArgs = isUnix ? [command, ...args] : args;
+
+    this.subprocess = spawn(spawnCommand, spawnArgs, {
       cwd: this.workingDir,
       env: {
         ...shellEnv,
