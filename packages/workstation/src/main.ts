@@ -1700,12 +1700,11 @@ async function bootstrap(): Promise<void> {
               session_id: sessionId,
               streaming_message_id: streamingMessageId,
               payload: {
-                content_blocks: protocolBlocks,
-                content: protocolBlocks.map((b: any) => b.content).join("\n"),
                 content_type: "agent",
-                is_complete: true,
+                content: protocolBlocks.map((b: any) => b.content).join("\n"),
+                content_blocks: protocolBlocks,
                 timestamp: Date.now(),
-                message_id: messageId,
+                is_complete: true,
               },
             };
 
@@ -1748,6 +1747,8 @@ async function bootstrap(): Promise<void> {
               session_id: sessionId,
               streaming_message_id: streamingMessageId,
               payload: {
+                content_type: "agent",
+                content: errorContent,
                 content_blocks: [
                   {
                     id: "error",
@@ -1755,11 +1756,8 @@ async function bootstrap(): Promise<void> {
                     content: errorContent,
                   },
                 ],
-                content: errorContent,
-                content_type: "agent",
-                is_complete: true,
                 timestamp: Date.now(),
-                message_id: messageId,
+                is_complete: true,
               },
             };
             messageBroadcaster.broadcastToSubscribers(
