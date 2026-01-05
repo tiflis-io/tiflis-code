@@ -815,14 +815,18 @@ final class AppState: ObservableObject {
             let tempSession = sessions[index]
 
             // Create new session with actual session ID from backend
-            // Include workingDir from response payload
+            // Include workingDir from response payload and preserve createdAt from temp session
             let newSession = Session(
                 id: sessionId,
                 type: tempSession.type,
+                agentName: tempSession.agentName,
                 workspace: tempSession.workspace,
                 project: tempSession.project,
                 worktree: tempSession.worktree,
-                workingDir: workingDir
+                workingDir: workingDir,
+                status: tempSession.status,
+                createdAt: tempSession.createdAt,
+                terminalConfig: tempSession.terminalConfig
             )
             sessions[index] = newSession
 
@@ -879,6 +883,16 @@ final class AppState: ObservableObject {
             return
         }
 
+        // Parse created_at timestamp from server (milliseconds since epoch)
+        var createdAt = Date()
+        if let createdAtMs = payload["created_at"] as? NSNumber {
+            createdAt = Date(timeIntervalSince1970: createdAtMs.doubleValue / 1000.0)
+        } else if let createdAtMs = payload["created_at"] as? Double {
+            createdAt = Date(timeIntervalSince1970: createdAtMs / 1000.0)
+        } else if let createdAtMs = payload["created_at"] as? Int {
+            createdAt = Date(timeIntervalSince1970: Double(createdAtMs) / 1000.0)
+        }
+
         // Check if session already exists (from response handler arriving first)
         // If so, update it with additional data from broadcast (worktree, workingDir, terminalConfig, agentName)
         if let index = sessions.firstIndex(where: { $0.id == sessionId }) {
@@ -892,6 +906,8 @@ final class AppState: ObservableObject {
                 project: existingSession.project ?? project,
                 worktree: existingSession.worktree ?? worktree,
                 workingDir: existingSession.workingDir ?? workingDir,
+                status: existingSession.status,
+                createdAt: existingSession.createdAt,
                 terminalConfig: existingSession.terminalConfig ?? terminalConfig
             )
             sessions[index] = updatedSession
@@ -913,6 +929,7 @@ final class AppState: ObservableObject {
             project: project,
             worktree: worktree,
             workingDir: workingDir,
+            createdAt: createdAt,
             terminalConfig: terminalConfig
         )
         sessions.append(session)
@@ -1030,6 +1047,16 @@ final class AppState: ObservableObject {
             let worktree = sessionData["worktree"] as? String
             let workingDir = sessionData["working_dir"] as? String
 
+            // Parse created_at timestamp from server (milliseconds since epoch)
+            var createdAt = Date()
+            if let createdAtMs = sessionData["created_at"] as? NSNumber {
+                createdAt = Date(timeIntervalSince1970: createdAtMs.doubleValue / 1000.0)
+            } else if let createdAtMs = sessionData["created_at"] as? Double {
+                createdAt = Date(timeIntervalSince1970: createdAtMs / 1000.0)
+            } else if let createdAtMs = sessionData["created_at"] as? Int {
+                createdAt = Date(timeIntervalSince1970: Double(createdAtMs) / 1000.0)
+            }
+
             let session = Session(
                 id: sessionId,
                 type: type,
@@ -1037,7 +1064,8 @@ final class AppState: ObservableObject {
                 workspace: workspace,
                 project: project,
                 worktree: worktree,
-                workingDir: workingDir
+                workingDir: workingDir,
+                createdAt: createdAt
             )
             restoredSessions.append(session)
         }

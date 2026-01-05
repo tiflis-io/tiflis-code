@@ -173,7 +173,7 @@ function handleSyncState(msg: SyncStateMessage): void {
     project: s.project,
     worktree: s.worktree,
     workingDir: s.working_dir,
-    createdAt: new Date(),
+    createdAt: new Date(s.created_at),
   }));
 
   appStore.setSessions(sessions);
@@ -332,7 +332,7 @@ function handleSessionCreated(msg: SessionCreatedMessage): void {
     project: msg.payload.project,
     worktree: msg.payload.worktree,
     workingDir: msg.payload.working_dir,
-    createdAt: new Date(),
+    createdAt: msg.payload.created_at ? new Date(msg.payload.created_at) : new Date(),
     terminalConfig: msg.payload.terminal_config
       ? {
           cols: 80,

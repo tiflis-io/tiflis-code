@@ -1443,7 +1443,18 @@ final class WatchConnectionService {
         let statusStr = data["status"] as? String ?? "active"
         let status = Session.SessionStatus(rawValue: statusStr) ?? .active
 
-        NSLog("⌚️ parseSession: SUCCESS - creating Session id=%@, type=%@", sessionId, sessionTypeStr)
+        // Parse created_at timestamp from server (milliseconds since epoch)
+        // If not provided, use current time as fallback
+        var createdAt = Date()
+        if let createdAtMs = data["created_at"] as? NSNumber {
+            createdAt = Date(timeIntervalSince1970: createdAtMs.doubleValue / 1000.0)
+        } else if let createdAtMs = data["created_at"] as? Double {
+            createdAt = Date(timeIntervalSince1970: createdAtMs / 1000.0)
+        } else if let createdAtMs = data["created_at"] as? Int {
+            createdAt = Date(timeIntervalSince1970: Double(createdAtMs) / 1000.0)
+        }
+
+        NSLog("⌚️ parseSession: SUCCESS - creating Session id=%@, type=%@, createdAt=%@", sessionId, sessionTypeStr, createdAt.description)
 
         return Session(
             id: sessionId,
@@ -1453,7 +1464,8 @@ final class WatchConnectionService {
             project: data["project"] as? String,
             worktree: data["worktree"] as? String,
             workingDir: data["working_dir"] as? String,
-            status: status
+            status: status,
+            createdAt: createdAt
         )
     }
 

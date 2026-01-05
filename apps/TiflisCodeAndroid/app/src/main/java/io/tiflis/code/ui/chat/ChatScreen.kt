@@ -154,26 +154,85 @@ fun ChatScreen(
         }
     }
 
-    // Scroll to bottom on initial load
+    // Scroll to bottom on initial load with retry logic
     LaunchedEffect(sessionId) {
-        // Wait for layout to have items, then scroll to last
-        val itemCount = listState.layoutInfo.totalItemsCount
-        if (itemCount > 0) {
-            listState.scrollToItem(itemCount - 1)
+        // Retry scroll multiple times to ensure it works despite layout timing
+        for (attempt in 0..3) {
+            val delayMs = when (attempt) {
+                0 -> 100L    // 100ms
+                1 -> 300L    // 300ms
+                2 -> 600L    // 600ms
+                else -> 1000L // 1000ms
+            }
+            kotlinx.coroutines.delay(delayMs)
+            val itemCount = listState.layoutInfo.totalItemsCount
+            if (itemCount > 0) {
+                listState.scrollToItem(itemCount - 1)
+            }
         }
     }
 
-    // Auto-scroll to bottom on any content update (mirrors iOS scrollTrigger behavior)
-    // scrollTrigger increments whenever content changes in AppState handlers
-    // Force scroll without checking isAtBottom - same as iOS forceScrollToBottom()
+    // Scroll to bottom when messages arrive (cold start or new messages)
+    LaunchedEffect(messages.size) {
+        if (messages.isNotEmpty()) {
+            // Wait a bit for layout to render
+            kotlinx.coroutines.delay(200)
+            val itemCount = listState.layoutInfo.totalItemsCount
+            if (itemCount > 0) {
+                listState.scrollToItem(itemCount - 1)
+            }
+        }
+    }
+
+    // Force scroll to bottom whenever content changes (scrollTrigger increments)
+    // scrollTrigger is fired by AppState whenever messages/content changes
     LaunchedEffect(scrollTrigger) {
         if (scrollTrigger > 0) {
-            // Small delay to allow Compose to layout new items before scrolling
-            kotlinx.coroutines.delay(50)
+            // Delay to allow Compose to layout new items before scrolling
+            kotlinx.coroutines.delay(200)
             // Use actual item count from layoutInfo (accounts for split segments)
             val itemCount = listState.layoutInfo.totalItemsCount
             if (itemCount > 0) {
                 listState.scrollToItem(itemCount - 1)
+            }
+        }
+    }
+
+    // Scroll to bottom when loading starts (progress bubble appears)
+    LaunchedEffect(isLoading) {
+        if (isLoading && messages.isNotEmpty()) {
+            // Retry scroll with increasing delays to ensure progress bubble is visible
+            for (attempt in 0..3) {
+                val delayMs = when (attempt) {
+                    0 -> 200L    // 200ms
+                    1 -> 400L    // 400ms
+                    2 -> 800L    // 800ms
+                    else -> 1200L // 1200ms
+                }
+                kotlinx.coroutines.delay(delayMs)
+                val itemCount = listState.layoutInfo.totalItemsCount
+                if (itemCount > 0) {
+                    listState.scrollToItem(itemCount - 1)
+                }
+            }
+        }
+    }
+
+    // Scroll to bottom when streaming starts (typing indicator appears)
+    LaunchedEffect(messageIsStreaming) {
+        if (messageIsStreaming && messages.isNotEmpty()) {
+            // Retry scroll with increasing delays for typing indicator
+            for (attempt in 0..2) {
+                val delayMs = when (attempt) {
+                    0 -> 300L    // 300ms
+                    1 -> 600L    // 600ms
+                    else -> 1000L // 1000ms
+                }
+                kotlinx.coroutines.delay(delayMs)
+                val itemCount = listState.layoutInfo.totalItemsCount
+                if (itemCount > 0) {
+                    listState.scrollToItem(itemCount - 1)
+                }
             }
         }
     }
@@ -477,10 +536,12 @@ fun ChatScreen(
             PromptInputBar(
                 onSendText = { text ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    // Scroll to bottom using actual item count (accounts for split segments)
-                    scope.launch {
-                        val lastIndex = listState.layoutInfo.totalItemsCount - 1
-                        if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                    // Smart scroll - only scroll if already near bottom (respects user viewing history)
+                    if (isAtBottom) {
+                        scope.launch {
+                            val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                            if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                        }
                     }
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(text = text)
@@ -490,10 +551,12 @@ fun ChatScreen(
                 },
                 onSendAudio = { audioData ->
                     focusManager.clearFocus() // Dismiss keyboard before scrolling
-                    // Scroll to bottom using actual item count (accounts for split segments)
-                    scope.launch {
-                        val lastIndex = listState.layoutInfo.totalItemsCount - 1
-                        if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                    // Smart scroll - only scroll if already near bottom (respects user viewing history)
+                    if (isAtBottom) {
+                        scope.launch {
+                            val lastIndex = listState.layoutInfo.totalItemsCount - 1
+                            if (lastIndex >= 0) listState.scrollToItem(lastIndex)
+                        }
                     }
                     if (sessionType == SessionType.SUPERVISOR) {
                         appState.sendSupervisorCommand(audio = audioData)

@@ -25,6 +25,7 @@ export interface BaseSessionProps {
   type: SessionType;
   workspacePath?: WorkspacePath;
   workingDir: string;
+  createdAt?: Date;
 }
 
 /**
@@ -45,7 +46,8 @@ export abstract class Session {
     this._workspacePath = props.workspacePath;
     this._workingDir = props.workingDir;
     this._status = 'active';
-    this._createdAt = new Date();
+    // Use provided createdAt (from database) or create new timestamp for new sessions
+    this._createdAt = props.createdAt ?? new Date();
     this._lastActivityAt = new Date();
   }
 

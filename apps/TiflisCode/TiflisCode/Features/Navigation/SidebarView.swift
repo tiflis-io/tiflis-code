@@ -19,11 +19,11 @@ struct SidebarView: View {
     }
     
     private var agentSessions: [Session] {
-        appState.sessions.filter { $0.type.isAgent }
+        appState.sessions.filter { $0.type.isAgent }.sorted { $0.createdAt < $1.createdAt }
     }
-    
+
     private var terminalSessions: [Session] {
-        appState.sessions.filter { $0.type == .terminal }
+        appState.sessions.filter { $0.type == .terminal }.sorted { $0.createdAt < $1.createdAt }
     }
     
     var body: some View {

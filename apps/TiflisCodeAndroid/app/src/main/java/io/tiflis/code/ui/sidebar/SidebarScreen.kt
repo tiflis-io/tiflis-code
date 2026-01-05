@@ -51,9 +51,9 @@ fun SidebarScreen(
     val connectionState by appState.connectionState.collectAsState()
     val isDemoMode by appState.isDemoMode.collectAsState()
 
-    // Group sessions by type
-    val agentSessions = sessions.filter { it.type.isAgent }
-    val terminalSessions = sessions.filter { it.type == SessionType.TERMINAL }
+    // Group sessions by type and sort by creation time (ascending - oldest first)
+    val agentSessions = sessions.filter { it.type.isAgent }.sortedBy { it.createdAt }
+    val terminalSessions = sessions.filter { it.type == SessionType.TERMINAL }.sortedBy { it.createdAt }
 
     // Dialog states
     var showCreateSessionDialog by remember { mutableStateOf(false) }

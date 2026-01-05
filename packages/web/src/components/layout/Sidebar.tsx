@@ -120,8 +120,19 @@ export function Sidebar() {
     return `/chat/${sessionId}`;
   };
 
-  const agentSessions = sessions.filter((s) => s.type !== 'terminal');
-  const terminalSessions = sessions.filter((s) => s.type === 'terminal');
+  const getTimestamp = (createdAt: Date | string | number): number => {
+    if (typeof createdAt === 'number') return createdAt;
+    if (typeof createdAt === 'string') return new Date(createdAt).getTime();
+    if (createdAt instanceof Date) return createdAt.getTime();
+    return 0;
+  };
+
+  const agentSessions = sessions
+    .filter((s) => s.type !== 'terminal')
+    .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt));
+  const terminalSessions = sessions
+    .filter((s) => s.type === 'terminal')
+    .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt));
 
   const handleSupervisorClick = () => {
     selectSession(null);

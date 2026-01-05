@@ -523,7 +523,7 @@ final class WatchAppState: ObservableObject {
 
     /// Get agent sessions only (filter out supervisor and terminal)
     var agentSessions: [Session] {
-        sessions.filter { $0.type.isAgent }
+        sessions.filter { $0.type.isAgent }.sorted { $0.createdAt < $1.createdAt }
     }
 
     // MARK: - Private Methods

@@ -28,6 +28,8 @@ struct ChatView: View {
     @State private var isAtBottom = true
     @State private var isNearTop = false
     @State private var lastScrollTime: Date = .distantPast
+    @State private var hasInitiallyLoaded = false
+    @State private var scrollTask: Task<Void, Never>?
 
     /// Minimum interval between throttled scroll calls (100ms)
     private let scrollThrottleInterval: TimeInterval = 0.1
@@ -120,12 +122,53 @@ struct ChatView: View {
                         }
                         isNearTop = newData.isNearTop
                     }
-                    .onChange(of: viewModel.scrollTrigger) { _, _ in
-                        forceScrollToBottom()
+                    .onChange(of: viewModel.displaySegments.count) { _, newCount in
+                        // Only handle segment changes when NOT streaming (avoid interrupting scroll during streaming)
+                        if !isStreaming && newCount > 0 {
+                            if !hasInitiallyLoaded {
+                                // First time seeing segments - force scroll to bottom with retry
+                                hasInitiallyLoaded = true
+                                forceScrollToBottomWithRetry()
+                            } else {
+                                // Subsequent updates - use smart scroll with delay for layout completion
+                                scrollTask?.cancel()
+                                scrollTask = Task {
+                                    try? await Task.sleep(nanoseconds: 200_000_000) // 200ms for layout
+                                    smartScrollToBottom()
+                                }
+                            }
+                        }
+                    }
+                    .onChange(of: isStreaming) { wasStreaming, nowStreaming in
+                        if !wasStreaming && nowStreaming {
+                            // Streaming started - force scroll to show typing indicator with longer delay for rendering
+                            scrollTask?.cancel()
+                            scrollTask = Task {
+                                try? await Task.sleep(nanoseconds: 300_000_000) // 300ms for typing indicator to render
+                                forceScrollToBottom()
+                            }
+                        } else if wasStreaming && !nowStreaming {
+                            // Streaming completed - force scroll to show final response
+                            forceScrollToBottomWithRetry()
+                        }
+                    }
+                    .onChange(of: viewModel.isHistoryLoading) { _, newValue in
+                        // When history loading starts, force scroll to show progress bubble
+                        if newValue && !viewModel.displaySegments.isEmpty {
+                            scrollTask?.cancel()
+                            scrollTask = Task {
+                                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms for progress bubble to render
+                                forceScrollToBottom()
+                            }
+                        }
                     }
                     .onAppear {
                         if !viewModel.messages.isEmpty {
                             scrollPosition.scrollTo(id: "bottom-anchor", anchor: .bottom)
+                        }
+                        // Force scroll with retry if segments are already loaded (preloaded session)
+                        if !viewModel.displaySegments.isEmpty {
+                            forceScrollToBottomWithRetry()
                         }
                     }
 
@@ -160,14 +203,14 @@ struct ChatView: View {
                 isGenerating: isStreaming,
                 onSend: {
                     hideKeyboard()
-                    forceScrollToBottom()
+                    smartScrollToBottom()
                     viewModel.sendMessage()
                 },
                 onStop: viewModel.stopGeneration,
                 onStartRecording: viewModel.startRecording,
                 onStopRecording: {
                     hideKeyboard()
-                    forceScrollToBottom()
+                    smartScrollToBottom()
                     viewModel.stopRecording()
                 }
             )
@@ -269,6 +312,11 @@ struct ChatView: View {
             viewModel.refreshSession()
             viewModel.loadHistory()
         }
+        .onDisappear {
+            // Cancel pending scroll tasks to prevent memory leaks
+            scrollTask?.cancel()
+            scrollTask = nil
+        }
     }
     
     @ViewBuilder
@@ -322,6 +370,38 @@ struct ChatView: View {
         }
         lastScrollTime = now
         scrollPosition.scrollTo(id: "bottom-anchor", anchor: .bottom)
+    }
+
+    /// Smart scroll to bottom - only scrolls if user is already near the bottom (respects manual scrolling to history)
+    private func smartScrollToBottom() {
+        if isAtBottom {
+            throttledScrollToBottom()
+        }
+    }
+
+    /// Force scroll to bottom with retry logic to handle layout timing issues
+    private func forceScrollToBottomWithRetry() {
+        scrollTask?.cancel()
+
+        scrollTask = Task {
+            // Try scrolling multiple times with increasing delays to ensure it works
+            for attempt in 0..<3 {
+                let delayNanoseconds: UInt64
+                switch attempt {
+                case 0:
+                    delayNanoseconds = 50_000_000    // 50ms
+                case 1:
+                    delayNanoseconds = 200_000_000   // 200ms
+                default:
+                    delayNanoseconds = 500_000_000   // 500ms
+                }
+
+                try? await Task.sleep(nanoseconds: delayNanoseconds)
+                guard !Task.isCancelled else { return }
+
+                forceScrollToBottom()
+            }
+        }
     }
 }
 

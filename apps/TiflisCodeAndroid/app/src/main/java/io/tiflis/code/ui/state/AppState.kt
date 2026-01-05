@@ -2067,6 +2067,13 @@ class AppState @Inject constructor(
         val type = obj["session_type"]?.jsonPrimitive?.contentOrNull
             ?.let { SessionType.fromString(it) } ?: return null
 
+        // Get createdAt from server response, or use existing value if reloading
+        // IMPORTANT: Do NOT use Instant.now() as fallback - preserve existing timestamps
+        val createdAt = obj["created_at"]?.jsonPrimitive?.longOrNull
+            ?.let { Instant.ofEpochMilli(it) }
+            ?: _sessions.value.find { session -> session.id == id }?.createdAt
+            ?: Instant.now()
+
         return Session(
             id = id,
             type = type,
@@ -2075,8 +2082,7 @@ class AppState @Inject constructor(
             project = obj["project"]?.jsonPrimitive?.contentOrNull,
             worktree = obj["worktree"]?.jsonPrimitive?.contentOrNull,
             workingDir = obj["working_dir"]?.jsonPrimitive?.contentOrNull,
-            createdAt = obj["created_at"]?.jsonPrimitive?.longOrNull
-                ?.let { Instant.ofEpochMilli(it) } ?: Instant.now()
+            createdAt = createdAt
         )
     }
 

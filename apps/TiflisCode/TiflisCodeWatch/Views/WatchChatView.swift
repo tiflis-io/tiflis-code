@@ -105,8 +105,8 @@ struct WatchChatView: View {
                 }
             }
             .onChange(of: messages.count) { oldCount, newCount in
-                // Only scroll when messages are ADDED (not on initial load or removal)
-                if newCount > oldCount {
+                // Only scroll when messages are ADDED and NOT loading history (respects manual scrolling to history)
+                if newCount > oldCount && !isHistoryLoading {
                     scrollToBottomThrottled(proxy: proxy)
                 }
             }
@@ -124,15 +124,16 @@ struct WatchChatView: View {
                 }
             }
             .onChange(of: lastMessageBlockCount) { oldCount, newCount in
-                // Only scroll when blocks are ADDED (streaming new content)
-                if newCount > oldCount {
+                // Only scroll when blocks are ADDED and NOT loading history (streaming new content)
+                if newCount > oldCount && !isHistoryLoading {
                     scrollToBottomThrottled(proxy: proxy)
                 }
             }
             .onChange(of: lastMessageIsStreaming) { wasStreaming, isStreaming in
                 // When streaming stops (message complete), scroll to show final content
+                // Only scroll if NOT loading history (respects manual scrolling to history)
                 // Use longer delay to ensure SwiftUI has fully rendered all content
-                if wasStreaming && !isStreaming {
+                if wasStreaming && !isStreaming && !isHistoryLoading {
                     Task { @MainActor in
                         try? await Task.sleep(for: .milliseconds(300))
                         scrollToBottomImmediate(proxy: proxy)
