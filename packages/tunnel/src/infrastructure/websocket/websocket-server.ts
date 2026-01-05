@@ -73,6 +73,11 @@ export class WebSocketServerWrapper {
     this.heartbeatInterval = setInterval(() => {
       this.deps.onTimeoutCheck?.();
     }, this.config.heartbeatIntervalMs);
+
+    // Allow process to exit even if heartbeat interval is pending
+    if (this.heartbeatInterval.unref) {
+      this.heartbeatInterval.unref();
+    }
   }
 
   /**
