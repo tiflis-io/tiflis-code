@@ -48,28 +48,35 @@ export function createBacklogTools(
     }) => {
       const finalBacklogId = args.backlogId || `${args.project}-${Date.now()}`;
 
+      // Normalize worktree: treat "main" and "master" as undefined (no worktree suffix)
+      // This handles cases where LLM incorrectly passes worktree="main"
+      let normalizedWorktree = args.worktree;
+      if (normalizedWorktree && (normalizedWorktree.toLowerCase() === 'main' || normalizedWorktree.toLowerCase() === 'master')) {
+        normalizedWorktree = undefined;
+      }
+
       // Construct working directory path using workspacesRoot if available
       const root = workspacesRoot || '/workspaces';
       let workingDir: string;
 
-      if (!args.worktree) {
+      if (!normalizedWorktree) {
         // No worktree specified = use project root (main/master branch)
         workingDir = join(root, args.workspace, args.project);
       } else {
         // Worktree specified = use worktree directory pattern
-        workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
+        workingDir = join(root, args.workspace, `${args.project}--${normalizedWorktree}`);
       }
 
       const workspacePath: WorkspacePath = {
         workspace: args.workspace,
         project: args.project,
-        worktree: args.worktree,
+        worktree: normalizedWorktree,
       };
 
       // Validate that the project directory exists before creating backlog session
       if (!existsSync(workingDir)) {
-        const details = args.worktree
-          ? `The worktree/branch "${args.worktree}" is checked out`
+        const details = normalizedWorktree
+          ? `The worktree/branch "${normalizedWorktree}" is checked out`
           : `The main/master branch is checked out`;
         return `❌ ERROR: Project path does not exist: ${workingDir}\n\nPlease make sure:\n1. The workspace "${args.workspace}" exists\n2. The project "${args.project}" exists\n3. ${details}\n\nUse list_worktrees to see available branches for the project.`;
       }
