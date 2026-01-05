@@ -1591,6 +1591,10 @@ async function bootstrap(): Promise<void> {
 
       // Check if this is a backlog agent session
       const backlogManagers = sessionManager.getBacklogManagers?.();
+      logger.debug(
+        { sessionId, hasBacklogManagersMethod: !!sessionManager.getBacklogManagers, backlogManagersCount: backlogManagers?.size ?? 0, isBacklogSession: backlogManagers?.has(sessionId) ?? false },
+        "Checking for backlog agent session"
+      );
       if (backlogManagers && backlogManagers.has(sessionId)) {
         const manager = backlogManagers.get(sessionId);
         if (!manager) {
