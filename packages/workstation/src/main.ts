@@ -314,6 +314,43 @@ async function bootstrap(): Promise<void> {
     "Starting workstation server"
   );
 
+  // Set up signal handling early, before any server operations
+  // This ensures Ctrl+C is caught immediately
+  const registerSignalHandlers = (shutdown: (signal: string) => Promise<void>) => {
+    let signalCount = 0;
+    const handleSignal = (signal: string) => {
+      signalCount++;
+      logger.info({ signal, count: signalCount }, "Signal received, initiating shutdown");
+
+      if (signalCount === 1) {
+        // First signal: start graceful shutdown
+        console.log("\nShutting down gracefully...");
+        shutdown(signal).then(() => {
+          process.exit(0);
+        }).catch((error) => {
+          logger.error({ error }, "Error during shutdown");
+          process.exit(1);
+        });
+      } else {
+        // Second signal: force exit immediately
+        console.log("\nForce exiting...");
+        process.exit(1);
+      }
+    };
+
+    process.on("SIGTERM", () => handleSignal("SIGTERM"));
+    process.on("SIGINT", () => handleSignal("SIGINT"));
+
+    process.on("unhandledRejection", (reason, promise) => {
+      logger.error({ reason, promise }, "Unhandled rejection");
+    });
+
+    process.on("uncaughtException", (error) => {
+      logger.fatal({ error }, "Uncaught exception");
+      process.exit(1);
+    });
+  };
+
   // Initialize database
   const dataDir = env.DATA_DIR;
   initDatabase(dataDir);
@@ -3166,33 +3203,8 @@ async function bootstrap(): Promise<void> {
     }
   };
 
-  // Signal handlers - use immediate shutdown on second signal
-  let signalCount = 0;
-  const handleSignal = (signal: string) => {
-    signalCount++;
-    if (signalCount === 1) {
-      // First signal: graceful shutdown
-      void shutdown(signal);
-    } else {
-      // Second signal: force exit immediately
-      logger.warn({ signal, count: signalCount }, "Force exit on repeated signal");
-      process.exit(1);
-    }
-  };
-
-  process.on("SIGTERM", () => handleSignal("SIGTERM"));
-  process.on("SIGINT", () => handleSignal("SIGINT"));
-
-  // Unhandled rejection handler
-  process.on("unhandledRejection", (reason, promise) => {
-    logger.error({ reason, promise }, "Unhandled rejection");
-  });
-
-  // Uncaught exception handler
-  process.on("uncaughtException", (error) => {
-    logger.fatal({ error }, "Uncaught exception");
-    process.exit(1);
-  });
+  // Register signal handlers now that shutdown function is defined
+  registerSignalHandlers(shutdown);
 }
 
 // Run the server
