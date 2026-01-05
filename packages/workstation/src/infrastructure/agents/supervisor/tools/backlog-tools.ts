@@ -5,6 +5,7 @@
  */
 
 import { join } from 'path';
+import { existsSync } from 'fs';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
@@ -51,6 +52,11 @@ export function createBacklogTools(
       const root = workspacesRoot || '/workspaces';
       const workingDir = join(root, args.workspace, `${args.project}--${args.worktree}`);
 
+      // Validate that the project directory exists before creating backlog session
+      if (!existsSync(workingDir)) {
+        return `❌ ERROR: Project path does not exist: ${workingDir}\n\nPlease make sure:\n1. The workspace "${args.workspace}" exists\n2. The project "${args.project}" exists\n3. The worktree/branch "${args.worktree}" is checked out\n\nUse list_worktrees to see available branches for the project.`;
+      }
+
       // Backlog uses the default model (same as Supervisor)
       // It doesn't accept a specific agent - uses system defaults
       const defaultAgent = 'backlog';
@@ -80,7 +86,7 @@ export function createBacklogTools(
 
       backlogManagers.set(session.id.value, manager);
 
-      return `✅ Created backlog session "${finalBacklogId}" in worktree "${args.worktree}". Use this session ID: ${session.id.value}`;
+      return `✅ Created backlog session "${finalBacklogId}" at ${workingDir}\nSession ID: ${session.id.value}`;
     },
     {
       name: 'create_backlog_session',
