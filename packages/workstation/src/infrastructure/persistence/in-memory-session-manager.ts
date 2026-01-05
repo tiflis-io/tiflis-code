@@ -75,6 +75,70 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   }
 
   /**
+   * Restores persisted sessions from the database on startup.
+   */
+  async restoreSessions(): Promise<void> {
+    if (!this.sessionRepository) {
+      this.logger.debug('No session repository - skipping session restoration');
+      return;
+    }
+
+    const persistedSessions = this.sessionRepository.getActive();
+    this.logger.info({ count: persistedSessions.length }, 'Restoring persisted sessions from database');
+
+    for (const persistedSession of persistedSessions) {
+      try {
+        if (persistedSession.type === 'backlog-agent') {
+          // Restore backlog session
+          const backlogSession = new BacklogAgentSession({
+            id: new SessionId(persistedSession.id),
+            type: 'backlog-agent' as any,
+            workspacePath: persistedSession.workspace
+              ? {
+                  workspace: persistedSession.workspace,
+                  project: persistedSession.project || '',
+                  worktree: persistedSession.worktree,
+                }
+              : undefined,
+            workingDir: persistedSession.workingDir,
+            agentName: 'backlog',
+            backlogId: `${persistedSession.project}-${Date.now()}`,
+          });
+
+          this.sessions.set(persistedSession.id, backlogSession);
+
+          // Create backlog manager for this session
+          const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any;
+          const manager = BacklogAgentManager.createEmpty(
+            backlogSession,
+            persistedSession.workingDir,
+            this.agentSessionManager,
+            logger
+          );
+          this.backlogManagers.set(persistedSession.id, manager);
+
+          this.logger.info(
+            { sessionId: persistedSession.id, project: persistedSession.project },
+            'Restored backlog-agent session from database'
+          );
+        } else if (persistedSession.type === 'supervisor') {
+          // Supervisor is singleton - don't restore multiple copies
+          this.logger.debug({ sessionId: persistedSession.id }, 'Skipping supervisor session restoration (singleton)');
+        } else if (persistedSession.type === 'terminal') {
+          // Terminal sessions can't be easily restored - they require PTY allocation
+          this.logger.debug({ sessionId: persistedSession.id }, 'Skipping terminal session restoration (requires PTY)');
+        }
+        // Agent sessions are managed by AgentSessionManager and will be restored there
+      } catch (error) {
+        this.logger.error(
+          { sessionId: persistedSession.id, error },
+          'Error restoring session from database'
+        );
+      }
+    }
+  }
+
+  /**
    * Sets up event listeners to sync agent session state.
    */
   private setupAgentSessionSync(): void {

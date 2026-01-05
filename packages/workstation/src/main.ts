@@ -400,6 +400,9 @@ async function bootstrap(): Promise<void> {
     sessionRepository,
   });
 
+  // Restore persisted sessions from database (backlog agents, etc.)
+  await sessionManager.restoreSessions();
+
   // Pre-create mock sessions for screenshot automation (after sessionManager is ready)
   if (env.MOCK_MODE) {
     const mockAgentManager = agentSessionManager as unknown as MockAgentSessionManager;
