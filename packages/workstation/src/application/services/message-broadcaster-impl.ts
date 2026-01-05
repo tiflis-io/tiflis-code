@@ -39,25 +39,9 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
    * connected to the tunnel and will re-authenticate soon.
    */
   broadcastToAll(message: string): void {
-    const clients = this.deps.clientRegistry.getAll();
-    const authenticatedCount = clients.filter((c) => c.isAuthenticated).length;
-
-    this.logger.info(
-      {
-        totalClients: clients.length,
-        authenticatedClients: authenticatedCount,
-        messagePreview: message.slice(0, 100),
-      },
-      "broadcastToAll called"
-    );
-
     // Always send to tunnel - it knows about all connected clients
     // The tunnel will forward to all clients registered with this workstation's tunnel_id
-    const sent = this.deps.tunnelClient.send(message);
-    this.logger.info(
-      { sent, authenticatedClients: authenticatedCount },
-      "Broadcast to all - message sent to tunnel"
-    );
+    this.deps.tunnelClient.send(message);
   }
 
   /**
@@ -74,15 +58,7 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
       // Send once to tunnel - it will forward to all connected clients
       // Note: This sends to ALL clients, not just session subscribers.
       // For proper session routing, use broadcastToSubscribers instead.
-      const sent = this.deps.tunnelClient.send(message);
-      this.logger.debug(
-        {
-          sessionId: sessionId.value,
-          sent,
-          authenticatedSubscribers: authenticatedCount,
-        },
-        "Broadcast to session"
-      );
+      this.deps.tunnelClient.send(message);
     }
   }
 
@@ -97,19 +73,6 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
    *    but not yet re-authenticated with the workstation
    */
   sendToClient(deviceId: string, message: string): boolean {
-    // Log for debugging
-    const device = new DeviceId(deviceId);
-    const client = this.deps.clientRegistry.getByDeviceId(device);
-    this.logger.info(
-      {
-        deviceId,
-        clientInRegistry: !!client,
-        clientAuthenticated: client?.isAuthenticated,
-        messagePreview: message.slice(0, 100),
-      },
-      "sendToClient - sending via tunnel (supports HTTP polling clients)"
-    );
-
     // Always forward to tunnel - it knows about both WebSocket and HTTP polling clients
     return this.deps.tunnelClient.sendToDevice(deviceId, message);
   }
@@ -125,30 +88,7 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
       (c) => c.isAuthenticated
     );
 
-    // Log all clients and their subscriptions for debugging
-    const allClients = this.deps.clientRegistry.getAll();
-    this.logger.info(
-      {
-        sessionId,
-        totalClients: allClients.length,
-        totalSubscribers: subscribers.length,
-        authenticatedSubscribers: authenticatedSubscribers.length,
-        clientsInfo: allClients.map((c) => ({
-          deviceId: c.deviceId.value,
-          isAuthenticated: c.isAuthenticated,
-          isConnected: c.isConnected,
-          status: c.status,
-          subscriptions: c.getSubscriptions(),
-        })),
-      },
-      "broadcastToSubscribers - client state"
-    );
-
     if (authenticatedSubscribers.length === 0) {
-      this.logger.warn(
-        { sessionId, totalClients: allClients.length },
-        "broadcastToSubscribers - no authenticated subscribers found"
-      );
       return;
     }
 
@@ -156,10 +96,5 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     for (const client of authenticatedSubscribers) {
       this.deps.tunnelClient.sendToDevice(client.deviceId.value, message);
     }
-
-    this.logger.debug(
-      { sessionId, subscriberCount: authenticatedSubscribers.length },
-      "Broadcast to subscribers - messages sent"
-    );
   }
 }
