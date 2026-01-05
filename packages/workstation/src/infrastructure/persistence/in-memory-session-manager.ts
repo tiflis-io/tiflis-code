@@ -5,6 +5,8 @@
  */
 
 import { EventEmitter } from 'events';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { nanoid } from 'nanoid';
 import type { Logger } from 'pino';
 import type {
@@ -114,7 +116,30 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
             'Starting restoration of backlog-agent session'
           );
 
-          // Restore backlog session
+          // Load backlog.json to get the actual agent type
+          const backlogPath = join(persistedSession.workingDir, 'backlog.json');
+          let agentName = 'claude'; // default agent
+
+          if (existsSync(backlogPath)) {
+            try {
+              const backlogContent = readFileSync(backlogPath, 'utf-8');
+              const backlogData = JSON.parse(backlogContent);
+              if (backlogData.agent && ['claude', 'cursor', 'opencode'].includes(backlogData.agent)) {
+                agentName = backlogData.agent;
+              }
+              this.logger.debug(
+                { sessionId: persistedSession.id, agentName },
+                'Loaded agent type from backlog.json'
+              );
+            } catch (parseError) {
+              this.logger.warn(
+                { sessionId: persistedSession.id, error: parseError },
+                'Failed to parse backlog.json, using default agent'
+              );
+            }
+          }
+
+          // Restore backlog session with correct agent name
           const backlogSession = new BacklogAgentSession({
             id: new SessionId(persistedSession.id),
             type: 'backlog-agent' as any,
@@ -126,7 +151,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
                 }
               : undefined,
             workingDir: persistedSession.workingDir,
-            agentName: 'backlog',
+            agentName,
             backlogId: `${persistedSession.project}-${Date.now()}`,
           });
 
