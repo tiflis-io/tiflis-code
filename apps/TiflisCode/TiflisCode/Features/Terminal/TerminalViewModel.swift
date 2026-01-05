@@ -65,6 +65,7 @@ final class TerminalViewModel: ObservableObject {
     private let webSocketClient: WebSocketClientProtocol
     private let connectionService: ConnectionServicing
     private let commandSender: CommandSending
+    private weak var appState: AppState?
     
     // MARK: - State
 
@@ -74,6 +75,11 @@ final class TerminalViewModel: ObservableObject {
 
     // Track known session IDs (temp and real) to handle session ID updates
     private var knownSessionIds: Set<String> = []
+
+    // MARK: - Demo Mode State
+
+    /// Buffer for current command being typed in demo mode
+    private var demoCommandBuffer: String = ""
 
     // MARK: - Master Client State
 
@@ -153,21 +159,23 @@ final class TerminalViewModel: ObservableObject {
     init(
         session: Session,
         webSocketClient: WebSocketClientProtocol,
-        connectionService: ConnectionServicing
+        connectionService: ConnectionServicing,
+        appState: AppState? = nil
     ) {
         self.session = session
         self.webSocketClient = webSocketClient
         self.connectionService = connectionService
         self.commandSender = connectionService.commandSender
-        
+        self.appState = appState
+
         // Track the initial session ID (might be temporary)
         knownSessionIds.insert(session.id)
-        
+
         // Initialize thread-safe terminal size
         threadSafeTerminalSize = (cols: 80, rows: 24)
-        
+
         // Terminal will be accessed via TerminalView.getTerminal() when view is available
-        
+
         // Observe connection state
         observeConnectionState()
 
@@ -180,6 +188,11 @@ final class TerminalViewModel: ObservableObject {
         #if DEBUG
         print("[TerminalVM:\(session.id.prefix(8))] INIT - knownSessionIds: \(knownSessionIds)")
         #endif
+    }
+
+    /// Sets the AppState reference (called from TerminalView after init)
+    func setAppState(_ appState: AppState) {
+        self.appState = appState
     }
 
     deinit {
@@ -264,6 +277,12 @@ final class TerminalViewModel: ObservableObject {
     // MARK: - Session Management
     
     func subscribeToSession() async {
+        // Demo mode: show static terminal output without real connection
+        if appState?.isDemoMode == true {
+            enterDemoTerminalMode()
+            return
+        }
+
         guard !isSubscribed else { return }
 
         // Update state
@@ -304,7 +323,114 @@ final class TerminalViewModel: ObservableObject {
             terminalState = .disconnected
         }
     }
-    
+
+    /// Enters demo terminal mode with mock output
+    private func enterDemoTerminalMode() {
+        isSubscribed = true
+        isConnected = true
+        terminalState = .live
+        isMaster = true
+
+        // Delay demo output to allow terminal to get correct size first
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(200))
+
+            // Feed demo terminal output
+            if let terminalView = swiftTermView {
+                let demoOutput = DemoData.terminalOutput
+                terminalView.feed(byteArray: Array(demoOutput.utf8)[...])
+            } else {
+                // Buffer for when terminal view becomes available
+                pendingFeedBuffer.append(DemoData.terminalOutput)
+            }
+        }
+    }
+
+    /// Handles input in demo mode with fake command responses
+    private func handleDemoInput(_ text: String) {
+        guard let terminalView = swiftTermView else { return }
+
+        // Check for special characters
+        for char in text {
+            switch char {
+            case "\r", "\n":
+                // Enter pressed - execute command
+                terminalView.feed(byteArray: Array("\r\n".utf8)[...])
+                executeDemoCommand()
+            case "\u{7F}", "\u{08}":
+                // Backspace/Delete - remove last character
+                if !demoCommandBuffer.isEmpty {
+                    demoCommandBuffer.removeLast()
+                    // Send backspace sequence: move back, space, move back
+                    terminalView.feed(byteArray: Array("\u{08} \u{08}".utf8)[...])
+                }
+            case "\u{03}":
+                // Ctrl+C - cancel current input
+                demoCommandBuffer = ""
+                terminalView.feed(byteArray: Array("^C\r\n$ ".utf8)[...])
+            default:
+                // Regular character - echo and buffer
+                demoCommandBuffer.append(char)
+                terminalView.feed(byteArray: Array(String(char).utf8)[...])
+            }
+        }
+    }
+
+    /// Executes a demo command and shows fake output
+    private func executeDemoCommand() {
+        guard let terminalView = swiftTermView else { return }
+
+        let command = demoCommandBuffer.trimmingCharacters(in: .whitespaces)
+        demoCommandBuffer = ""
+
+        let response = generateDemoResponse(for: command)
+        terminalView.feed(byteArray: Array(response.utf8)[...])
+    }
+
+    /// Generates fake terminal response for demo commands
+    private func generateDemoResponse(for command: String) -> String {
+        let parts = command.split(separator: " ", maxSplits: 1)
+        let cmd = parts.first.map(String.init) ?? ""
+
+        switch cmd.lowercased() {
+        case "ls":
+            return "README.md\r\napps\r\ndocs\r\npackages\r\n\r\n$ "
+        case "pwd":
+            return "/Users/demo/tiflis/tiflis-code\r\n\r\n$ "
+        case "whoami":
+            return "demo\r\n\r\n$ "
+        case "echo":
+            let args = parts.count > 1 ? String(parts[1]) : ""
+            return "\(args)\r\n\r\n$ "
+        case "date":
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE MMM d HH:mm:ss zzz yyyy"
+            return "\(formatter.string(from: Date()))\r\n\r\n$ "
+        case "cat":
+            return "cat: This is demo mode\r\n\r\n$ "
+        case "git":
+            let subcommand = parts.count > 1 ? String(parts[1]).split(separator: " ").first.map(String.init) ?? "" : ""
+            switch subcommand {
+            case "status":
+                return "On branch main\r\nnothing to commit, working tree clean\r\n\r\n$ "
+            case "branch":
+                return "* main\r\n  feature-auth\r\n  develop\r\n\r\n$ "
+            case "log":
+                return "commit abc1234 (HEAD -> main)\r\nAuthor: Demo User <demo@example.com>\r\nDate:   Mon Jan 1 12:00:00 2025\r\n\r\n    Initial commit\r\n\r\n$ "
+            default:
+                return "git: '\(subcommand)' is not available in demo mode\r\n\r\n$ "
+            }
+        case "help":
+            return "Demo terminal commands:\r\n  ls, pwd, whoami, echo, date, git, cat, clear, help\r\n\r\n$ "
+        case "clear":
+            return "\u{1b}[2J\u{1b}[H$ "
+        case "":
+            return "$ "
+        default:
+            return "\(cmd): command not found (demo mode)\r\n\r\n$ "
+        }
+    }
+
     /// Resets terminal state before loading replay
     /// Note: We no longer nil out swiftTermView here because replay data may arrive
     /// before the view is recreated, causing data loss.
@@ -383,6 +509,12 @@ final class TerminalViewModel: ObservableObject {
     }
     
     func sendInput(_ text: String) {
+        // Demo mode: simulate terminal with fake command responses
+        if appState?.isDemoMode == true {
+            handleDemoInput(text)
+            return
+        }
+
         let config = CommandBuilder.terminalInput(sessionId: session.id, data: text)
 
         Task { @MainActor [weak self] in

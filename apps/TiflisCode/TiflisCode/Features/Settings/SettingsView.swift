@@ -87,91 +87,119 @@ struct SettingsView: View {
     
     var body: some View {
         Form {
-            // Connection Section
-            Section {
-                // 1. Connection status
-                HStack {
-                    Circle()
-                        .fill(connectionIndicatorColor)
-                        .frame(width: 12, height: 12)
-                    
-                    Text(connectionStatusText)
-                    
-                    Spacer()
-                    
-                    if appState.connectionState.isConnected {
-                        Button("Disconnect & Forget") {
-                            showDisconnectConfirmation = true
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                    }
-                }
-                
-                if appState.connectionState.isConnected {
-                    // 2. Workstation name
+            // Demo Mode Section (shown only when in demo mode)
+            if appState.isDemoMode {
+                Section {
                     HStack {
-                        Text("Workstation")
+                        Image(systemName: "play.circle.fill")
+                            .foregroundStyle(.orange)
+                        Text("Demo Mode Active")
                         Spacer()
-                        Text(appState.workstationName.isEmpty ? "—" : appState.workstationName)
-                            .foregroundStyle(.secondary)
-                    }
-                    
-                    // 3. Tunnel
-                    HStack {
-                        Text("Tunnel")
-                        Spacer()
-                        Text(maskTunnelURL(tunnelURL))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
                     }
 
-                    // 4. Tunnel ID
-                    HStack {
-                        Text("Tunnel ID")
-                        Spacer()
-                        Text(maskTunnelId(tunnelId))
-                            .foregroundStyle(.secondary)
-                            .font(.system(.body, design: .monospaced))
-                    }
-                    
-                    // 5. Tunnel version (with protocol version inline)
-                    HStack {
-                        Text("Tunnel Version")
-                        Spacer()
-                        Text(formatVersionWithProtocol(
-                            version: appState.tunnelVersion,
-                            protocolVersion: appState.tunnelProtocolVersion
-                        ))
-                        .foregroundStyle(.secondary)
-                    }
-                    
-                    // 6. Workstation version (with protocol version inline)
-                    HStack {
-                        Text("Workstation Version")
-                        Spacer()
-                        Text(formatVersionWithProtocol(
-                            version: appState.workstationVersion,
-                            protocolVersion: appState.workstationProtocolVersion
-                        ))
-                        .foregroundStyle(.secondary)
-                    }
-                } else {
-                    // Show connection options when disconnected
-                    Button {
-                        showQRScanner = true
+                    Button(role: .destructive) {
+                        appState.exitDemoMode()
                     } label: {
-                        Label("Scan QR Code", systemImage: "qrcode.viewfinder")
+                        HStack {
+                            Text("Exit Demo Mode")
+                            Spacer()
+                            Image(systemName: "arrow.right.circle")
+                        }
                     }
-                    
-                    Button {
-                        showMagicLinkInput = true
-                    } label: {
-                        Label("Paste Magic Link", systemImage: "link")
-                    }
+                } header: {
+                    Text("Demo")
+                } footer: {
+                    Text("Exit demo mode to connect to a real workstation")
                 }
-            } header: {
-                Text("Connection")
+            }
+
+            // Connection Section (hidden in demo mode)
+            if !appState.isDemoMode {
+                Section {
+                    // 1. Connection status
+                    HStack {
+                        Circle()
+                            .fill(connectionIndicatorColor)
+                            .frame(width: 12, height: 12)
+
+                        Text(connectionStatusText)
+
+                        Spacer()
+
+                        if appState.connectionState.isConnected {
+                            Button("Disconnect & Forget") {
+                                showDisconnectConfirmation = true
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                        }
+                    }
+
+                    if appState.connectionState.isConnected {
+                        // 2. Workstation name
+                        HStack {
+                            Text("Workstation")
+                            Spacer()
+                            Text(appState.workstationName.isEmpty ? "—" : appState.workstationName)
+                                .foregroundStyle(.secondary)
+                        }
+
+                        // 3. Tunnel
+                        HStack {
+                            Text("Tunnel")
+                            Spacer()
+                            Text(maskTunnelURL(tunnelURL))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        // 4. Tunnel ID
+                        HStack {
+                            Text("Tunnel ID")
+                            Spacer()
+                            Text(maskTunnelId(tunnelId))
+                                .foregroundStyle(.secondary)
+                                .font(.system(.body, design: .monospaced))
+                        }
+
+                        // 5. Tunnel version (with protocol version inline)
+                        HStack {
+                            Text("Tunnel Version")
+                            Spacer()
+                            Text(formatVersionWithProtocol(
+                                version: appState.tunnelVersion,
+                                protocolVersion: appState.tunnelProtocolVersion
+                            ))
+                            .foregroundStyle(.secondary)
+                        }
+
+                        // 6. Workstation version (with protocol version inline)
+                        HStack {
+                            Text("Workstation Version")
+                            Spacer()
+                            Text(formatVersionWithProtocol(
+                                version: appState.workstationVersion,
+                                protocolVersion: appState.workstationProtocolVersion
+                            ))
+                            .foregroundStyle(.secondary)
+                        }
+                    } else {
+                        // Show connection options when disconnected
+                        Button {
+                            showQRScanner = true
+                        } label: {
+                            Label("Scan QR Code", systemImage: "qrcode.viewfinder")
+                        }
+
+                        Button {
+                            showMagicLinkInput = true
+                        } label: {
+                            Label("Paste Magic Link", systemImage: "link")
+                        }
+                    }
+                } header: {
+                    Text("Connection")
+                }
             }
             
             // Voice & Speech Section

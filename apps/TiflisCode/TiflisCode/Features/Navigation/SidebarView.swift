@@ -55,10 +55,13 @@ struct SidebarView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("AgentSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                appState.terminateSession(session, silent: true)
-                            } label: {
-                                Label("Terminate", systemImage: "xmark.circle")
+                            // Disable swipe actions in demo mode
+                            if !appState.isDemoMode {
+                                Button(role: .destructive) {
+                                    appState.terminateSession(session, silent: true)
+                                } label: {
+                                    Label("Terminate", systemImage: "xmark.circle")
+                                }
                             }
                         }
                     }
@@ -78,10 +81,13 @@ struct SidebarView: View {
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("TerminalSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                appState.terminateSession(session, silent: true)
-                            } label: {
-                                Label("Terminate", systemImage: "xmark.circle")
+                            // Disable swipe actions in demo mode
+                            if !appState.isDemoMode {
+                                Button(role: .destructive) {
+                                    appState.terminateSession(session, silent: true)
+                                } label: {
+                                    Label("Terminate", systemImage: "xmark.circle")
+                                }
                             }
                         }
                     }
@@ -107,6 +113,23 @@ struct SidebarView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("SettingsButton")
+
+                // Exit Demo Mode button (only in demo mode)
+                if appState.isDemoMode {
+                    Button(role: .destructive) {
+                        appState.exitDemoMode()
+                        onDismiss?()
+                    } label: {
+                        HStack {
+                            Label("Exit Demo Mode", systemImage: "arrow.right.circle")
+                                .foregroundStyle(.orange)
+                            Spacer()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("ExitDemoModeButton")
+                }
             }
         }
         .accessibilityIdentifier("SidebarList")
@@ -252,96 +275,143 @@ struct CreateSessionSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section("Session Type") {
-                    // Terminal option
+            // Demo mode: show explanation instead of session creation
+            if appState.isDemoMode {
+                demoModeContent
+            } else {
+                realModeContent
+            }
+        }
+    }
+
+    /// Content shown when in demo mode
+    private var demoModeContent: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "play.circle.fill")
+                .font(.system(size: 56))
+                .foregroundStyle(.orange)
+
+            Text("Demo Mode")
+                .font(.title2)
+                .fontWeight(.semibold)
+
+            Text("Session creation is disabled in demo mode. Explore the pre-created sessions to see how Tiflis Code works.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+
+            Button("Got it") {
+                dismiss()
+            }
+            .buttonStyle(.borderedProminent)
+            .padding(.top, 8)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .navigationTitle("New Session")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
+    /// Content shown in normal mode
+    private var realModeContent: some View {
+        Form {
+            Section("Session Type") {
+                // Terminal option
+                AgentTypeRow(
+                    name: "Terminal",
+                    type: .terminal,
+                    isAlias: false,
+                    isSelected: isTerminal
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isTerminal = true
+                    selectedAgent = nil
+                }
+
+                // Agent options (base + aliases)
+                ForEach(agentOptions) { agent in
                     AgentTypeRow(
-                        name: "Terminal",
-                        type: .terminal,
-                        isAlias: false,
-                        isSelected: isTerminal
+                        name: agent.isAlias ? "\(agent.name) (\(agent.baseType))" : agent.name.capitalized,
+                        type: agent.sessionType,
+                        isAlias: agent.isAlias,
+                        isSelected: !isTerminal && selectedAgent?.name == agent.name
                     )
                     .contentShape(Rectangle())
                     .onTapGesture {
-                        isTerminal = true
-                        selectedAgent = nil
+                        isTerminal = false
+                        selectedAgent = agent
+                    }
+                }
+            }
+
+            if !isTerminal {
+                Section("Project") {
+                    Picker("Workspace", selection: $selectedWorkspace) {
+                        Text("Select workspace").tag("")
+                        ForEach(workspaceNames, id: \.self) { workspace in
+                            Text(workspace).tag(workspace)
+                        }
                     }
 
-                    // Agent options (base + aliases)
-                    ForEach(agentOptions) { agent in
-                        AgentTypeRow(
-                            name: agent.isAlias ? "\(agent.name) (\(agent.baseType))" : agent.name.capitalized,
-                            type: agent.sessionType,
-                            isAlias: agent.isAlias,
-                            isSelected: !isTerminal && selectedAgent?.name == agent.name
+                    Picker("Project", selection: $selectedProject) {
+                        Text("Select project").tag("")
+                        ForEach(availableProjects) { project in
+                            Text(project.name).tag(project.name)
+                        }
+                    }
+                    .disabled(selectedWorkspace.isEmpty)
+                }
+            }
+        }
+        .navigationTitle("New Session")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") {
+                    dismiss()
+                }
+            }
+
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Create") {
+                    if isTerminal {
+                        appState.createSession(
+                            type: .terminal,
+                            agentName: nil,
+                            workspace: nil,
+                            project: nil
                         )
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            isTerminal = false
-                            selectedAgent = agent
-                        }
+                    } else if let agent = selectedAgent {
+                        appState.createSession(
+                            type: agent.sessionType,
+                            agentName: agent.isAlias ? agent.name : nil,
+                            workspace: selectedWorkspace.isEmpty ? nil : selectedWorkspace,
+                            project: selectedProject.isEmpty ? nil : selectedProject
+                        )
                     }
+                    dismiss()
                 }
-
-                if !isTerminal {
-                    Section("Project") {
-                        Picker("Workspace", selection: $selectedWorkspace) {
-                            Text("Select workspace").tag("")
-                            ForEach(workspaceNames, id: \.self) { workspace in
-                                Text(workspace).tag(workspace)
-                            }
-                        }
-
-                        Picker("Project", selection: $selectedProject) {
-                            Text("Select project").tag("")
-                            ForEach(availableProjects) { project in
-                                Text(project.name).tag(project.name)
-                            }
-                        }
-                        .disabled(selectedWorkspace.isEmpty)
-                    }
-                }
+                .disabled(!isTerminal && (selectedAgent == nil || selectedWorkspace.isEmpty || selectedProject.isEmpty))
             }
-            .navigationTitle("New Session")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        dismiss()
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        if isTerminal {
-                            appState.createSession(
-                                type: .terminal,
-                                agentName: nil,
-                                workspace: nil,
-                                project: nil
-                            )
-                        } else if let agent = selectedAgent {
-                            appState.createSession(
-                                type: agent.sessionType,
-                                agentName: agent.isAlias ? agent.name : nil,
-                                workspace: selectedWorkspace.isEmpty ? nil : selectedWorkspace,
-                                project: selectedProject.isEmpty ? nil : selectedProject
-                            )
-                        }
-                        dismiss()
-                    }
-                    .disabled(!isTerminal && (selectedAgent == nil || selectedWorkspace.isEmpty || selectedProject.isEmpty))
-                }
-            }
-            .onChange(of: selectedWorkspace) { _, _ in
-                // Reset project when workspace changes
-                selectedProject = ""
-            }
-            .onAppear {
-                // Select first agent by default if available
-                if let firstAgent = agentOptions.first, selectedAgent == nil && !isTerminal {
-                    selectedAgent = firstAgent
-                }
+        }
+        .onChange(of: selectedWorkspace) { _, _ in
+            // Reset project when workspace changes
+            selectedProject = ""
+        }
+        .onAppear {
+            // Select first agent by default if available
+            if let firstAgent = agentOptions.first, selectedAgent == nil && !isTerminal {
+                selectedAgent = firstAgent
             }
         }
         .presentationDetents([.medium, .large])

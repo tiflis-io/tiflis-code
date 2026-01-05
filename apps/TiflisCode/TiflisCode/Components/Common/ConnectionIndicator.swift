@@ -14,6 +14,11 @@ struct ConnectionIndicator: View {
     
     /// Computed color based on both tunnel connection and workstation status
     private var indicatorColor: Color {
+        // Demo mode: always orange
+        if appState.isDemoMode {
+            return .orange
+        }
+
         // If tunnel is not connected, use connection state color
         guard appState.connectionState.isConnected else {
             return appState.connectionState.indicatorColor
@@ -117,19 +122,43 @@ struct ConnectionPopover: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            // 1. Status
-            HStack {
-                Circle()
-                    .fill(indicatorColor)
-                    .frame(width: 12, height: 12)
-                
-                Text(statusText)
-                    .font(.headline)
-            }
-            
-            Divider()
-            
-            if appState.connectionState.isConnected {
+            // Demo Mode content
+            if appState.isDemoMode {
+                HStack {
+                    Image(systemName: "play.circle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Demo Mode")
+                        .font(.headline)
+                }
+
+                Divider()
+
+                Text("You're exploring Tiflis Code in demo mode. No real connection is active.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Button {
+                    appState.exitDemoMode()
+                    dismiss()
+                } label: {
+                    Text("Exit Demo Mode")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.orange)
+            } else if appState.connectionState.isConnected {
+                // Status header
+                HStack {
+                    Circle()
+                        .fill(indicatorColor)
+                        .frame(width: 12, height: 12)
+
+                    Text(statusText)
+                        .font(.headline)
+                }
+
+                Divider()
+
                 // Connected: show info and disconnect
                 VStack(alignment: .leading, spacing: 8) {
                     // 2. Workstation name
@@ -170,6 +199,18 @@ struct ConnectionPopover: View {
                 .buttonStyle(.borderedProminent)
                 .tint(.red)
             } else {
+                // Status header
+                HStack {
+                    Circle()
+                        .fill(indicatorColor)
+                        .frame(width: 12, height: 12)
+
+                    Text(statusText)
+                        .font(.headline)
+                }
+
+                Divider()
+
                 // Not connected: show connection options
                 VStack(spacing: 12) {
                     Button {
@@ -179,7 +220,7 @@ struct ConnectionPopover: View {
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
-                    
+
                     Button {
                         showMagicLinkInput = true
                     } label: {
