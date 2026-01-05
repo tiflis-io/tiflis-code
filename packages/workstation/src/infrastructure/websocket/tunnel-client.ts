@@ -293,9 +293,7 @@ export class TunnelClient {
     }, CONNECTION_TIMING.REGISTRATION_TIMEOUT_MS);
 
     // Allow process to exit even if registration timeout is pending
-    if (this.registrationTimeout.unref) {
-      this.registrationTimeout.unref();
-    }
+    this.registrationTimeout.unref();
   }
 
   /**
@@ -450,9 +448,7 @@ export class TunnelClient {
     }, CONNECTION_TIMING.PING_INTERVAL_MS);
 
     // Allow process to exit even if ping interval is pending
-    if (this.pingInterval.unref) {
-      this.pingInterval.unref();
-    }
+    this.pingInterval.unref();
   }
 
   /**
@@ -478,9 +474,7 @@ export class TunnelClient {
     }, delay);
 
     // Allow process to exit even if reconnect timeout is pending
-    if (this.reconnectTimeout.unref) {
-      this.reconnectTimeout.unref();
-    }
+    this.reconnectTimeout.unref();
   }
 
   /**

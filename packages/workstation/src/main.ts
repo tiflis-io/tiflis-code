@@ -329,10 +329,10 @@ async function bootstrap(): Promise<void> {
 
       shutdownInProgress = true;
       logger.info({ signal, count: signalCount }, "Signal received");
-      console.log("\nShutting down...");
+      logger.info("Shutting down...");
 
       // Start graceful shutdown
-      shutdown(signal).catch((error) => {
+      shutdown(signal).catch((error: unknown) => {
         logger.error({ error }, "Shutdown error");
       }).finally(() => {
         process.exit(0);
@@ -3211,11 +3211,8 @@ async function bootstrap(): Promise<void> {
 // Keep stdin open to maintain terminal connection
 // This ensures the parent process continues to receive signals
 // even when child processes are running
-if (process.stdin && !process.stdin.destroyed) {
-  // Ensure stdin is not paused - paused stdin won't deliver signals
-  if (process.stdin.isPaused?.()) {
-    process.stdin.resume();
-  }
+if (process.stdin.isPaused()) {
+  process.stdin.resume();
 }
 
 // Run the server

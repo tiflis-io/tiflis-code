@@ -9,7 +9,6 @@ import type { ClientRegistry } from "../../domain/ports/client-registry.js";
 import type { MessageBroadcaster } from "../../domain/ports/message-broadcaster.js";
 import type { TunnelClient } from "../../infrastructure/websocket/tunnel-client.js";
 import type { SessionId } from "../../domain/value-objects/session-id.js";
-import { DeviceId } from "../../domain/value-objects/device-id.js";
 import { SessionId as SessionIdClass } from "../../domain/value-objects/session-id.js";
 
 export interface MessageBroadcasterImplDeps {
