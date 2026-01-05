@@ -2151,9 +2151,12 @@ async function bootstrap(): Promise<void> {
 
           const isExecuting = supervisorAgent.isProcessing();
 
+          // Always include current streaming blocks when executing, regardless of pagination
+          // This ensures clients reconnecting mid-stream always get the in-progress response
+          // Clients use streaming_message_id for deduplication if they already have the message
           let currentStreamingBlocks: unknown[] | undefined;
           let streamingMessageId: string | undefined;
-          if (isExecuting && !beforeSequence) {
+          if (isExecuting) {
             const blocks = supervisorMessageAccumulator.get();
             if (blocks.length > 0) {
               currentStreamingBlocks = blocks;
@@ -2212,9 +2215,12 @@ async function bootstrap(): Promise<void> {
 
           const isExecuting = agentSessionManager.isExecuting(sessionId);
 
+          // Always include current streaming blocks when executing, regardless of pagination
+          // This ensures clients reconnecting mid-stream always get the in-progress response
+          // Clients use streaming_message_id for deduplication if they already have the message
           let currentStreamingBlocks: unknown[] | undefined;
           let streamingMessageId: string | undefined;
-          if (isExecuting && !beforeSequence) {
+          if (isExecuting) {
             const blocks = agentMessageAccumulator.get(sessionId);
             if (blocks && blocks.length > 0) {
               currentStreamingBlocks = blocks;
@@ -2539,14 +2545,20 @@ async function bootstrap(): Promise<void> {
         }
       }
 
+      // Get accumulated blocks to send full state (iOS expects full state, not incremental)
+      // IMPORTANT: Get blocks BEFORE any deletion to avoid race condition where clients
+      // reconnect between deletion and broadcast and miss the final message
+      const accumulatedBlocks = agentMessageAccumulator.get(sessionId) ?? [];
+
+      // Get or create streaming_message_id early - we need it for both saving and broadcasting
+      // This ID is stable across all chunks of the same response, enabling client-side deduplication
+      const streamingMessageId = getOrCreateAgentStreamingMessageId(sessionId);
+
       // Save to database only when message is complete
       let fullTextContent = "";
       if (isComplete) {
-        const allBlocks = agentMessageAccumulator.get(sessionId) ?? [];
-        agentMessageAccumulator.delete(sessionId);
-
         // Warn if completion arrives without accumulated blocks (potential issue)
-        if (allBlocks.length === 0) {
+        if (accumulatedBlocks.length === 0) {
           logger.warn(
             {
               sessionId,
@@ -2557,9 +2569,9 @@ async function bootstrap(): Promise<void> {
           );
         }
 
-        if (allBlocks.length > 0) {
+        if (accumulatedBlocks.length > 0) {
           // Count block types for debugging
-          const blockTypeCounts = allBlocks.reduce<Record<string, number>>(
+          const blockTypeCounts = accumulatedBlocks.reduce<Record<string, number>>(
             (acc, b) => {
               acc[b.block_type] = (acc[b.block_type] ?? 0) + 1;
               return acc;
@@ -2570,32 +2582,32 @@ async function bootstrap(): Promise<void> {
           logger.info(
             {
               sessionId,
-              totalBlocks: allBlocks.length,
+              totalBlocks: accumulatedBlocks.length,
               blockTypes: blockTypeCounts,
             },
             "Saving agent message with accumulated blocks"
           );
 
-          fullTextContent = allBlocks
+          fullTextContent = accumulatedBlocks
             .filter((b) => b.block_type === "text")
             .map((b) => b.content)
             .join("\n");
 
-          const hasError = allBlocks.some((b) => b.block_type === "error");
+          const hasError = accumulatedBlocks.some((b) => b.block_type === "error");
           const role: "assistant" | "system" = hasError
             ? "system"
             : "assistant";
+          // Pass streamingMessageId as the message ID to ensure consistency across devices
+          // This prevents duplicates when clients load history after seeing streaming updates
           chatHistoryService.saveAgentMessage(
             sessionId,
             role,
             fullTextContent,
-            allBlocks
+            accumulatedBlocks,
+            streamingMessageId
           );
         }
       }
-
-      // Get accumulated blocks to send full state (iOS expects full state, not incremental)
-      const accumulatedBlocks = agentMessageAccumulator.get(sessionId) ?? [];
 
       // Merge tool blocks with the same tool_use_id
       // This handles the case where tool_use and tool_result arrive as separate blocks
@@ -2607,9 +2619,7 @@ async function bootstrap(): Promise<void> {
         .map((b) => b.content)
         .join("\n");
 
-      // Get or create streaming_message_id for this response
-      // This ID is stable across all chunks of the same response, enabling client-side deduplication
-      const streamingMessageId = getOrCreateAgentStreamingMessageId(sessionId);
+      // streamingMessageId was obtained earlier for saving - reuse it for broadcasting
 
       const outputEvent = {
         type: "session.output",
@@ -2631,9 +2641,12 @@ async function bootstrap(): Promise<void> {
         JSON.stringify(outputEvent)
       );
 
-      // Clear streaming_message_id when response is complete
+      // Clear streaming state when response is complete
+      // IMPORTANT: Delete accumulator AFTER broadcast to ensure clients can request
+      // current_streaming_blocks via history.request until broadcast is delivered
       if (isComplete) {
         clearAgentStreamingMessageId(sessionId);
+        agentMessageAccumulator.delete(sessionId);
       }
 
       // Check if this was a voice command that needs TTS response
@@ -2792,10 +2805,13 @@ async function bootstrap(): Promise<void> {
       if (isComplete && finalOutput && finalOutput.length > 0) {
         // Save with merged content blocks for history restoration
         // Use mergedBlocks (already computed above) for consistency
+        // Pass streamingMessageId as the message ID to ensure consistency across devices
+        // This prevents duplicates when clients load history after seeing streaming updates
         chatHistoryService.saveSupervisorMessage(
           "assistant",
           finalOutput,
-          mergedBlocks
+          mergedBlocks,
+          streamingMessageId ?? undefined
         );
 
         // Check if this was a voice command that needs TTS response

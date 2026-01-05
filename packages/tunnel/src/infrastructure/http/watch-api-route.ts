@@ -195,6 +195,9 @@ export function registerWatchApiRoute(
         messages,
         current_sequence: result.currentSequence,
         workstation_online: result.workstationOnline,
+        // Gap detection fields - helps clients know if they missed messages
+        oldest_available_sequence: result.oldestAvailableSequence,
+        may_have_missed_messages: result.mayHaveMissedMessages,
       });
     } catch (error) {
       return await handleError(error, reply, log);

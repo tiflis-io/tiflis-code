@@ -4,6 +4,7 @@
 import { useEffect, useRef, useMemo, useState, useCallback, type ReactNode } from 'react';
 import type { Message } from '@/types';
 import { SegmentBubble } from './MessageBubble';
+import { ThinkingBubble } from './ThinkingBubble';
 import { ChatInput } from './ChatInput';
 import { AgentIcon } from '@/components/icons';
 import { ChatSkeleton } from '@/components/ui/Skeleton';
@@ -24,6 +25,10 @@ interface ChatViewProps {
   showVoice?: boolean;
   emptyIcon?: ReactNode;
   agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+  // Pagination props
+  hasMore?: boolean;
+  isLoadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 export function ChatView({
@@ -39,13 +44,20 @@ export function ChatView({
   showVoice = true,
   emptyIcon,
   agentType,
+  hasMore = false,
+  isLoadingMore = false,
+  onLoadMore,
 }: ChatViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isNearBottom, setIsNearBottom] = useState(true);
 
   // Split messages into segments for display
   const segments = useMemo(() => splitMessages(messages), [messages]);
+
+  // Show thinking bubble when loading (separate from message content)
+  const showThinkingBubble = isLoading && messages.length > 0;
 
   // Check if user is near bottom of scroll
   const checkScrollPosition = useCallback(() => {
@@ -84,6 +96,31 @@ export function ChatView({
     return () => scrollEl.removeEventListener('scroll', handleScroll);
   }, [checkScrollPosition]);
 
+  // IntersectionObserver for "load more" pagination when scrolling to top
+  useEffect(() => {
+    if (!hasMore || !onLoadMore || isLoadingMore || isSubscribing) return;
+
+    const triggerEl = loadMoreTriggerRef.current;
+    if (!triggerEl) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry?.isIntersecting && hasMore && !isLoadingMore) {
+          onLoadMore();
+        }
+      },
+      {
+        root: scrollRef.current,
+        rootMargin: '100px 0px 0px 0px', // Trigger 100px before reaching top
+        threshold: 0,
+      }
+    );
+
+    observer.observe(triggerEl);
+    return () => observer.disconnect();
+  }, [hasMore, onLoadMore, isLoadingMore, isSubscribing]);
+
   // Scroll to bottom handler
   const scrollToBottom = useCallback(() => {
     if (scrollRef.current) {
@@ -106,6 +143,18 @@ export function ChatView({
           aria-live="polite"
         >
           <div className="max-w-3xl mx-auto">
+            {/* Load more trigger and indicator at top */}
+            {!isSubscribing && messages.length > 0 && (
+              <div ref={loadMoreTriggerRef} className="h-1" aria-hidden="true" />
+            )}
+            {isLoadingMore && (
+              <div className="flex justify-center py-4">
+                <div className="flex items-center gap-2 text-muted-foreground text-sm">
+                  <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                  <span>Loading older messages...</span>
+                </div>
+              </div>
+            )}
             {isSubscribing ? (
               <ChatSkeleton count={3} />
             ) : messages.length === 0 ? (
@@ -120,22 +169,28 @@ export function ChatView({
                 <p className="text-muted-foreground">{emptyMessage}</p>
               </div>
             ) : (
-              segments.map((segment) => (
-                <SegmentBubble
-                  key={segment.id}
-                  contentBlocks={segment.contentBlocks}
-                  isUser={segment.role === 'user'}
-                  isStreaming={segment.isStreaming}
-                  showAvatar={segment.showAvatar}
-                  isContinuation={!segment.isFirstSegment}
-                  sendStatus={segment.isLastSegment ? segment.sendStatus : undefined}
-                  isCurrentDevice={
-                    !segment.fromDeviceId || segment.fromDeviceId === currentDeviceId
-                  }
-                  fromDeviceId={segment.isLastSegment ? segment.fromDeviceId : undefined}
-                  agentType={agentType}
-                />
-              ))
+              <>
+                {segments.map((segment) => (
+                  <SegmentBubble
+                    key={segment.id}
+                    contentBlocks={segment.contentBlocks}
+                    isUser={segment.role === 'user'}
+                    isStreaming={segment.isStreaming}
+                    showAvatar={segment.showAvatar}
+                    isContinuation={!segment.isFirstSegment}
+                    sendStatus={segment.isLastSegment ? segment.sendStatus : undefined}
+                    isCurrentDevice={
+                      !segment.fromDeviceId || segment.fromDeviceId === currentDeviceId
+                    }
+                    fromDeviceId={segment.isLastSegment ? segment.fromDeviceId : undefined}
+                    agentType={agentType}
+                  />
+                ))}
+                {/* Separate thinking bubble shown when waiting for response */}
+                {showThinkingBubble && (
+                  <ThinkingBubble agentType={agentType} />
+                )}
+              </>
             )}
           </div>
         </div>

@@ -599,11 +599,13 @@ export class ChatHistoryService {
    * Saves a supervisor message to the database.
    * Messages are shared across all devices connected to this workstation.
    * @param contentBlocks - Optional structured content blocks (for assistant messages)
+   * @param messageId - Optional ID to use (e.g., streaming_message_id for deduplication)
    */
   saveSupervisorMessage(
     role: "user" | "assistant",
     content: string,
-    contentBlocks?: unknown[]
+    contentBlocks?: unknown[],
+    messageId?: string
   ): string {
     this.ensureSupervisorSession();
     const sessionId = ChatHistoryService.SUPERVISOR_SESSION_ID;
@@ -615,6 +617,7 @@ export class ChatHistoryService {
       content,
       contentBlocks: contentBlocks ? JSON.stringify(contentBlocks) : undefined,
       isComplete: true,
+      messageId, // Pass through to repository for consistent IDs
     };
 
     const saved = this.messageRepo.create(params);
@@ -730,7 +733,8 @@ export class ChatHistoryService {
     sessionId: string,
     role: "user" | "assistant" | "system",
     content: string,
-    contentBlocks?: unknown[]
+    contentBlocks?: unknown[],
+    messageId?: string // Optional: use streaming_message_id for deduplication across devices
   ): string {
     const params: CreateMessageParams = {
       sessionId,
@@ -739,6 +743,7 @@ export class ChatHistoryService {
       content,
       contentBlocks: contentBlocks ? JSON.stringify(contentBlocks) : undefined,
       isComplete: true,
+      messageId, // Pass through to repository
     };
 
     const saved = this.messageRepo.create(params);

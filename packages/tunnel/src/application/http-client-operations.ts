@@ -65,6 +65,8 @@ export interface PollMessagesResult {
   messages: QueuedMessage[];
   currentSequence: number;
   workstationOnline: boolean;
+  oldestAvailableSequence: number | null;
+  mayHaveMissedMessages: boolean;
 }
 
 export interface GetStateInput {
@@ -300,6 +302,8 @@ export class HttpClientOperationsUseCase {
         messages: [],
         currentSequence: 0,
         workstationOnline: false,
+        oldestAvailableSequence: null,
+        mayHaveMissedMessages: false,
       };
     }
 
@@ -311,15 +315,23 @@ export class HttpClientOperationsUseCase {
       client.acknowledgeMessages(acknowledgeSequence);
     }
 
-    // Get messages since sequence
-    const messages = client.getMessagesSince(sinceSequence);
+    // Get messages since sequence (includes gap detection)
+    const { messages, oldestAvailableSequence, mayHaveMissedMessages } = client.getMessagesSince(sinceSequence);
 
     // Check workstation status
     const workstation = this.workstationRegistry.get(client.tunnelId);
     const workstationOnline = workstation?.isOnline ?? false;
 
+    // Log warning if messages may have been missed
+    if (mayHaveMissedMessages) {
+      this.logger.warn(
+        { deviceId, sinceSequence, oldestAvailableSequence, currentSequence: client.currentSequence },
+        'HTTP client may have missed messages due to stale sequence'
+      );
+    }
+
     this.logger.debug(
-      { deviceId, sinceSequence, messageCount: messages.length, currentSequence: client.currentSequence },
+      { deviceId, sinceSequence, messageCount: messages.length, currentSequence: client.currentSequence, mayHaveMissedMessages },
       'HTTP client poll'
     );
 
@@ -327,6 +339,8 @@ export class HttpClientOperationsUseCase {
       messages,
       currentSequence: client.currentSequence,
       workstationOnline,
+      oldestAvailableSequence,
+      mayHaveMissedMessages,
     };
   }
 
@@ -413,11 +427,19 @@ export class HttpClientOperationsUseCase {
       client.acknowledgeMessages(acknowledgeSequence);
     }
 
-    // Get messages since sequence
-    const messages = client.getMessagesSince(sinceSequence);
+    // Get messages since sequence (includes gap detection)
+    const { messages, oldestAvailableSequence, mayHaveMissedMessages } = client.getMessagesSince(sinceSequence);
+
+    // Log warning if messages may have been missed
+    if (mayHaveMissedMessages) {
+      this.logger.warn(
+        { deviceId, sinceSequence, oldestAvailableSequence, currentSequence: client.currentSequence },
+        'HTTP client may have missed messages due to stale sequence (with auth)'
+      );
+    }
 
     this.logger.debug(
-      { deviceId, sinceSequence, messageCount: messages.length, currentSequence: client.currentSequence },
+      { deviceId, sinceSequence, messageCount: messages.length, currentSequence: client.currentSequence, mayHaveMissedMessages },
       'HTTP client poll with auth'
     );
 
@@ -425,6 +447,8 @@ export class HttpClientOperationsUseCase {
       messages,
       currentSequence: client.currentSequence,
       workstationOnline: workstation.isOnline,
+      oldestAvailableSequence,
+      mayHaveMissedMessages,
     };
   }
 

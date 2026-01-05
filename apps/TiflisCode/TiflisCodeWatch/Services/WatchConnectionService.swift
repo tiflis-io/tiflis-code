@@ -93,6 +93,14 @@ final class WatchConnectionService {
                 self?.appState?.workstationOnline = online
             }
             .store(in: &cancellables)
+
+        // Subscribe to gap detection events - reload history when messages may have been lost
+        httpPollingService.gapDetectedSubject
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.handleGapDetected()
+            }
+            .store(in: &cancellables)
     }
 
     /// Sets up subscription to credentials from WatchConnectivity
@@ -498,6 +506,21 @@ final class WatchConnectionService {
     }
 
     // MARK: - Message Handling
+
+    /// Handles gap detection from HTTP polling - messages may have been lost due to timeout/expiry
+    private func handleGapDetected() {
+        NSLog("⌚️ WatchConnectionService: Gap detected - reloading history to recover lost messages")
+
+        // Reload supervisor history
+        Task {
+            await requestHistory(sessionId: nil)
+
+            // Reload history for all subscribed agent sessions
+            for sessionId in subscribedSessions {
+                await requestHistory(sessionId: sessionId)
+            }
+        }
+    }
 
     private func handleMessage(_ message: [String: Any]) {
         guard let messageType = message["type"] as? String else {

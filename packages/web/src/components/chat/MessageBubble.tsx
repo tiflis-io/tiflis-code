@@ -4,7 +4,6 @@
 import { cn } from '@/lib/utils';
 import type { Message, ContentBlock } from '@/types';
 import { ContentBlockRenderer } from './ContentBlockRenderer';
-import { TypingIndicator } from './TypingIndicator';
 import { User, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -26,7 +25,7 @@ interface MessageBubbleProps {
 interface SegmentBubbleProps {
   contentBlocks: ContentBlock[];
   isUser: boolean;
-  isStreaming: boolean;
+  isStreaming?: boolean; // Kept for API compatibility but not used (ThinkingBubble handles this)
   showAvatar: boolean;
   isContinuation: boolean;
   sendStatus?: Message['sendStatus'];
@@ -69,7 +68,6 @@ function AgentAvatar({ agentType }: { agentType?: string }) {
 function SegmentBubble({
   contentBlocks,
   isUser,
-  isStreaming,
   showAvatar,
   isContinuation,
   sendStatus,
@@ -78,10 +76,14 @@ function SegmentBubble({
   onRetry,
   agentType,
 }: SegmentBubbleProps) {
-  // Check if we have any content to display
+  // Don't render empty bubbles (no content blocks or all blocks are empty)
   const hasContent = contentBlocks.length > 0 && contentBlocks.some(
     block => block.content || block.blockType === 'tool' || block.blockType === 'voice_output' || block.blockType === 'voice_input'
   );
+
+  if (!hasContent) {
+    return null;
+  }
 
   return (
     <div
@@ -120,23 +122,10 @@ function SegmentBubble({
             isContinuation && !isUser && 'rounded-tl-sm'
           )}
         >
-          {/* Show typing indicator when streaming with no content yet */}
-          {isStreaming && !hasContent ? (
-            <TypingIndicator />
-          ) : (
-            <>
-              {contentBlocks.map((block) => (
-                <ContentBlockRenderer key={block.id} block={block} isUserMessage={isUser} />
-              ))}
-
-              {/* Show typing indicator at the end while still streaming */}
-              {isStreaming && hasContent && (
-                <div className="mt-2">
-                  <TypingIndicator />
-                </div>
-              )}
-            </>
-          )}
+          {/* Render content blocks - typing indicator is now shown as separate ThinkingBubble */}
+          {contentBlocks.map((block) => (
+            <ContentBlockRenderer key={block.id} block={block} isUserMessage={isUser} />
+          ))}
         </div>
 
         {/* Message status */}
@@ -181,7 +170,6 @@ export function MessageBubble({ message, isCurrentDevice = true, agentType }: Me
     <SegmentBubble
       contentBlocks={message.contentBlocks}
       isUser={isUser}
-      isStreaming={message.isStreaming}
       showAvatar={true}
       isContinuation={false}
       sendStatus={message.sendStatus}

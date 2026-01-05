@@ -18,6 +18,7 @@ export interface CreateMessageParams {
   audioInputPath?: string;
   audioOutputPath?: string;
   isComplete?: boolean;
+  messageId?: string; // Optional ID to use (e.g., streaming_message_id for deduplication)
 }
 
 /**
@@ -39,7 +40,7 @@ export class MessageRepository {
     const nextSequence = (result?.maxSeq ?? 0) + 1;
 
     const newMessage: NewMessageRow = {
-      id: nanoid(16),
+      id: params.messageId ?? nanoid(16), // Use provided ID or generate new one
       sessionId: params.sessionId,
       sequence: nextSequence,
       role: params.role,

@@ -42,6 +42,7 @@ export function ChatPage() {
     subscribeToSession,
     sendSupervisorVoiceCommand,
     sendAgentVoiceCommand,
+    requestHistory,
   } = useWebSocket();
 
   const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
@@ -190,6 +191,22 @@ export function ChatPage() {
     [sessionId, sendAgentVoiceCommand, isConnected]
   );
 
+  // Load more history handlers
+  const handleSupervisorLoadMore = useCallback(() => {
+    const paginationState = historyPaginationState['supervisor'];
+    if (paginationState?.hasMore && !paginationState?.isLoading && paginationState?.oldestSequence) {
+      requestHistory(null, paginationState.oldestSequence);
+    }
+  }, [historyPaginationState, requestHistory]);
+
+  const handleAgentLoadMore = useCallback(() => {
+    if (!sessionId) return;
+    const paginationState = historyPaginationState[sessionId];
+    if (paginationState?.hasMore && !paginationState?.isLoading && paginationState?.oldestSequence) {
+      requestHistory(sessionId, paginationState.oldestSequence);
+    }
+  }, [sessionId, historyPaginationState, requestHistory]);
+
   // Get icon for session type
   const getSessionIcon = (session: Session | null) => {
     if (!session) {
@@ -208,12 +225,14 @@ export function ChatPage() {
   };
 
   if (isSupervisor) {
-    const isHistoryLoading = historyPaginationState['supervisor']?.isLoading ?? false;
+    const supervisorPagination = historyPaginationState['supervisor'];
+    const isHistoryLoading = supervisorPagination?.isLoading ?? false;
+    const hasMore = supervisorPagination?.hasMore ?? false;
     return (
       <ChatView
         messages={supervisorMessages}
         isLoading={supervisorIsLoading}
-        isSubscribing={isHistoryLoading}
+        isSubscribing={isHistoryLoading && supervisorMessages.length === 0}
         onSend={handleSupervisorSend}
         onSendAudio={handleSupervisorAudio}
         onCancel={handleSupervisorCancel}
@@ -222,6 +241,9 @@ export function ChatPage() {
         emptyMessage="Hello! I'm your AI assistant. Ask me to create sessions, manage your workspace, or help with tasks."
         emptyIcon={<SupervisorIcon className="w-8 h-8 text-muted-foreground" />}
         agentType="supervisor"
+        hasMore={hasMore}
+        isLoadingMore={isHistoryLoading && supervisorMessages.length > 0}
+        onLoadMore={handleSupervisorLoadMore}
       />
     );
   }
@@ -229,13 +251,15 @@ export function ChatPage() {
   // Render Agent chat
   const messages = agentMessages[sessionId] ?? [];
   const isLoading = agentIsLoading[sessionId] ?? false;
-  const isHistoryLoading = historyPaginationState[sessionId]?.isLoading ?? false;
+  const agentPagination = historyPaginationState[sessionId];
+  const isHistoryLoading = agentPagination?.isLoading ?? false;
+  const hasMore = agentPagination?.hasMore ?? false;
 
   return (
     <ChatView
       messages={messages}
       isLoading={isLoading}
-      isSubscribing={isHistoryLoading}
+      isSubscribing={isHistoryLoading && messages.length === 0}
       onSend={handleAgentSend}
       onSendAudio={handleAgentAudio}
       onCancel={handleAgentCancel}
@@ -244,6 +268,9 @@ export function ChatPage() {
       emptyMessage={`Start a conversation with ${session?.agentName ?? 'the agent'}...`}
       emptyIcon={getSessionIcon(session ?? null)}
       agentType={session?.type as 'claude' | 'cursor' | 'opencode' | 'terminal' | undefined}
+      hasMore={hasMore}
+      isLoadingMore={isHistoryLoading && messages.length > 0}
+      onLoadMore={handleAgentLoadMore}
     />
   );
 }

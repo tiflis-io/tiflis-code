@@ -32,6 +32,9 @@ final class HTTPPollingService: ObservableObject {
     /// Publisher for received messages from the server
     let messageSubject = PassthroughSubject<[String: Any], Never>()
 
+    /// Publisher for gap detection - emitted when server indicates messages may have been lost
+    let gapDetectedSubject = PassthroughSubject<Void, Never>()
+
     // MARK: - Private Properties
 
     private var tunnelURL: String?
@@ -313,9 +316,19 @@ final class HTTPPollingService: ObservableObject {
                 currentSequence = newSequence
             }
 
+            // Check for message gap (server detected we may have missed messages)
+            let mayHaveMissedMessages = json["may_have_missed_messages"] as? Bool ?? false
+            if mayHaveMissedMessages {
+                let oldestAvailable = json["oldest_available_sequence"] as? Int ?? 0
+                NSLog("⌚️ HTTPPollingService: ⚠️ Gap detected! May have missed messages. Oldest available: %d", oldestAvailable)
+                // Emit gap detection event so WatchConnectionService can reload history
+                gapDetectedSubject.send()
+            }
+
             // Process messages
             if let messages = json["messages"] as? [[String: Any]] {
-                debugLastPollResult = "OK: \(messages.count) msgs, seq=\(currentSequence)"
+                let gapIndicator = mayHaveMissedMessages ? " [GAP]" : ""
+                debugLastPollResult = "OK: \(messages.count) msgs, seq=\(currentSequence)\(gapIndicator)"
 
                 for message in messages {
                     if let messageData = message["data"] as? [String: Any] {

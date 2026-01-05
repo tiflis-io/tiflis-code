@@ -4,4 +4,5 @@
 export { ChatView } from './ChatView';
 export { ChatInput } from './ChatInput';
 export { MessageBubble } from './MessageBubble';
+export { ThinkingBubble } from './ThinkingBubble';
 export { ContentBlockRenderer } from './ContentBlockRenderer';

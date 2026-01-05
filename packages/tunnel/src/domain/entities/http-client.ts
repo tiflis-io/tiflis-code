@@ -119,8 +119,13 @@ export class HttpClient {
   /**
    * Gets messages since a given sequence number.
    * Also cleans up expired messages.
+   * Returns both messages and metadata about potential gaps.
    */
-  getMessagesSince(sinceSequence: number): QueuedMessage[] {
+  getMessagesSince(sinceSequence: number): {
+    messages: QueuedMessage[];
+    oldestAvailableSequence: number | null;
+    mayHaveMissedMessages: boolean;
+  } {
     const now = Date.now();
 
     // Clean up expired messages
@@ -128,8 +133,28 @@ export class HttpClient {
       (msg) => now - msg.timestamp.getTime() < HttpClient.MESSAGE_TTL_MS
     );
 
-    // Return messages with sequence > sinceSequence
-    return this._messageQueue.filter((msg) => msg.sequence > sinceSequence);
+    // Store reference to cleaned queue for consistent access
+    const cleanedQueue = this._messageQueue;
+
+    // Get messages with sequence > sinceSequence
+    const messages = cleanedQueue.filter((msg) => msg.sequence > sinceSequence);
+
+    // Calculate oldest available sequence
+    const firstMessage = cleanedQueue[0];
+    const oldestAvailableSequence = firstMessage !== undefined
+      ? firstMessage.sequence
+      : null;
+
+    // Detect if client may have missed messages
+    // This happens when:
+    // 1. Client is requesting from a sequence older than our oldest available
+    // 2. There's a gap between what client has (sinceSequence) and our oldest
+    // Note: sequence 0 means "give me everything" - that's not a stale request
+    const mayHaveMissedMessages = sinceSequence > 0
+      && oldestAvailableSequence !== null
+      && sinceSequence < oldestAvailableSequence - 1;
+
+    return { messages, oldestAvailableSequence, mayHaveMissedMessages };
   }
 
   /**
