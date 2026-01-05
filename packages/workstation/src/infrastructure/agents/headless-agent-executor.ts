@@ -103,9 +103,11 @@ export class HeadlessAgentExecutor extends EventEmitter {
     // Get environment from interactive login shell to include PATH from .zshrc/.bashrc
     const shellEnv = getShellEnv();
 
-    // Spawn subprocess in its own process group (detached)
-    // This allows killing the entire process tree with process.kill(-pid)
-    this.subprocess = spawn(command, args, {
+    // Spawn subprocess in its own session using setsid
+    // This completely detaches it from the parent's terminal
+    // so it can't intercept Ctrl+C signals meant for the parent
+    // setsid creates a new session leader, preventing terminal hijacking
+    this.subprocess = spawn("setsid", [command, ...args], {
       cwd: this.workingDir,
       env: {
         ...shellEnv,
