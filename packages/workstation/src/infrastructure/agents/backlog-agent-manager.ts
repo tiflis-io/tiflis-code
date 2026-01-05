@@ -455,7 +455,11 @@ export class BacklogAgentManager extends EventEmitter {
       return { type: 'help', params };
     }
 
-    return { type: 'unknown', params };
+    // Treat freeform text as a new task to add
+    // This allows natural interaction without requiring "add" keyword
+    params.title = message.trim();
+    params.description = '';
+    return { type: 'add_task', params };
   }
 
   /**
