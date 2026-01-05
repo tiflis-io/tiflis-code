@@ -729,36 +729,47 @@ Backlog sessions are special autonomous coding sessions that use the default sys
 
 IMPORTANT: You MUST validate the project path EXISTS before creating a backlog session!
 
-Step 1: List worktrees with \`list_worktrees\` for the project to see all available branches/worktrees
-Step 2: Determine the correct worktree parameter:
-   - For main/master branch: Omit worktree parameter entirely (NOT worktree="main")
-   - For feature branches: Use the exact worktree name (e.g., worktree="feature-auth")
-   - Example paths that will be created:
-     * Without worktree: /workspaces/tiflis/tiflis-code
-     * With worktree="feature-auth": /workspaces/tiflis/tiflis-code--feature-auth
-Step 3: Call \`create_backlog_session\` with validated workspace, project, and worktree
-Step 4: Confirm the session was created successfully
+Step 1: Call \`list_worktrees\` for the project to see all available branches/worktrees
+Step 2: PARSE THE OUTPUT CAREFULLY:
+   - Output format: "Worktrees for \"workspace/project\":\n- worktree-name: branch-name (/path/to/directory)"
+   - Example: "- main: main (/Users/roman/tiflis-code-work/roman/eva)"
+   - This means the main branch is at /Users/roman/tiflis-code-work/roman/eva (NO --main suffix!)
+Step 3: Determine the correct worktree parameter:
+   - If worktree is "main" or "master" (the default/primary branch):
+     * Check the path shown: /Users/roman/tiflis-code-work/roman/eva
+     * The path has NO worktree suffix (no --main, no --master)
+     * DO NOT PASS WORKTREE PARAMETER - omit it entirely
+   - If worktree is a feature branch (e.g., "feature-auth"):
+     * The path would be: /Users/roman/tiflis-code-work/roman/eva--feature-auth
+     * PASS worktree="feature-auth" parameter
+Step 4: Call \`create_backlog_session\` with workspace, project, and worktree (only if non-main)
+Step 5: Confirm the session was created successfully
 
-### Path Validation Rules:
-- NEVER create a backlog with worktree="main" - that's an invalid directory pattern
-- ALWAYS list_worktrees first to see actual branch names
-- If user says "on main branch", omit the worktree parameter
-- If user says "on feature/auth branch", check list_worktrees output to confirm it exists, then use worktree="feature-auth"
-- If the worktree doesn't exist, offer to create it with \`create_worktree\` first
+### Path Construction Rules (CRITICAL):
+- Worktree parameter controls the directory name pattern:
+  * Omit worktree → uses: /workspaces/{workspace}/{project}
+  * Pass worktree="feature-x" → uses: /workspaces/{workspace}/{project}--feature-x
+- NEVER pass worktree="main" or worktree="master" - just omit the parameter instead
+- ALWAYS check list_worktrees output to see actual paths
+- Only pass worktree when the branch name appears in the path AFTER the project name with -- separator
 
 ### Example Flows:
 
-User: "Create a backlog for tiflis-code on the main branch"
-Step 1: Call list_worktrees(tiflis, tiflis-code) -> See available branches
-Step 2: No worktree specified = use main branch directory
-Step 3: Call create_backlog_session(workspace="tiflis", project="tiflis-code", worktree NOT specified)
-Step 4: ✅ Created at /workspaces/tiflis/tiflis-code
+User: "Create a backlog for eva on the main branch"
+Step 1: Call list_worktrees(roman, eva)
+Step 2: Output shows: "- main: main (/Users/roman/tiflis-code-work/roman/eva)"
+   → Path is /roman/eva (no --main suffix)
+   → This is the main branch, omit worktree parameter
+Step 3: Call create_backlog_session(workspace="roman", project="eva")  [NO worktree parameter!]
+Step 4: ✅ Created at /Users/roman/tiflis-code-work/roman/eva
 
 User: "Create a backlog for tiflis-code on the feature-auth branch"
-Step 1: Call list_worktrees(tiflis, tiflis-code) -> Verify "feature-auth" exists
-Step 2: User wants feature branch = extract worktree name "feature-auth"
+Step 1: Call list_worktrees(tiflis, tiflis-code)
+Step 2: Output shows: "- feature-auth: feature/auth (/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-auth)"
+   → Path has --feature-auth suffix
+   → This is a feature branch, pass worktree parameter
 Step 3: Call create_backlog_session(workspace="tiflis", project="tiflis-code", worktree="feature-auth")
-Step 4: ✅ Created at /workspaces/tiflis/tiflis-code--feature-auth
+Step 4: ✅ Created at /Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-auth
 
 ---
 
