@@ -108,7 +108,9 @@ export function CreateSessionDialog({ children }: CreateSessionDialogProps) {
       } else if (sessionTypeMode === 'backlog') {
         sessionType = 'backlog-agent';
       } else {
-        sessionType = agentConfig?.baseType ?? 'claude';
+        const baseType = agentConfig?.baseType ?? 'claude';
+        // Ensure we only accept agent types, not supervisor
+        sessionType = (baseType === 'supervisor' ? 'claude' : baseType) as 'claude' | 'cursor' | 'opencode';
       }
 
       // For terminal sessions, use defaults if not provided (matches iOS/Android behavior)
