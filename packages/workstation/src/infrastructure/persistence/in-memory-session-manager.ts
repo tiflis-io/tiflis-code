@@ -78,13 +78,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    * Restores persisted sessions from the database on startup.
    */
   async restoreSessions(): Promise<void> {
+    this.logger.info('restoreSessions() called');
+
     if (!this.sessionRepository) {
       this.logger.debug('No session repository - skipping session restoration');
       return;
     }
 
     const persistedSessions = this.sessionRepository.getActive();
-    this.logger.info({ count: persistedSessions.length }, 'Restoring persisted sessions from database');
+    this.logger.info(
+      { count: persistedSessions.length, sessions: persistedSessions.map((s) => ({ id: s.id, type: s.type })) },
+      'Restoring persisted sessions from database'
+    );
 
     let backlogRestoreCount = 0;
     for (const persistedSession of persistedSessions) {
@@ -158,7 +163,11 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     }
 
     this.logger.info(
-      { backlogManagersRestored: backlogRestoreCount, totalBacklogManagers: this.backlogManagers.size },
+      {
+        backlogManagersRestored: backlogRestoreCount,
+        totalBacklogManagers: this.backlogManagers.size,
+        backlogManagerIds: Array.from(this.backlogManagers.keys()),
+      },
       'Session restoration complete'
     );
   }
