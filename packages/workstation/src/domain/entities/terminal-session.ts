@@ -319,6 +319,9 @@ export class TerminalSession extends Session {
       return;
     }
 
+    // Clear output callbacks to allow garbage collection
+    this._outputCallbacks.clear();
+
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         // Force kill if graceful shutdown fails

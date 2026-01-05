@@ -158,8 +158,13 @@ export class TunnelClient {
    */
   disconnect(): void {
     this.clearTimers();
-    
+
     if (this.ws) {
+      // Remove all event listeners to allow garbage collection
+      this.ws.removeAllListeners('open');
+      this.ws.removeAllListeners('message');
+      this.ws.removeAllListeners('close');
+      this.ws.removeAllListeners('error');
       this.ws.close();
       this.ws = null;
     }

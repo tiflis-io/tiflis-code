@@ -3114,6 +3114,12 @@ async function bootstrap(): Promise<void> {
       logger.info("Disconnecting from tunnel...");
       tunnelClient.disconnect();
 
+      // Remove all event listeners to allow garbage collection
+      logger.info("Removing event listeners...");
+      agentSessionManager.removeAllListeners();
+      supervisorAgent.removeAllListeners();
+      sessionManager.removeAllListeners();
+
       // Cleanup agent sessions (kills all agent processes)
       logger.info("Cleaning up agent sessions...");
       agentSessionManager.cleanup();
