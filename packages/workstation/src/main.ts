@@ -78,6 +78,11 @@ import {
   createVoiceInputBlock,
   createVoiceOutputBlock,
 } from "./domain/value-objects/content-block.js";
+import {
+  createUserMessage,
+  createAssistantMessage,
+  createErrorMessage,
+} from "./domain/value-objects/chat-message.js";
 import type WebSocket from "ws";
 
 /**
@@ -1556,8 +1561,23 @@ async function bootstrap(): Promise<void> {
         const manager = backlogManagers.get(sessionId)!;
         const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
 
+        // Save user message to chat history
+        if (prompt) {
+          chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
+        }
+
         try {
           const blocks = await manager.executeCommand(prompt);
+
+          // Save assistant response blocks to chat history
+          if (blocks.length > 0) {
+            const assistantContent = blocks.map((b: any) => b.content || "").join("\n");
+            chatHistoryService.saveMessage(
+              sessionId,
+              createAssistantMessage(assistantContent),
+              true
+            );
+          }
 
           // Broadcast output to session subscribers
           if (messageBroadcaster) {
@@ -1591,6 +1611,14 @@ async function bootstrap(): Promise<void> {
             { error, sessionId },
             "Failed to execute backlog command"
           );
+          // Save error message to chat history
+          const errorContent = error instanceof Error ? error.message : "Unknown error";
+          chatHistoryService.saveMessage(
+            sessionId,
+            createErrorMessage(errorContent),
+            true
+          );
+
           if (messageBroadcaster) {
             const errorMessage = {
               type: "session.output",
