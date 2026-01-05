@@ -22,6 +22,10 @@ struct SidebarView: View {
         appState.sessions.filter { $0.type.isAgent }.sorted { $0.createdAt < $1.createdAt }
     }
 
+    private var backlogSessions: [Session] {
+        appState.sessions.filter { $0.type == .backlogAgent }.sorted { $0.createdAt < $1.createdAt }
+    }
+
     private var terminalSessions: [Session] {
         appState.sessions.filter { $0.type == .terminal }.sorted { $0.createdAt < $1.createdAt }
     }
@@ -54,6 +58,32 @@ struct SidebarView: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("AgentSession_\(session.id)")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            // Disable swipe actions in demo mode
+                            if !appState.isDemoMode {
+                                Button(role: .destructive) {
+                                    appState.terminateSession(session, silent: true)
+                                } label: {
+                                    Label("Terminate", systemImage: "xmark.circle")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Backlog Sessions
+            if !backlogSessions.isEmpty {
+                Section("Backlog Directions") {
+                    ForEach(backlogSessions) { session in
+                        Button {
+                            selectSession(session.id)
+                        } label: {
+                            SessionRow(session: session, isSelected: appState.selectedSessionId == session.id, workspacesRoot: appState.workspacesRoot)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("BacklogSession_\(session.id)")
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             // Disable swipe actions in demo mode
                             if !appState.isDemoMode {

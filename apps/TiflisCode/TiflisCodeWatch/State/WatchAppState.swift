@@ -526,6 +526,11 @@ final class WatchAppState: ObservableObject {
         sessions.filter { $0.type.isAgent }.sorted { $0.createdAt < $1.createdAt }
     }
 
+    /// Get backlog sessions only
+    var backlogSessions: [Session] {
+        sessions.filter { $0.type == .backlogAgent }.sorted { $0.createdAt < $1.createdAt }
+    }
+
     // MARK: - Private Methods
 
     private func setupBindings() {

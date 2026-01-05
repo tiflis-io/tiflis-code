@@ -22,6 +22,11 @@ struct WatchSessionListView: View {
             if !appState.agentSessions.isEmpty {
                 agentSessionsSection
             }
+
+            // Backlog sessions
+            if !appState.backlogSessions.isEmpty {
+                backlogSessionsSection
+            }
         }
         .listStyle(.carousel)
         .navigationTitle("")
@@ -84,6 +89,28 @@ struct WatchSessionListView: View {
             }
         } header: {
             Text("Sessions")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var backlogSessionsSection: some View {
+        Section {
+            ForEach(appState.backlogSessions) { session in
+                Button {
+                    navigationPath.append(WatchChatDestination.agent(session))
+                } label: {
+                    WatchSessionRow(
+                        icon: AnyView(sessionIcon(for: session)),
+                        title: session.fullDisplayName(relativeTo: appState.workspacesRoot),
+                        isActive: session.status == .active,
+                        hasUnread: appState.agentIsLoading[session.id] ?? false
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        } header: {
+            Text("Backlogs")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
         }

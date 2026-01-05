@@ -36,7 +36,10 @@ enum class SessionType {
     OPENCODE,
 
     @SerialName("terminal")
-    TERMINAL;
+    TERMINAL,
+
+    @SerialName("backlog-agent")
+    BACKLOG_AGENT;
 
     val displayName: String
         get() = when (this) {
@@ -45,6 +48,7 @@ enum class SessionType {
             CLAUDE -> "Claude Code"
             OPENCODE -> "OpenCode"
             TERMINAL -> "Terminal"
+            BACKLOG_AGENT -> "Backlog"
         }
 
     val isAgent: Boolean
@@ -57,6 +61,7 @@ enum class SessionType {
             "claude" -> CLAUDE
             "opencode" -> OPENCODE
             "terminal" -> TERMINAL
+            "backlog-agent" -> BACKLOG_AGENT
             else -> null
         }
     }
