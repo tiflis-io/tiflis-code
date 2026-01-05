@@ -164,7 +164,20 @@ export class BacklogAgentManager extends EventEmitter {
         {
           id: 'harness-already-running',
           block_type: 'text',
-          content: '⚠️ Harness is already running!',
+          content: '⚠️ Harness is already running! Use "stop" to stop it first.',
+        },
+      ];
+    }
+
+    const pendingCount = this.backlog.tasks.filter((t) => t.status === 'pending').length;
+    const inProgressCount = this.backlog.tasks.filter((t) => t.status === 'in_progress').length;
+
+    if (pendingCount === 0 && inProgressCount === 0) {
+      return [
+        {
+          id: 'no-tasks-to-run',
+          block_type: 'text',
+          content: '❌ No pending tasks to execute. Add tasks first using "add task" command.',
         },
       ];
     }
@@ -188,15 +201,32 @@ export class BacklogAgentManager extends EventEmitter {
     this.harness.start().catch((error) => {
       this.logger.error('Harness error:', error);
       this.session.setHarnessRunning(false);
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      this.emit('output', [
+        {
+          id: 'harness-error',
+          block_type: 'error',
+          content: `🔴 Harness error: ${errorMsg}`,
+        },
+      ]);
     });
 
     const worktreeDisplay = this.backlog.worktree || 'main';
+    const tasksInfo = inProgressCount > 0
+      ? `${inProgressCount} task(s) in progress, ${pendingCount} pending`
+      : `${pendingCount} task(s) to execute`;
+
     return [
       {
         id: 'harness-started',
         block_type: 'status',
-        content: `✅ Harness started for ${worktreeDisplay}. ${this.backlog.tasks.length} tasks to execute.`,
+        content: `🚀 Harness started for ${worktreeDisplay}. ${tasksInfo}.`,
         metadata: { status: 'harness_started' },
+      },
+      {
+        id: 'harness-notice',
+        block_type: 'text',
+        content: 'The harness will execute tasks sequentially. Use "status" to check progress, "pause" to pause, or "stop" to stop.',
       },
     ];
   }
@@ -332,21 +362,62 @@ export class BacklogAgentManager extends EventEmitter {
   }
 
   /**
-   * List all tasks.
+   * List all tasks with better formatting.
    */
   private listTasksBlocks(): ContentBlock[] {
+    const statusEmoji: Record<string, string> = {
+      pending: '⬜',
+      in_progress: '🟨',
+      completed: '✅',
+      failed: '❌',
+      skipped: '⏭️',
+    };
+
     const tasksList = this.backlog.tasks
-      .map(
-        (t) =>
-          `${t.id}. [${t.status.toUpperCase()}] ${t.title} (${t.priority}, ${t.complexity})`
-      )
-      .join('\n');
+      .map((t) => {
+        const emoji = statusEmoji[t.status] || '❓';
+        const status = t.status.replace('_', ' ').toUpperCase();
+        let line = `${emoji} **${t.id}. ${t.title}** [${status}]`;
+
+        if (t.description) {
+          line += `\n   ${t.description.split('\n')[0]}`;
+        }
+        if (t.error) {
+          line += `\n   ❌ Error: ${t.error}`;
+        }
+
+        return line;
+      })
+      .join('\n\n');
+
+    const summary = this.backlog.summary || {
+      total: this.backlog.tasks.length,
+      completed: 0,
+      failed: 0,
+      in_progress: 0,
+      pending: this.backlog.tasks.length,
+    };
+
+    const content = `
+📋 **Tasks in ${this.backlog.id}**
+
+**Progress**: ${summary.completed}/${summary.total} completed
+
+**Breakdown**:
+✅ Completed: ${summary.completed}
+🟨 In Progress: ${summary.in_progress}
+⬜ Pending: ${summary.pending}
+❌ Failed: ${summary.failed}
+
+**Task List**:
+${tasksList}
+    `.trim();
 
     return [
       {
         id: 'tasks-list',
         block_type: 'text',
-        content: `📋 **Tasks in ${this.backlog.id}**:\n\n${tasksList}`,
+        content,
       },
     ];
   }

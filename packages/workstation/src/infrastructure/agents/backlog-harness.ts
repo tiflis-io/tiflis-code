@@ -285,58 +285,141 @@ export class BacklogHarness extends EventEmitter {
 
     // Execute command
     await new Promise<void>((resolve, reject) => {
-      const onBlocks = (blocks: ContentBlock[]) => {
+      let isResolved = false;
+      let timeoutHandle: NodeJS.Timeout | undefined;
+
+      const onBlocks = (emittedSessionId: string, blocks: ContentBlock[], isComplete: boolean) => {
+        // Only process blocks for this specific session
+        if (emittedSessionId !== sessionId) {
+          return;
+        }
+
         this.broadcastOutput(...blocks);
 
-        // Look for commit hash in output
-        const commitBlock = blocks.find(
-          (b) => b.block_type === 'text' && b.content.includes('commit ')
-        );
+        if (isResolved) {
+          return;
+        }
 
-        if (commitBlock && commitBlock.block_type === 'text') {
-          const match = commitBlock.content.match(/commit\s+([a-f0-9]+)/i);
-          if (match) {
-            const duration = Date.now() - startTime;
-            this.emit('task-completed', {
-              taskId: task.id,
-              title: task.title,
-              success: true,
-              commitHash: match[1],
-              duration,
-            });
+        // Look for commit hash in output - most reliable indicator of completion
+        let commitHash: string | undefined;
+        let hasCommitDetected = false;
 
-            this.updateTaskStatus(task.id, 'completed', {
-              completed_at: new Date().toISOString(),
-              commit_hash: match[1],
-            });
+        for (const block of blocks) {
+          if (block.block_type === 'text') {
+            const content = block.content;
 
-            resolve();
+            // Look for various commit hash patterns
+            const commitMatch = content.match(/commit\s+([a-f0-9]{7,40})/i);
+            if (commitMatch) {
+              commitHash = commitMatch[1];
+              hasCommitDetected = true;
+              break;
+            }
+
+            // Also look for "HEAD is now at" pattern from git
+            const headMatch = content.match(/HEAD\s+is\s+now\s+at\s+([a-f0-9]{7,40})/i);
+            if (headMatch) {
+              commitHash = headMatch[1];
+              hasCommitDetected = true;
+              break;
+            }
           }
+        }
+
+        if (hasCommitDetected && commitHash) {
+          isResolved = true;
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          this.agentSessionManager.removeListener('blocks', onBlocks);
+
+          const duration = Date.now() - startTime;
+          this.emit('task-completed', {
+            taskId: task.id,
+            title: task.title,
+            success: true,
+            commitHash,
+            duration,
+          });
+
+          this.updateTaskStatus(task.id, 'completed', {
+            completed_at: new Date().toISOString(),
+            commit_hash: commitHash,
+          });
+
+          this.logger.info(
+            { taskId: task.id, title: task.title, commitHash, duration },
+            'Task completed with commit'
+          );
+
+          resolve();
+          return;
+        }
+
+        // If execution is complete but no commit was found, fail the task
+        if (isComplete && !isResolved) {
+          isResolved = true;
+          if (timeoutHandle) clearTimeout(timeoutHandle);
+          this.agentSessionManager.removeListener('blocks', onBlocks);
+
+          const duration = Date.now() - startTime;
+          const errorMsg = 'Task execution completed but no commit was detected. The agent may not have completed the implementation.';
+
+          this.emit('task-completed', {
+            taskId: task.id,
+            title: task.title,
+            success: false,
+            duration,
+          });
+
+          this.updateTaskStatus(task.id, 'failed', {
+            completed_at: new Date().toISOString(),
+            error: errorMsg,
+          });
+
+          this.logger.warn(
+            { taskId: task.id, title: task.title, duration },
+            errorMsg
+          );
+
+          reject(new Error(errorMsg));
         }
       };
 
-      const onError = (error: Error) => {
-        reject(error);
-      };
+      // Listen for blocks from this session
+      this.agentSessionManager.on('blocks', onBlocks);
 
-      this.agentSessionManager.once('blocks', onBlocks);
-      this.agentSessionManager.once('error', onError);
+      // Execute with timeout (30 minutes per task)
+      timeoutHandle = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          this.agentSessionManager.removeListener('blocks', onBlocks);
+          const duration = Date.now() - startTime;
 
-      // Execute with timeout
-      const timeoutHandle = setTimeout(() => {
-        this.agentSessionManager.removeListener('blocks', onBlocks);
-        this.agentSessionManager.removeListener('error', onError);
-        reject(new Error('Task execution timeout'));
+          this.emit('task-completed', {
+            taskId: task.id,
+            title: task.title,
+            success: false,
+            duration,
+          });
+
+          this.updateTaskStatus(task.id, 'failed', {
+            completed_at: new Date().toISOString(),
+            error: 'Task execution timeout (30 minutes exceeded)',
+          });
+
+          reject(new Error('Task execution timeout'));
+        }
       }, 30 * 60 * 1000); // 30 minutes
 
+      // Start execution
       this.agentSessionManager
         .executeCommand(sessionId, prompt)
         .catch((error) => {
-          clearTimeout(timeoutHandle);
-          onError(error as Error);
-        })
-        .finally(() => {
-          clearTimeout(timeoutHandle);
+          if (!isResolved) {
+            isResolved = true;
+            if (timeoutHandle) clearTimeout(timeoutHandle);
+            this.agentSessionManager.removeListener('blocks', onBlocks);
+            reject(error as Error);
+          }
         });
     });
   }
@@ -356,13 +439,19 @@ ${task.description}
 ${task.acceptance_criteria.map((c) => `- ${c}`).join('\n')}
 
 ## Instructions:
-1. Implement the feature/fix
-2. Write/update tests
-3. Make sure all tests pass
+1. Implement the feature/fix according to the acceptance criteria
+2. Write/update tests to cover your changes
+3. Run all tests and make sure they pass
 4. Commit your changes with a descriptive message
 5. Ensure code follows project conventions
 
-When done, write a summary of what was implemented.
+## IMPORTANT - Completion Signal:
+When you have COMPLETED the task and committed your changes:
+- Make sure your last action is a git commit
+- Output the full commit hash in your final summary
+- Write a clear summary confirming what was implemented and that acceptance criteria are met
+
+Do NOT write "Task complete" or similar - just commit your code and include the hash in your output.
     `.trim();
   }
 

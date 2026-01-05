@@ -477,6 +477,24 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
     this.sessions.set(sessionId.value, session);
 
+    // Create and register BacklogAgentManager for this session
+    const { BacklogAgentManager } = await import('../agents/backlog-agent-manager.js');
+    const manager = BacklogAgentManager.createEmpty(
+      session,
+      workingDir,
+      this.agentSessionManager,
+      this.logger
+    );
+    this.backlogManagers.set(sessionId.value, manager);
+
+    this.logger.debug(
+      {
+        sessionId: sessionId.value,
+        backlogManagersCount: this.backlogManagers.size,
+      },
+      'BacklogAgentManager registered'
+    );
+
     // Persist backlog session to database
     if (this.sessionRepository) {
       this.sessionRepository.create({
