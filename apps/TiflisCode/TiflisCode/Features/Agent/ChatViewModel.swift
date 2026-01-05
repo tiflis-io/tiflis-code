@@ -417,6 +417,12 @@ final class ChatViewModel: ObservableObject {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
 
+        // Demo mode: generate local mock response
+        if appState?.isDemoMode == true {
+            sendDemoMessage(text)
+            return
+        }
+
         // Generate message ID that will be used for both the Message and the command
         // This allows us to track acknowledgment from server
         let messageId = UUID().uuidString
@@ -440,7 +446,7 @@ final class ChatViewModel: ObservableObject {
         // Update state on next run loop cycle to avoid publishing during view updates
         Task { @MainActor [weak self] in
             guard let self = self else { return }
-            
+
             // Append message via AppState
             if self.session.type == .supervisor {
                 self.appState?.supervisorMessages.append(userMessage)
@@ -457,6 +463,64 @@ final class ChatViewModel: ObservableObject {
             self.inputText = ""
             self.isLoading = true
             self.error = nil
+        }
+    }
+
+    /// Send message in demo mode with mock response
+    private func sendDemoMessage(_ text: String) {
+        let userMessageId = UUID().uuidString
+        let assistantMessageId = UUID().uuidString
+
+        // Create user message
+        let userMessage = Message(
+            id: userMessageId,
+            sessionId: session.id,
+            role: .user,
+            content: text,
+            sendStatus: .sent
+        )
+
+        // Add user message
+        if session.type == .supervisor {
+            appState?.supervisorMessages.append(userMessage)
+            appState?.supervisorScrollTrigger += 1
+        } else {
+            appState?.appendAgentMessage(userMessage, for: session.id)
+            appState?.agentScrollTriggers[session.id, default: 0] += 1
+        }
+
+        inputText = ""
+
+        // Simulate typing delay then add response
+        Task { @MainActor [weak self] in
+            guard let self = self else { return }
+
+            // Show loading state
+            self.isLoading = true
+
+            // Simulate AI thinking time
+            try? await Task.sleep(for: .milliseconds(500 + Int.random(in: 0...1000)))
+
+            // Generate response using DemoData
+            let responseBlocks = DemoData.generateDemoResponse(for: text)
+
+            let assistantMessage = Message(
+                id: assistantMessageId,
+                sessionId: self.session.id,
+                role: .assistant,
+                contentBlocks: responseBlocks
+            )
+
+            // Add response
+            if self.session.type == .supervisor {
+                self.appState?.supervisorMessages.append(assistantMessage)
+                self.appState?.supervisorScrollTrigger += 1
+            } else {
+                self.appState?.appendAgentMessage(assistantMessage, for: self.session.id)
+                self.appState?.agentScrollTriggers[self.session.id, default: 0] += 1
+            }
+
+            self.isLoading = false
         }
     }
 

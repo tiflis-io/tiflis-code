@@ -18,8 +18,9 @@ struct ContentView: View {
     /// Show ConnectView when:
     /// 1. No connection config exists (first launch or after disconnect & forget)
     /// 2. Not in screenshot testing mode (screenshots need full app)
+    /// 3. Not in demo mode (demo shows the full app with mock data)
     private var shouldShowConnectView: Bool {
-        !appState.hasConnectionConfig && !AppState.isScreenshotTesting
+        !appState.hasConnectionConfig && !AppState.isScreenshotTesting && !appState.isDemoMode
     }
     
     var body: some View {

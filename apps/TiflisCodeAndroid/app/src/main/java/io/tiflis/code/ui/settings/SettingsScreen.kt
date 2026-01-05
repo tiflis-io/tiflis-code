@@ -57,6 +57,7 @@ fun SettingsScreen(
     val workstationInfo by appState.workstationInfo.collectAsState()
     val tunnelInfo by appState.tunnelInfo.collectAsState()
     val ttsEnabled by appState.ttsEnabled.collectAsState()
+    val isDemoMode by appState.isDemoMode.collectAsState()
 
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showMagicLinkDialog by remember { mutableStateOf(false) }
@@ -87,6 +88,43 @@ fun SettingsScreen(
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
         ) {
+            // Demo Mode Section (shown only when in demo mode)
+            if (isDemoMode) {
+                SettingsSection(title = "Demo") {
+                    ListItem(
+                        headlineContent = { Text("Demo Mode Active") },
+                        leadingContent = {
+                            Icon(
+                                Icons.Default.PlayCircle,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+                    )
+
+                    ListItem(
+                        headlineContent = { Text("Exit Demo Mode") },
+                        leadingContent = {
+                            Icon(
+                                Icons.Default.ExitToApp,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        },
+                        modifier = Modifier.clickable { appState.exitDemoMode() }
+                    )
+
+                    Text(
+                        text = "Exit demo mode to connect to a real workstation",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+
+                HorizontalDivider()
+            }
+
             // Connection Section
             SettingsSection(title = stringResource(R.string.settings_connection)) {
                 // Connection status

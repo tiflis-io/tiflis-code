@@ -69,45 +69,6 @@ struct TiflisCodeApp: App {
     }
 }
 
-// MARK: - Config Models
-
-/// Available agent configuration from workstation
-struct AgentConfig: Identifiable, Hashable {
-    let name: String
-    let baseType: String
-    let description: String
-    let isAlias: Bool
-
-    var id: String { name }
-
-    /// Maps base_type to Session.SessionType
-    var sessionType: Session.SessionType {
-        switch baseType {
-        case "cursor": return .cursor
-        case "claude": return .claude
-        case "opencode": return .opencode
-        default: return .claude
-        }
-    }
-}
-
-/// Project info within a workspace
-struct ProjectConfig: Identifiable, Hashable {
-    let name: String
-    let isGitRepo: Bool
-    let defaultBranch: String?
-
-    var id: String { name }
-}
-
-/// Workspace configuration from workstation
-struct WorkspaceConfig: Identifiable, Hashable {
-    let name: String
-    let projects: [ProjectConfig]
-
-    var id: String { name }
-}
-
 /// Global application state
 @MainActor
 final class AppState: ObservableObject {
@@ -115,6 +76,8 @@ final class AppState: ObservableObject {
 
     @Published var connectionState: ConnectionState = .disconnected
     @Published var workstationOnline: Bool = true
+    /// Demo mode - app runs with mock data without real connection
+    @Published var isDemoMode: Bool = false
     @Published var workstationName: String = ""
     @Published var workstationVersion: String = ""
     @Published var workstationProtocolVersion: String = ""
@@ -1872,6 +1835,56 @@ final class AppState: ObservableObject {
     
     func disconnect() {
         connectionService.disconnect()
+    }
+
+    // MARK: - Demo Mode
+
+    /// Enters demo mode with mock data for exploring the app without a real workstation
+    func enterDemoMode() {
+        isDemoMode = true
+
+        // Set mock connection state
+        connectionState = .verified
+        workstationOnline = true
+        workstationName = "Demo Workstation"
+        workstationVersion = "v0.0.0-demo"
+        workspacesRoot = "/Users/developer/work"
+
+        // Populate sessions
+        sessions = DemoData.demoSessions
+
+        // Populate supervisor messages
+        supervisorMessages = DemoData.supervisorMessages()
+
+        // Populate agent messages
+        agentMessages = DemoData.agentMessages
+
+        // Populate workspaces and agents
+        workspaces = DemoData.demoWorkspaces
+        availableAgents = DemoData.demoAgents
+
+        // Select supervisor
+        selectedSessionId = "supervisor"
+    }
+
+    /// Exits demo mode and resets to initial state
+    func exitDemoMode() {
+        isDemoMode = false
+
+        // Reset connection state
+        connectionState = .disconnected
+        workstationOnline = false
+        workstationName = ""
+        workstationVersion = ""
+        workspacesRoot = ""
+
+        // Clear all demo data
+        sessions = [Session(id: "supervisor", type: .supervisor)]
+        supervisorMessages = []
+        agentMessages = [:]
+        workspaces = []
+        availableAgents = []
+        selectedSessionId = nil
     }
 
     /// Requests state synchronization from workstation server

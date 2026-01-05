@@ -119,11 +119,29 @@ struct ConnectView: View {
                     }
                     .padding(.top, 8)
                 }
+
+                // Try Demo button
+                Button {
+                    appState.enterDemoMode()
+                } label: {
+                    HStack {
+                        Image(systemName: "play.circle")
+                            .font(.title2)
+                        Text("Try Demo")
+                            .fontWeight(.semibold)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 16)
+                }
+                .buttonStyle(.bordered)
+                .tint(.secondary)
+                .disabled(isConnecting)
+                .padding(.top, 8)
             }
             .padding(.horizontal, 24)
-            
+
             Spacer()
-            
+
             // Footer
             VStack(spacing: 8) {
                 Text("Run `workstation connect` on your machine")

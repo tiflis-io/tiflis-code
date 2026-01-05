@@ -86,6 +86,7 @@ struct TerminalView: View {
                     .background(Color(uiColor: .systemBackground))
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // State overlays (not shown in screenshot testing mode)
             if !isScreenshotTesting && (viewModel.terminalState == .replaying || viewModel.terminalState == .buffering) {
@@ -166,6 +167,9 @@ struct TerminalView: View {
             Text("This will end the terminal session. You can start a new one later.")
         }
         .onAppear {
+            // Pass appState reference to viewModel for demo mode support
+            viewModel.setAppState(appState)
+
             // Subscribe to session when view appears
             // This will automatically request replay from server to restore terminal history
             Task { @MainActor in

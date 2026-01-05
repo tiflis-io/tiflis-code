@@ -229,6 +229,7 @@ fun ChatScreen(
     // Get current session for icon display
     val sessions by appState.sessions.collectAsState()
     val currentSession = sessions.find { it.id == sessionId }
+    val isDemoMode by appState.isDemoMode.collectAsState()
 
     Scaffold(
         topBar = {
@@ -236,11 +237,31 @@ fun ChatScreen(
                 title = {
                     // Title and subtitle (no icon - icons are now on message bubbles like iOS)
                     Column {
-                        Text(
-                            text = sessionName ?: sessionType.displayName,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = sessionName ?: sessionType.displayName,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            // Demo mode indicator badge
+                            if (isDemoMode) {
+                                Surface(
+                                    color = MaterialTheme.colorScheme.tertiaryContainer,
+                                    shape = MaterialTheme.shapes.small
+                                ) {
+                                    Text(
+                                        text = "DEMO",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
                         if (sessionType != SessionType.SUPERVISOR) {
                             val subtitle = currentSession?.subtitle(workspacesRoot)
                             if (subtitle != null) {

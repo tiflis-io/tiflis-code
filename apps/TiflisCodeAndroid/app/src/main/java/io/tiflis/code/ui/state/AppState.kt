@@ -115,6 +115,10 @@ class AppState @Inject constructor(
     private val _speechLanguage = MutableStateFlow(secureStorage.getSpeechLanguage())
     val speechLanguage: StateFlow<String> = _speechLanguage.asStateFlow()
 
+    // Demo mode - app runs with mock data without real connection
+    private val _isDemoMode = MutableStateFlow(false)
+    val isDemoMode: StateFlow<Boolean> = _isDemoMode.asStateFlow()
+
     // TTS audio events for auto-play
     private val _ttsAudioEvent = MutableSharedFlow<TtsAudioEvent>(extraBufferCapacity = 1)
     val ttsAudioEvent: SharedFlow<TtsAudioEvent> = _ttsAudioEvent.asSharedFlow()
@@ -292,6 +296,36 @@ class AppState @Inject constructor(
      */
     fun hasCredentials(): Boolean = secureStorage.hasCredentials()
 
+    // MARK: - Demo Mode
+
+    /**
+     * Enters demo mode with mock data for exploring the app without a real workstation.
+     */
+    fun enterDemoMode() {
+        _isDemoMode.value = true
+
+        // Populate sessions
+        _sessions.value = DemoData.demoSessions
+
+        // Populate supervisor messages
+        _supervisorMessages.value = DemoData.supervisorMessages()
+
+        // Populate agent messages
+        _agentMessages.value = DemoData.agentMessages
+    }
+
+    /**
+     * Exits demo mode and resets to initial state.
+     */
+    fun exitDemoMode() {
+        _isDemoMode.value = false
+
+        // Clear all demo data
+        _sessions.value = emptyList()
+        _supervisorMessages.value = emptyList()
+        _agentMessages.value = emptyMap()
+    }
+
     // MARK: - Session Management
 
     /**
@@ -436,6 +470,12 @@ class AppState @Inject constructor(
      * Protocol uses 'command' field, not 'content'
      */
     fun sendSupervisorCommand(text: String? = null, audio: ByteArray? = null, messageId: String? = null) {
+        // Demo mode: generate local mock response
+        if (_isDemoMode.value && text != null) {
+            sendDemoMessage(SUPERVISOR_SESSION_ID, text)
+            return
+        }
+
         // Debounce: prevent duplicate sends of same text within debounce window
         if (text != null) {
             val debounceKey = "supervisor:${text.hashCode()}"
@@ -536,6 +576,12 @@ class AppState @Inject constructor(
      */
     fun sendAgentCommand(sessionId: String, text: String? = null, audio: ByteArray? = null, messageId: String? = null) {
         val actualId = tempIdMapping[sessionId] ?: sessionId
+
+        // Demo mode: generate local mock response
+        if (_isDemoMode.value && text != null) {
+            sendDemoMessage(actualId, text)
+            return
+        }
 
         // Debounce: prevent duplicate sends of same text within debounce window
         if (text != null) {
@@ -2362,6 +2408,74 @@ class AppState @Inject constructor(
         // Create new map to trigger StateFlow emission
         _agentMessages.value = _agentMessages.value.toMutableMap().apply {
             put(sessionId, messages)
+        }
+    }
+
+    /**
+     * Send message in demo mode with mock response.
+     */
+    private fun sendDemoMessage(sessionId: String, text: String) {
+        val userMessageId = UUID.randomUUID().toString()
+        val assistantMessageId = UUID.randomUUID().toString()
+
+        // Create user message
+        val userMessage = Message(
+            id = userMessageId,
+            sessionId = sessionId,
+            role = MessageRole.USER,
+            content = text,
+            sendStatus = MessageSendStatus.SENT
+        )
+
+        // Add user message
+        if (sessionId == SUPERVISOR_SESSION_ID) {
+            _supervisorMessages.value = _supervisorMessages.value + userMessage
+            _supervisorScrollTrigger.value++
+        } else {
+            addAgentMessage(sessionId, userMessage)
+            _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                put(sessionId, (this[sessionId] ?: 0) + 1)
+            }
+        }
+
+        // Simulate typing delay then add response
+        viewModelScope.launch {
+            // Show loading state
+            if (sessionId == SUPERVISOR_SESSION_ID) {
+                _supervisorIsLoading.value = true
+            } else {
+                _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
+                    put(sessionId, true)
+                }
+            }
+
+            // Simulate AI thinking time
+            delay(500L + (0..1000).random())
+
+            // Generate response using DemoData
+            val responseBlocks = DemoData.generateDemoResponse(text)
+
+            val assistantMessage = Message(
+                id = assistantMessageId,
+                sessionId = sessionId,
+                role = MessageRole.ASSISTANT,
+                contentBlocks = responseBlocks.toMutableList()
+            )
+
+            // Add response
+            if (sessionId == SUPERVISOR_SESSION_ID) {
+                _supervisorMessages.value = _supervisorMessages.value + assistantMessage
+                _supervisorScrollTrigger.value++
+                _supervisorIsLoading.value = false
+            } else {
+                addAgentMessage(sessionId, assistantMessage)
+                _agentScrollTriggers.value = _agentScrollTriggers.value.toMutableMap().apply {
+                    put(sessionId, (this[sessionId] ?: 0) + 1)
+                }
+                _agentIsLoading.value = _agentIsLoading.value.toMutableMap().apply {
+                    put(sessionId, false)
+                }
+            }
         }
     }
 }

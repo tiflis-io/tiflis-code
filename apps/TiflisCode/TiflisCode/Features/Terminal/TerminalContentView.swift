@@ -12,13 +12,19 @@ import SwiftTerm
 /// SwiftUI bridge for TerminalViewUIKit
 struct TerminalContentView: UIViewRepresentable {
     let viewModel: TerminalViewModel
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
-    
+
     func makeUIView(context: Context) -> TerminalViewUIKit {
         let view = TerminalViewUIKit()
+
+        // Set low content hugging priority so view expands to fill available space
+        view.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        view.setContentHuggingPriority(.defaultLow, for: .vertical)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        view.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
 
         // Set terminal view in view model and configure delegate
         // This sets up terminalDelegate to receive input events
@@ -38,7 +44,7 @@ struct TerminalContentView: UIViewRepresentable {
 
         return view
     }
-    
+
     func updateUIView(_ uiView: TerminalViewUIKit, context: Context) {
         let currentSize = uiView.bounds.size
 
@@ -60,7 +66,7 @@ struct TerminalContentView: UIViewRepresentable {
         // Do NOT call viewModel.resizeTerminal() here - it would use wrong hardcoded metrics
         uiView.updateSize()
     }
-    
+
     static func dismantleUIView(_ uiView: TerminalViewUIKit, coordinator: Coordinator) {
         // Clean up terminal resources when view is dismantled
         // Note: dismantleUIView is already called on main thread by SwiftUI
@@ -68,9 +74,9 @@ struct TerminalContentView: UIViewRepresentable {
         uiView.suspendDisplayUpdates()
         uiView.cleanup()
     }
-    
+
     // MARK: - Coordinator
-    
+
     final class Coordinator {
         var previousSize: CGSize = .zero
     }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -195,6 +196,28 @@ fun ConnectScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // Try Demo button
+        OutlinedButton(
+            onClick = { appState.enterDemoMode() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            enabled = !isConnecting,
+            colors = ButtonDefaults.outlinedButtonColors(
+                contentColor = MaterialTheme.colorScheme.secondary
+            )
+        ) {
+            Icon(
+                Icons.Default.PlayCircle,
+                contentDescription = null,
+                modifier = Modifier.size(24.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Try Demo")
         }
         
         Spacer(modifier = Modifier.weight(1f))

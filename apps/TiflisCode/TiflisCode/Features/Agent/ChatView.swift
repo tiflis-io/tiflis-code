@@ -198,8 +198,22 @@ struct ChatView: View {
             
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 2) {
-                    Text(session.displayName)
-                        .font(.headline)
+                    HStack(spacing: 6) {
+                        Text(session.displayName)
+                            .font(.headline)
+
+                        // Demo mode indicator badge
+                        if appState.isDemoMode {
+                            Text("DEMO")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.orange.opacity(0.2))
+                                .foregroundStyle(.orange)
+                                .clipShape(Capsule())
+                        }
+                    }
                     if let subtitle = session.subtitle(relativeTo: appState.workspacesRoot) {
                         Text(subtitle)
                             .font(.caption)
