@@ -11,7 +11,6 @@ import type { BacklogAgentManager } from '../../backlog-agent-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
 import { BacklogAgentSession } from '../../../../domain/entities/backlog-agent-session.js';
-import { SessionId } from '../../../../domain/value-objects/session-id.js';
 
 /**
  * Tool registry for backlog operations.
@@ -41,54 +40,40 @@ export function createBacklogTools(
       agent: 'claude' | 'cursor' | 'opencode';
       backlogId?: string;
     }) => {
-      const backlogId = args.backlogId || `${args.project}-${Date.now()}`;
+      const finalBacklogId = args.backlogId || `${args.project}-${Date.now()}`;
       const workspacePath: WorkspacePath = {
         workspace: args.workspace,
         project: args.project,
         worktree: args.worktree,
       };
+      const workingDir = `/workspaces/${args.workspace}/${args.project}--${args.worktree}`;
 
-      // Create agent session first (for later use by harness)
-      const agentSessionId = await sessionManager.createSession({
-        type: args.agent,
+      // Create backlog session via sessionManager with proper parameters
+      const session = await sessionManager.createSession({
+        sessionType: 'backlog-agent',
         workspacePath,
+        workingDir,
+        backlogAgent: args.agent,
+        backlogId: finalBacklogId,
       });
 
-      if (!agentSessionId) {
-        return `Failed to create agent session for ${args.agent}`;
-      }
-
-      // Create backlog session
-      const sessionId = new SessionId();
-      const session = new BacklogAgentSession({
-        id: sessionId,
-        type: 'backlog-agent' as any,
-        workspacePath,
-        workingDir: `/workspaces/${args.workspace}/${args.project}--${args.worktree}`,
-        agentName: args.agent,
-        backlogId,
-      });
-
-      const success = await sessionManager.createSession({
-        type: 'backlog-agent' as any,
-        workspacePath,
-      });
-
-      if (!success) {
+      if (!session || session.type !== 'backlog-agent') {
         return `Failed to create backlog session`;
       }
 
       // Create backlog manager
+      const backlogSession = session as BacklogAgentSession;
+      const logger = { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any;
       const manager = BacklogAgentManager.createEmpty(
-        session,
-        session.workingDir,
+        backlogSession,
+        workingDir,
         agentSessionManager,
-        { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} } as any
+        logger
       );
 
-      backlogManagers.set(sessionId.value, manager);
+      backlogManagers.set(session.id.value, manager);
 
-      return `✅ Created backlog session "${backlogId}" with ${args.agent} agent in worktree "${args.worktree}". Use this session ID: ${sessionId.value}`;
+      return `✅ Created backlog session "${finalBacklogId}" with ${args.agent} agent in worktree "${args.worktree}". Use this session ID: ${session.id.value}`;
     },
     {
       name: 'create_backlog_session',
