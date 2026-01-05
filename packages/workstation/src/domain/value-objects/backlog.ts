@@ -72,7 +72,7 @@ export type TaskSource = z.infer<typeof TaskSourceSchema>;
 export const BacklogSchema = z.object({
   id: z.string().describe('Unique backlog identifier'),
   project: z.string().describe('Project name'),
-  worktree: z.string().describe('Git worktree/branch name'),
+  worktree: z.string().optional().describe('Git worktree/branch name (omitted for main/master)'),
   agent: z.enum(['claude', 'cursor', 'opencode']).describe('Agent to use for execution'),
   source: TaskSourceSchema.describe('Where tasks came from'),
   created_at: z.string().datetime().describe('When backlog was created'),
@@ -116,7 +116,7 @@ export function createTask(overrides: Partial<Task> = {}): Task {
 export function createBacklog(
   id: string,
   project: string,
-  worktree: string,
+  worktree: string | undefined,
   agent: 'claude' | 'cursor' | 'opencode',
   source: TaskSource,
   tasks: Task[] = []

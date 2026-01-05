@@ -179,6 +179,7 @@ export function createBacklogTools(
       };
 
       const percentage = summary.total > 0 ? (summary.completed / summary.total) * 100 : 0;
+      const worktreeDisplay = backlog.worktree || 'main';
 
       return `
 📊 Backlog: ${backlog.id}
@@ -189,7 +190,7 @@ Progress: ${summary.completed}/${summary.total} (${percentage.toFixed(0)}%)
 - Failed: ${summary.failed}
 
 Agent: ${manager.getSession().agentName}
-Worktree: ${backlog.worktree}
+Worktree: ${worktreeDisplay}
       `.trim();
     },
     {

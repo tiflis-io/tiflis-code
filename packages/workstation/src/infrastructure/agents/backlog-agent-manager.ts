@@ -127,6 +127,8 @@ export class BacklogAgentManager extends EventEmitter {
     const percentage =
       summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0;
 
+    const worktreeDisplay = this.backlog.worktree || 'main';
+
     const statusText = `
 📊 **Backlog Status**: ${this.backlog.id}
 
@@ -139,7 +141,7 @@ export class BacklogAgentManager extends EventEmitter {
 - ❌ Failed: ${summary.failed}
 
 **Agent**: ${this.backlog.agent}
-**Worktree**: ${this.backlog.worktree}
+**Worktree**: ${worktreeDisplay}
 
 **Harness Status**: ${this.harness ? (this.session.harnessRunning ? '🟢 Running' : '🔴 Stopped') : '❌ Not started'}
     `.trim();
@@ -188,11 +190,12 @@ export class BacklogAgentManager extends EventEmitter {
       this.session.setHarnessRunning(false);
     });
 
+    const worktreeDisplay = this.backlog.worktree || 'main';
     return [
       {
         id: 'harness-started',
         block_type: 'status',
-        content: `✅ Harness started for ${this.backlog.worktree}. ${this.backlog.tasks.length} tasks to execute.`,
+        content: `✅ Harness started for ${worktreeDisplay}. ${this.backlog.tasks.length} tasks to execute.`,
         metadata: { status: 'harness_started' },
       },
     ];
@@ -461,7 +464,7 @@ export class BacklogAgentManager extends EventEmitter {
     const backlog: Backlog = {
       id: session.backlogId,
       project: workingDir.split('/').pop() || 'project',
-      worktree: session.workspacePath?.worktree || 'feature',
+      worktree: session.workspacePath?.worktree,
       agent: session.agentName as any,
       source: { type: 'manual' },
       created_at: new Date().toISOString(),
