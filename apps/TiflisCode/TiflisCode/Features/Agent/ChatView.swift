@@ -328,8 +328,8 @@ struct ChatView: View {
             } label: {
                 Label("Clear Context", systemImage: "trash")
             }
-            
-        case .cursor, .claude, .opencode:
+
+        case .cursor, .claude, .opencode, .backlogAgent:
             Button {
                 // Session info action
             } label: {
@@ -341,7 +341,7 @@ struct ChatView: View {
             } label: {
                 Label("Terminate Session", systemImage: "xmark.circle")
             }
-            
+
         case .terminal:
             Button(role: .destructive) {
                 appState.terminateSession(session)
@@ -465,6 +465,8 @@ struct ChatEmptyState: View {
             return "Ask me to create sessions, manage projects, or explore your workspaces"
         case .cursor, .claude, .opencode:
             return "Send a message to start coding with AI assistance"
+        case .backlogAgent:
+            return "Send a message to manage your development tasks and backlog"
         case .terminal:
             return ""
         }
