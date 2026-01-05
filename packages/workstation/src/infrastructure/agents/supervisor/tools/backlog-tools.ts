@@ -9,6 +9,7 @@ import { existsSync } from 'fs';
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
+import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
 import { BacklogAgentManager } from '../../backlog-agent-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import type { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
@@ -33,7 +34,8 @@ export function createBacklogTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
   backlogManagers: Map<string, BacklogAgentManager>,
-  workspacesRoot?: string
+  workspacesRoot?: string,
+  getMessageBroadcaster?: () => MessageBroadcaster | null
 ): BacklogToolsRegistry {
   const createBacklogSession = tool(
     async (args: {
@@ -98,6 +100,22 @@ export function createBacklogTools(
       );
 
       backlogManagers.set(session.id.value, manager);
+
+      // Broadcast session creation to all clients
+      const broadcaster = getMessageBroadcaster?.();
+      if (broadcaster) {
+        broadcaster.broadcast({
+          type: 'session.created',
+          session_id: session.id.value,
+          payload: {
+            session_type: 'backlog-agent',
+            workspace: args.workspace,
+            project: args.project,
+            worktree: args.worktree,
+            working_dir: workingDir,
+          },
+        });
+      }
 
       return `✅ Created backlog session "${finalBacklogId}" at ${workingDir}\nSession ID: ${session.id.value}`;
     },

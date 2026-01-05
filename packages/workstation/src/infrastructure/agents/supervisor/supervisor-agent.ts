@@ -150,7 +150,8 @@ export class SupervisorAgent extends EventEmitter {
         config.sessionManager,
         config.agentSessionManager,
         config.sessionManager.getBacklogManagers?.() ?? new Map(),
-        config.workspacesRoot
+        config.workspacesRoot,
+        config.getMessageBroadcaster
       )),
     ];
 
