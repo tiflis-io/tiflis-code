@@ -1555,11 +1555,21 @@ async function bootstrap(): Promise<void> {
 
           // Broadcast output to session subscribers
           if (messageBroadcaster) {
+            // Convert blocks from backend format (block_type) to protocol format (blockType) for web client
+            const protocolBlocks = blocks.map((block: any) => ({
+              id: block.id,
+              blockType: block.block_type,
+              content: block.content || "",
+              metadata: block.metadata,
+            }));
+
             const outputMessage = {
               type: "session.output",
               session_id: sessionId,
               payload: {
-                blocks,
+                content_blocks: protocolBlocks,
+                content: protocolBlocks.map((b: any) => b.content).join("\n"),
+                content_type: "agent",
                 isComplete: true,
                 timestamp: Date.now(),
                 message_id: messageId,
@@ -1580,13 +1590,15 @@ async function bootstrap(): Promise<void> {
               type: "session.output",
               session_id: sessionId,
               payload: {
-                blocks: [
+                content_blocks: [
                   {
                     id: "error",
-                    block_type: "error",
+                    blockType: "error",
                     content: error instanceof Error ? error.message : "Unknown error",
                   },
                 ],
+                content: error instanceof Error ? error.message : "Unknown error",
+                content_type: "agent",
                 isComplete: true,
                 timestamp: Date.now(),
                 message_id: messageId,
