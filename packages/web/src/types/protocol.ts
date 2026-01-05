@@ -181,6 +181,7 @@ export interface SyncSession {
   worktree?: string;
   working_dir?: string;
   agent_name?: string;
+  created_at?: string | number;
 }
 
 export interface HistoryEntry {
@@ -248,6 +249,7 @@ export interface SessionCreatedMessage extends BaseMessage {
     project?: string;
     worktree?: string;
     working_dir: string;
+    created_at?: string | number;
     terminal_config?: {
       buffer_size: number;
     };

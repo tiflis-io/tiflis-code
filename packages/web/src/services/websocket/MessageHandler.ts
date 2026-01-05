@@ -173,7 +173,7 @@ function handleSyncState(msg: SyncStateMessage): void {
     project: s.project,
     worktree: s.worktree,
     workingDir: s.working_dir,
-    createdAt: new Date(s.created_at),
+    createdAt: s.created_at ? new Date(s.created_at) : new Date(),
   }));
 
   appStore.setSessions(sessions);
