@@ -277,9 +277,26 @@ export class BacklogHarness extends EventEmitter {
 
     if (agentSession) {
       sessionId = agentSession.sessionId;
+      this.logger.debug(
+        { sessionId, agent: this.backlog.agent, workingDir: this.workingDir },
+        'Using existing agent session for task'
+      );
     } else {
-      throw new Error(
-        `No agent session found for ${this.backlog.agent} in ${this.workingDir}`
+      // Create a new agent session if one doesn't exist
+      this.logger.info(
+        { agent: this.backlog.agent, workingDir: this.workingDir },
+        'Creating new agent session for backlog task execution'
+      );
+      const newSession = this.agentSessionManager.createSession(
+        this.backlog.agent as any,
+        this.workingDir,
+        `backlog-${this.backlog.id}`,
+        this.backlog.agent
+      );
+      sessionId = newSession.sessionId;
+      this.logger.info(
+        { sessionId, agent: this.backlog.agent, workingDir: this.workingDir },
+        'Created new agent session for task'
       );
     }
 
