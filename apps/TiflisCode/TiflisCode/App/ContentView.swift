@@ -252,7 +252,7 @@ struct SessionDetailView: View {
     var body: some View {
         Group {
             switch session.type {
-            case .supervisor, .cursor, .claude, .opencode:
+            case .supervisor, .cursor, .claude, .opencode, .backlogAgent:
                 ChatView(
                     session: session,
                     columnVisibility: $columnVisibility,
