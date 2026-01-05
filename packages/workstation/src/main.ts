@@ -1607,17 +1607,6 @@ async function bootstrap(): Promise<void> {
       const backlogManagers = sessionManager.getBacklogManagers?.();
       const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
 
-      logger.info(
-        {
-          sessionId,
-          hasBacklogManagersMethod: !!sessionManager.getBacklogManagers,
-          backlogManagersCount: backlogManagers?.size ?? 0,
-          isBacklogSession,
-          backlogManagerIds: Array.from(backlogManagers?.keys() ?? []),
-        },
-        "Checking if session is a backlog agent session"
-      );
-
       if (backlogManagers && isBacklogSession) {
         const manager = backlogManagers.get(sessionId);
         if (!manager) {
@@ -1652,25 +1641,13 @@ async function bootstrap(): Promise<void> {
 
         const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
 
-        logger.info(
-          { sessionId, promptLength: prompt.length, prompt: prompt.slice(0, 100) },
-          "Processing backlog agent message"
-        );
-
         // Save user message to chat history
         if (prompt) {
-          try {
-            chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
-            logger.debug({ sessionId }, "Saved user message to chat history");
-          } catch (historyError) {
-            logger.error({ sessionId, error: historyError }, "Failed to save user message to history");
-          }
+          chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
         }
 
         try {
-          logger.debug({ sessionId }, "About to execute backlog command");
           const blocks = await manager.executeCommand(prompt);
-          logger.debug({ sessionId, blockCount: blocks.length }, "Backlog command executed successfully");
 
           // Save assistant response blocks to chat history
           if (blocks.length > 0) {
@@ -1714,11 +1691,6 @@ async function bootstrap(): Promise<void> {
               },
             };
 
-            logger.debug(
-              { sessionId, streamingMessageId, blockCount: protocolBlocks.length },
-              "Broadcasting backlog agent response (streaming)"
-            );
-
             messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(streamingMessage)
@@ -1737,16 +1709,6 @@ async function bootstrap(): Promise<void> {
                 is_complete: true,
               },
             };
-
-            logger.info(
-              {
-                sessionId,
-                streamingMessageId,
-                blockCount: protocolBlocks.length,
-                isComplete: true,
-              },
-              "Broadcasting backlog agent response with completion signal"
-            );
 
             messageBroadcaster.broadcastToSubscribers(
               sessionId,

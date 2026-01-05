@@ -118,8 +118,6 @@ export class BacklogAgent {
    * Executes a command through the backlog agent.
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
-    this.logger.info({ message: userMessage.slice(0, 50) }, 'BacklogAgent.executeCommand called');
-
     // Ensure agent is initialized
     this.initializeAgent();
 
@@ -148,8 +146,6 @@ export class BacklogAgent {
         },
       ];
     }
-
-    this.logger.debug({ message: userMessage.slice(0, 100) }, 'Agent is ready, executing backlog command');
 
     try {
       // Build messages
