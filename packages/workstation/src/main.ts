@@ -1708,6 +1708,17 @@ async function bootstrap(): Promise<void> {
                 message_id: messageId,
               },
             };
+
+            logger.info(
+              {
+                sessionId,
+                streamingMessageId,
+                blockCount: protocolBlocks.length,
+                isComplete: true,
+              },
+              "Broadcasting backlog agent response with completion signal"
+            );
+
             messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(outputMessage)
