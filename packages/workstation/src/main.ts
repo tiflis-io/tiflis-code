@@ -1596,11 +1596,20 @@ async function bootstrap(): Promise<void> {
       }
 
       const backlogManagers = sessionManager.getBacklogManagers?.();
-      logger.debug(
-        { sessionId, hasBacklogManagersMethod: !!sessionManager.getBacklogManagers, backlogManagersCount: backlogManagers?.size ?? 0, isBacklogSession: backlogManagers?.has(sessionId) ?? false },
-        "Checking for backlog agent session"
+      const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+      logger.info(
+        {
+          sessionId,
+          hasBacklogManagersMethod: !!sessionManager.getBacklogManagers,
+          backlogManagersCount: backlogManagers?.size ?? 0,
+          isBacklogSession,
+          backlogManagerIds: Array.from(backlogManagers?.keys() ?? []),
+        },
+        "Checking if session is a backlog agent session"
       );
-      if (backlogManagers && backlogManagers.has(sessionId)) {
+
+      if (backlogManagers && isBacklogSession) {
         const manager = backlogManagers.get(sessionId);
         if (!manager) {
           logger.error(
@@ -1634,18 +1643,25 @@ async function bootstrap(): Promise<void> {
 
         const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
 
-        logger.debug(
-          { sessionId, promptLength: prompt.length },
+        logger.info(
+          { sessionId, promptLength: prompt.length, prompt: prompt.slice(0, 100) },
           "Processing backlog agent message"
         );
 
         // Save user message to chat history
         if (prompt) {
-          chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
+          try {
+            chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
+            logger.debug({ sessionId }, "Saved user message to chat history");
+          } catch (historyError) {
+            logger.error({ sessionId, error: historyError }, "Failed to save user message to history");
+          }
         }
 
         try {
+          logger.debug({ sessionId }, "About to execute backlog command");
           const blocks = await manager.executeCommand(prompt);
+          logger.debug({ sessionId, blockCount: blocks.length }, "Backlog command executed successfully");
 
           // Save assistant response blocks to chat history
           if (blocks.length > 0) {

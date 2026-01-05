@@ -97,10 +97,14 @@ export class BacklogAgentManager extends EventEmitter {
    * - Returns appropriate response
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
+    this.logger.info({ userMessage: userMessage.slice(0, 50) }, 'BacklogAgentManager.executeCommand called');
+
     this.conversationHistory.push({ role: 'user', content: userMessage });
 
     // Use LLM agent to execute command (understands natural language)
+    this.logger.debug('About to call llmAgent.executeCommand');
     const blocks = await this.llmAgent.executeCommand(userMessage);
+    this.logger.debug({ blockCount: blocks.length }, 'llmAgent.executeCommand returned');
 
     // Record response in history
     const responseText = blocks.map((b: any) => b.content).join('\n');
@@ -109,6 +113,7 @@ export class BacklogAgentManager extends EventEmitter {
     // Save state
     this.saveBacklog();
 
+    this.logger.info({ blockCount: blocks.length }, 'BacklogAgentManager.executeCommand completed');
     return blocks;
   }
 

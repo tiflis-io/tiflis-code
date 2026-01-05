@@ -118,12 +118,17 @@ export class BacklogAgent {
    * Executes a command through the backlog agent.
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
+    this.logger.info({ message: userMessage.slice(0, 50) }, 'BacklogAgent.executeCommand called');
+
     // Ensure agent is initialized
     this.initializeAgent();
 
     // Check for initialization errors
     if (this.initializationError) {
-      this.logger.error({ error: this.initializationError }, 'Cannot execute command - agent initialization failed');
+      this.logger.error(
+        { error: this.initializationError.message },
+        'Cannot execute command - agent initialization failed'
+      );
       return [
         {
           id: 'backlog-error',
@@ -134,7 +139,7 @@ export class BacklogAgent {
     }
 
     if (!this.agent) {
-      this.logger.error('Agent is not initialized');
+      this.logger.error('Agent is not initialized after initialization attempt');
       return [
         {
           id: 'backlog-error',
@@ -144,7 +149,7 @@ export class BacklogAgent {
       ];
     }
 
-    this.logger.info({ message: userMessage.slice(0, 100) }, 'Executing backlog command via LLM');
+    this.logger.debug({ message: userMessage.slice(0, 100) }, 'Agent is ready, executing backlog command');
 
     try {
       // Build messages

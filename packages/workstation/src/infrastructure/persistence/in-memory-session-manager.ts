@@ -90,6 +90,11 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     for (const persistedSession of persistedSessions) {
       try {
         if (persistedSession.type === 'backlog-agent') {
+          this.logger.info(
+            { sessionId: persistedSession.id, project: persistedSession.project, workingDir: persistedSession.workingDir },
+            'Starting restoration of backlog-agent session'
+          );
+
           // Restore backlog session
           const backlogSession = new BacklogAgentSession({
             id: new SessionId(persistedSession.id),
@@ -109,19 +114,33 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
           this.sessions.set(persistedSession.id, backlogSession);
 
           // Create backlog manager for this session (will load backlog.json if it exists)
-          const manager = BacklogAgentManager.createAndLoadFromFile(
-            backlogSession,
-            persistedSession.workingDir,
-            this.agentSessionManager,
-            this.logger
-          );
-          this.backlogManagers.set(persistedSession.id, manager);
-          backlogRestoreCount++;
+          try {
+            const manager = BacklogAgentManager.createAndLoadFromFile(
+              backlogSession,
+              persistedSession.workingDir,
+              this.agentSessionManager,
+              this.logger
+            );
+            this.backlogManagers.set(persistedSession.id, manager);
+            backlogRestoreCount++;
 
-          this.logger.info(
-            { sessionId: persistedSession.id, project: persistedSession.project, backlogManagersCount: this.backlogManagers.size },
-            'Restored backlog-agent session from database'
-          );
+            this.logger.info(
+              {
+                sessionId: persistedSession.id,
+                project: persistedSession.project,
+                backlogManagersCount: this.backlogManagers.size,
+                isInMap: this.backlogManagers.has(persistedSession.id),
+              },
+              'Successfully restored backlog-agent session from database'
+            );
+          } catch (managerError) {
+            this.logger.error(
+              { sessionId: persistedSession.id, error: managerError instanceof Error ? managerError.message : String(managerError), stack: managerError instanceof Error ? managerError.stack : undefined },
+              'Failed to create backlog manager during restoration'
+            );
+            // Don't add to backlogManagers if creation failed
+            throw managerError;
+          }
         } else if (persistedSession.type === 'supervisor') {
           // Supervisor is singleton - don't restore multiple copies
           this.logger.debug({ sessionId: persistedSession.id }, 'Skipping supervisor session restoration (singleton)');
