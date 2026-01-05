@@ -3090,7 +3090,7 @@ async function bootstrap(): Promise<void> {
   }
 
   // Graceful shutdown with timeout
-  const SHUTDOWN_TIMEOUT_MS = 10000; // 10 seconds max for graceful shutdown
+  const SHUTDOWN_TIMEOUT_MS = 5000; // 5 seconds max for graceful shutdown
   let isShuttingDown = false;
 
   const shutdown = async (signal: string): Promise<void> => {
@@ -3103,7 +3103,7 @@ async function bootstrap(): Promise<void> {
 
     logger.info({ signal }, "Shutdown signal received");
 
-    // Set up force exit timeout
+    // Set up force exit timeout (shorter than before)
     const forceExitTimeout = setTimeout(() => {
       logger.error("Graceful shutdown timeout exceeded, forcing exit");
       process.exit(1);
@@ -3123,7 +3123,7 @@ async function bootstrap(): Promise<void> {
       logger.info("Terminating all sessions...");
       const terminatePromise = sessionManager.terminateAll();
       const sessionTimeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error("Session termination timeout")), 5000);
+        setTimeout(() => reject(new Error("Session termination timeout")), 2000);
       });
 
       try {
@@ -3137,7 +3137,7 @@ async function bootstrap(): Promise<void> {
       logger.info("Closing HTTP server...");
       const closePromise = app.close();
       const closeTimeoutPromise = new Promise<void>((_, reject) => {
-        setTimeout(() => reject(new Error("HTTP server close timeout")), 2000);
+        setTimeout(() => reject(new Error("HTTP server close timeout")), 1000);
       });
 
       try {
@@ -3160,8 +3160,22 @@ async function bootstrap(): Promise<void> {
     }
   };
 
-  process.on("SIGTERM", () => void shutdown("SIGTERM"));
-  process.on("SIGINT", () => void shutdown("SIGINT"));
+  // Signal handlers - use immediate shutdown on second signal
+  let signalCount = 0;
+  const handleSignal = (signal: string) => {
+    signalCount++;
+    if (signalCount === 1) {
+      // First signal: graceful shutdown
+      void shutdown(signal);
+    } else {
+      // Second signal: force exit immediately
+      logger.warn({ signal, count: signalCount }, "Force exit on repeated signal");
+      process.exit(1);
+    }
+  };
+
+  process.on("SIGTERM", () => handleSignal("SIGTERM"));
+  process.on("SIGINT", () => handleSignal("SIGINT"));
 
   // Unhandled rejection handler
   process.on("unhandledRejection", (reason, promise) => {
