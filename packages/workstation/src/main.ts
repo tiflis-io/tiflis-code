@@ -1695,13 +1695,43 @@ async function bootstrap(): Promise<void> {
               metadata: block.metadata,
             }));
 
-            const outputMessage = {
+            const contentText = protocolBlocks.map((b: any) => b.content).join("\n");
+
+            // Send two messages: first as streaming (is_complete: false), then as complete (is_complete: true)
+            // This matches the behavior of agent sessions and allows the web client to properly track the response lifecycle
+
+            // Message 1: Start streaming (tells client there's a response coming)
+            const streamingMessage = {
               type: "session.output",
               session_id: sessionId,
               streaming_message_id: streamingMessageId,
               payload: {
                 content_type: "agent",
-                content: protocolBlocks.map((b: any) => b.content).join("\n"),
+                content: contentText,
+                content_blocks: protocolBlocks,
+                timestamp: Date.now(),
+                is_complete: false,
+              },
+            };
+
+            logger.debug(
+              { sessionId, streamingMessageId, blockCount: protocolBlocks.length },
+              "Broadcasting backlog agent response (streaming)"
+            );
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(streamingMessage)
+            );
+
+            // Message 2: Complete (tells client response is done)
+            const completionMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: contentText,
                 content_blocks: protocolBlocks,
                 timestamp: Date.now(),
                 is_complete: true,
@@ -1720,7 +1750,7 @@ async function bootstrap(): Promise<void> {
 
             messageBroadcaster.broadcastToSubscribers(
               sessionId,
-              JSON.stringify(outputMessage)
+              JSON.stringify(completionMessage)
             );
 
             // Clear streaming message ID after response is complete
@@ -1742,27 +1772,48 @@ async function bootstrap(): Promise<void> {
           if (messageBroadcaster) {
             const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
 
-            const errorMessage = {
+            const errorBlock = {
+              id: "error",
+              blockType: "error",
+              content: errorContent,
+            };
+
+            // Message 1: Error starts streaming (is_complete: false)
+            const errorStreamingMessage = {
               type: "session.output",
               session_id: sessionId,
               streaming_message_id: streamingMessageId,
               payload: {
                 content_type: "agent",
                 content: errorContent,
-                content_blocks: [
-                  {
-                    id: "error",
-                    blockType: "error",
-                    content: errorContent,
-                  },
-                ],
+                content_blocks: [errorBlock],
+                timestamp: Date.now(),
+                is_complete: false,
+              },
+            };
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(errorStreamingMessage)
+            );
+
+            // Message 2: Error complete (is_complete: true)
+            const errorCompletionMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: errorContent,
+                content_blocks: [errorBlock],
                 timestamp: Date.now(),
                 is_complete: true,
               },
             };
+
             messageBroadcaster.broadcastToSubscribers(
               sessionId,
-              JSON.stringify(errorMessage)
+              JSON.stringify(errorCompletionMessage)
             );
 
             // Clear streaming message ID after error response
