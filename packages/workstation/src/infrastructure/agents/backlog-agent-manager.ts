@@ -493,4 +493,21 @@ export class BacklogAgentManager extends EventEmitter {
 
     return new BacklogAgentManager(session, backlog, workingDir, agentSessionManager, logger);
   }
+
+  /**
+   * Creates a manager and attempts to load backlog from file.
+   * If backlog.json doesn't exist, starts with empty backlog.
+   * Used during session restoration to load persisted backlog state.
+   */
+  static createAndLoadFromFile(
+    session: BacklogAgentSession,
+    workingDir: string,
+    agentSessionManager: AgentSessionManager,
+    logger: Logger
+  ): BacklogAgentManager {
+    const manager = BacklogAgentManager.createEmpty(session, workingDir, agentSessionManager, logger);
+    // Try to load backlog from file
+    manager.updateBacklogFromFile();
+    return manager;
+  }
 }
