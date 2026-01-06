@@ -28,6 +28,8 @@ curl -fsSL https://code.tiflis.io/install-tunnel.sh | bash -s -- --dry-run
 
 ### Workstation Server
 
+#### macOS / Linux
+
 ```bash
 # Interactive setup
 curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
@@ -37,18 +39,61 @@ TUNNEL_URL=wss://tunnel.example.com/ws \
 TUNNEL_API_KEY=your-api-key \
 curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
 
-# Windows (run inside WSL2)
+# Dry run (preview without changes)
+curl -fsSL https://code.tiflis.io/install-workstation.sh | bash -s -- --dry-run
+```
+
+#### Windows
+
+```powershell
+# Interactive setup
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+
+# Non-interactive (provide env vars)
+$env:TUNNEL_URL = "wss://tunnel.example.com"
+$env:TUNNEL_API_KEY = "your-api-key"
+$env:WORKSTATION_AUTH_KEY = "your-auth-key"
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+
+# Using batch wrapper (from Command Prompt)
+install-workstation.bat
+```
+
+#### WSL2 (Windows Subsystem for Linux)
+
+```bash
+# Run inside WSL2
 wsl -d Ubuntu
 curl -fsSL https://code.tiflis.io/install-workstation.sh | bash
 ```
 
 ### What the Scripts Do
 
-1. Detect your platform (macOS, Linux, WSL)
-2. Check prerequisites (Docker, Node.js >= 22, build tools)
-3. Interactive configuration wizard (or use env vars)
-4. Install packages and create service (systemd/launchd)
-5. Start the server and display connection info
+1. **Platform Detection** - Detect OS and architecture (macOS, Linux, WSL, Windows)
+2. **Prerequisites Check** - Verify Docker, Node.js >= 22, build tools are installed
+3. **Configuration Wizard** - Interactive prompts (or use environment variables)
+4. **Service Registration** - Create system service (systemd/launchd/NSSM/Task Scheduler)
+5. **Package Installation** - Install npm dependencies from npm registry
+6. **Service Startup** - Start the server and display connection information
+
+### Platform-Specific Details
+
+#### Windows Installation
+
+The Windows installer includes several features:
+
+- **Automatic Node.js Installation** via Chocolatey or Windows Package Manager
+- **NSSM Support** for robust service management (recommended)
+- **Task Scheduler Fallback** if NSSM is not available
+- **PowerShell 7+ with Windows PowerShell 5.1 fallback**
+- **Secure .env Management** with automatic backups
+- **Dry-run Mode** for testing without making changes
+
+Prerequisites:
+- Windows 10/11 (Build 19041+)
+- PowerShell 5.1+ (built-in)
+- Node.js 24 LTS (auto-installed if missing)
+- Optional: NSSM for service management (`choco install nssm`)
 
 ### Native Speech Services Installer
 
@@ -65,6 +110,8 @@ curl -fsSL https://code.tiflis.io/install-native-services.sh | bash
 ```
 
 ### Installation Directory
+
+#### Linux / macOS
 
 Both scripts install to `~/.tiflis-code/`:
 
@@ -92,6 +139,24 @@ Both scripts install to `~/.tiflis-code/`:
         └── logs/
 ```
 
+#### Windows
+
+Windows installer uses `%LOCALAPPDATA%\TiflisCode\`:
+
+```
+C:\Users\YourName\AppData\Local\TiflisCode\
+├── tunnel\
+│   ├── .env
+│   ├── node_modules\
+│   └── logs\
+└── workstation\
+    ├── .env
+    ├── node_modules\
+    ├── data\
+    │   └── tiflis.db
+    └── logs\
+```
+
 ## 🏗️ Architecture
 
 ```
@@ -109,6 +174,221 @@ Both scripts install to `~/.tiflis-code/`:
                                                                    │  └─ TTS (Kokoro)    │
                                                                    └─────────────────────┘
 ```
+
+## 🪟 Windows Native Installation
+
+### System Requirements
+
+| Component | Requirement |
+|-----------|------------|
+| **OS** | Windows 10/11 (Build 19041+) |
+| **PowerShell** | 5.1+ (built-in) |
+| **Node.js** | 24 LTS (auto-installed if missing) |
+| **Package Manager** | Chocolatey or Windows Package Manager (optional) |
+| **Service Manager** | NSSM or Windows Task Scheduler |
+
+### Installation Steps
+
+#### 1. Download Installer
+
+```powershell
+# Download from GitHub releases or web server
+Invoke-WebRequest -Uri "https://code.tiflis.io/install-workstation.ps1" `
+  -OutFile "install-workstation.ps1"
+
+# Or use the batch wrapper
+# Invoke-WebRequest -Uri "https://code.tiflis.io/install-workstation.bat" `
+#   -OutFile "install-workstation.bat"
+```
+
+#### 2. Run Installer
+
+```powershell
+# Interactive mode (recommended)
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+
+# Or with environment variables (non-interactive)
+$env:TUNNEL_URL = "wss://tunnel.example.com"
+$env:TUNNEL_API_KEY = "your-api-key-32-chars"
+$env:WORKSTATION_AUTH_KEY = "your-auth-key"
+$env:WORKSPACES_ROOT = "C:\Users\YourName\work"
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+
+# Dry-run mode (preview without changes)
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1 -DryRun
+```
+
+### Installation Details
+
+The Windows installer automatically:
+
+1. **Checks Node.js** - Verifies Node.js 24+ is installed
+   - Uses Chocolatey if available
+   - Falls back to Windows Package Manager (winget)
+   - Prompts for manual installation if neither is available
+
+2. **Creates Directories**
+   ```
+   %LOCALAPPDATA%\TiflisCode\
+   ├── workstation\
+   │   ├── .env
+   │   ├── node_modules\
+   │   ├── data\
+   │   └── logs\
+   ```
+
+3. **Configuration** - Interactive prompts for:
+   - Tunnel server URL (wss://...)
+   - Tunnel API key (minimum 32 characters)
+   - Workstation auth key (auto-generated or custom)
+   - Workspaces root directory
+
+4. **Service Registration** - Creates Windows service:
+   - **Primary**: NSSM (Non-Sucking Service Manager) - if available
+   - **Fallback**: Windows Task Scheduler - automatic startup
+   - Service name: `TiflisWorkstation`
+   - Runs on system startup
+
+5. **Environment File** - Creates `.env` with:
+   ```env
+   TUNNEL_URL=wss://tunnel.example.com
+   TUNNEL_API_KEY=your-api-key
+   WORKSTATION_AUTH_KEY=your-auth-key
+   WORKSTATION_NAME=YOUR-COMPUTER-NAME
+   WORKSPACES_ROOT=C:\Users\YourName\work
+   ```
+
+### Service Management
+
+#### Check Service Status
+
+```powershell
+# View service
+Get-Service TiflisWorkstation
+
+# Start service
+Start-Service -Name TiflisWorkstation
+
+# Stop service
+Stop-Service -Name TiflisWorkstation
+
+# Restart service
+Restart-Service -Name TiflisWorkstation
+```
+
+#### View Logs
+
+```powershell
+# Event Viewer logs
+Get-EventLog -LogName Application -Source "TiflisWorkstation" -Newest 50
+
+# Or open Event Viewer
+eventvwr.msc
+# Navigate: Windows Logs → Application
+```
+
+#### Manual Startup
+
+If service issues occur, run manually for debugging:
+
+```powershell
+cd "$env:LOCALAPPDATA\TiflisCode\workstation"
+node .\node_modules\@tiflis-io\tiflis-code-workstation\dist\main.js
+```
+
+### Environment Variables
+
+Set before running installer for non-interactive setup:
+
+```powershell
+# Tunnel connection (required)
+$env:TUNNEL_URL = "wss://tunnel.example.com"
+$env:TUNNEL_API_KEY = "your-32-character-api-key"
+
+# Workstation settings (optional)
+$env:WORKSTATION_AUTH_KEY = "your-auth-key-or-leave-for-auto-generation"
+$env:WORKSPACES_ROOT = "C:\Users\YourName\work"
+$env:TIFLIS_INSTALL_DIR = "$env:LOCALAPPDATA\TiflisCode"
+
+# Then run
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+```
+
+### Troubleshooting
+
+#### PowerShell Execution Policy Error
+
+```powershell
+# Temporarily bypass for current session
+powershell -ExecutionPolicy Bypass -File install-workstation.ps1
+
+# Or set policy (not recommended)
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+#### Node.js Not Found After Installation
+
+```powershell
+# Refresh PATH environment variable
+$env:PATH = [System.Environment]::GetEnvironmentVariable("PATH", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("PATH", "User")
+
+# Or restart PowerShell/Command Prompt
+```
+
+#### Service Not Starting
+
+```powershell
+# Check service status details
+Get-Service TiflisWorkstation | Format-List *
+
+# View system event logs
+Get-EventLog -LogName Application -Newest 50 | Where-Object Source -eq "TiflisWorkstation"
+
+# Run manually to see errors
+cd "$env:LOCALAPPDATA\TiflisCode\workstation"
+node .\node_modules\@tiflis-io\tiflis-code-workstation\dist\main.js
+```
+
+#### Port Already in Use
+
+```powershell
+# Find process using port 3002
+netstat -ano | findstr :3002
+tasklist | findstr <PID>
+
+# Change port in .env file
+# Edit: $env:LOCALAPPDATA\TiflisCode\workstation\.env
+# Set: PORT=3003
+```
+
+#### NSSM Installation Issues
+
+```powershell
+# Install Chocolatey if needed
+Set-ExecutionPolicy Bypass -Scope Process -Force
+iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Then install NSSM
+choco install nssm -y
+```
+
+### Uninstall
+
+```powershell
+# Stop service
+Stop-Service -Name TiflisWorkstation -Force
+
+# Remove service (if NSSM)
+nssm remove TiflisWorkstation confirm
+
+# Or remove scheduled task (if Task Scheduler)
+Unregister-ScheduledTask -TaskName "Tiflis Workstation" -Confirm:$false
+
+# Remove installation directory
+Remove-Item -Path "$env:LOCALAPPDATA\TiflisCode" -Recurse -Force
+```
+
+---
 
 ## 🐳 Docker Deployment (Recommended)
 
