@@ -259,16 +259,7 @@ Please respond with the agent name you'd like to use (e.g., "claude", "cursor", 
       new Map();
 
     const agentNames = Array.from(availableAgents.keys());
-    const lowerMessage = userMessage.toLowerCase();
-
-    // Simple fuzzy matching - find agent name in user response
-    let selectedAgent: string | null = null;
-    for (const agentName of agentNames) {
-      if (lowerMessage.includes(agentName.toLowerCase())) {
-        selectedAgent = agentName;
-        break;
-      }
-    }
+    const selectedAgent = this.findBestAgentMatch(userMessage, agentNames);
 
     if (!selectedAgent) {
       // No valid agent found - show available agents again
@@ -311,6 +302,100 @@ Now starting the harness...`;
     const harnessBlocks = await this.createAndStartHarness();
 
     return [...confirmationBlocks, ...harnessBlocks];
+  }
+
+  /**
+   * Find best agent match from user response using improved fuzzy matching.
+   * Handles variations like "claude code", "use cursor", "my zai alias", etc.
+   */
+  private findBestAgentMatch(userMessage: string, agentNames: string[]): string | null {
+    const lowerMessage = userMessage.toLowerCase();
+
+    // First pass: exact match
+    for (const agentName of agentNames) {
+      if (lowerMessage === agentName.toLowerCase()) {
+        return agentName;
+      }
+    }
+
+    // Second pass: direct substring match (highest priority)
+    for (const agentName of agentNames) {
+      const lowerAgent = agentName.toLowerCase();
+      if (lowerMessage.includes(lowerAgent)) {
+        return agentName;
+      }
+    }
+
+    // Third pass: fuzzy matching with common variations
+    // Handle patterns like "claude code", "cursor agent", etc.
+    const commonPatterns: Record<string, string[]> = {
+      claude: ['claude', 'claude code', 'claudecode', 'claude-code', 'claude agent'],
+      cursor: ['cursor', 'cursor agent', 'cursoragent', 'cursor-agent'],
+      opencode: ['opencode', 'open code', 'opencode agent', 'open-code'],
+    };
+
+    for (const [baseName, patterns] of Object.entries(commonPatterns)) {
+      const agentName = agentNames.find(n => n.toLowerCase() === baseName);
+      if (agentName) {
+        for (const pattern of patterns) {
+          if (lowerMessage.includes(pattern.toLowerCase())) {
+            return agentName;
+          }
+        }
+      }
+    }
+
+    // Fourth pass: Levenshtein-like distance matching for aliases
+    // Find closest match if user typed something similar
+    let bestMatch: { name: string; score: number } | null = null;
+    const threshold = 0.6; // 60% similarity threshold
+
+    for (const agentName of agentNames) {
+      const similarity = this.calculateStringSimilarity(lowerMessage, agentName.toLowerCase());
+      if (similarity > threshold && (!bestMatch || similarity > bestMatch.score)) {
+        bestMatch = { name: agentName, score: similarity };
+      }
+    }
+
+    return bestMatch ? bestMatch.name : null;
+  }
+
+  /**
+   * Calculate string similarity score (0-1) using Levenshtein distance.
+   */
+  private calculateStringSimilarity(str1: string, str2: string): number {
+    const maxLen = Math.max(str1.length, str2.length);
+    if (maxLen === 0) return 1;
+
+    const distance = this.levenshteinDistance(str1, str2);
+    return 1 - distance / maxLen;
+  }
+
+  /**
+   * Calculate Levenshtein distance between two strings.
+   */
+  private levenshteinDistance(str1: string, str2: string): number {
+    const len1 = str1.length;
+    const len2 = str2.length;
+    const matrix: number[][] = Array(len1 + 1)
+      .fill(null)
+      .map(() => Array(len2 + 1).fill(0));
+
+    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
+    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= len1; i++) {
+      for (let j = 1; j <= len2; j++) {
+        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j - 1] + cost
+        );
+      }
+    }
+
+    return matrix[len1][len2];
   }
 
   /**
@@ -687,6 +772,7 @@ ${tasksList}
 
   /**
    * Parse agent selection from user response.
+   * Uses improved fuzzy matching to handle natural language variations.
    */
   private parseAgentSelectionData(userResponse: string): Promise<{ agentName: string | null; valid: boolean; message: string }> {
     const availableAgents = this.agentSessionManager.getAvailableAgents ?
@@ -694,16 +780,7 @@ ${tasksList}
       new Map();
 
     const agentNames = Array.from(availableAgents.keys());
-    const lowerResponse = userResponse.toLowerCase();
-
-    // Find agent name in user response
-    let selectedAgent: string | null = null;
-    for (const agentName of agentNames) {
-      if (lowerResponse.includes(agentName.toLowerCase())) {
-        selectedAgent = agentName;
-        break;
-      }
-    }
+    const selectedAgent = this.findBestAgentMatch(userResponse, agentNames);
 
     if (!selectedAgent) {
       const availableList = agentNames.join(', ');
