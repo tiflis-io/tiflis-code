@@ -1575,7 +1575,7 @@ async function bootstrap(): Promise<void> {
                 message_id: messageId,
               },
             };
-            messageBroadcaster.broadcastToSubscribers(
+            await messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(errorEvent)
             );
@@ -1619,7 +1619,7 @@ async function bootstrap(): Promise<void> {
                 from_device_id: deviceId,
               },
             };
-            messageBroadcaster.broadcastToSubscribers(
+            await messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(transcriptionEvent)
             );
@@ -1735,7 +1735,7 @@ async function bootstrap(): Promise<void> {
                 timestamp: Date.now(),
               },
             };
-            messageBroadcaster.broadcastToSubscribers(
+            await messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(errorEvent)
             );
@@ -1898,7 +1898,7 @@ async function bootstrap(): Promise<void> {
               is_complete: true,
             },
           };
-          messageBroadcaster.broadcastToSubscribers(
+          await messageBroadcaster.broadcastToSubscribers(
             sessionId,
             JSON.stringify(cancelOutput)
           );
@@ -2524,6 +2524,10 @@ async function bootstrap(): Promise<void> {
   // Output Streaming Setup
   // ─────────────────────────────────────────────────────────────
 
+  // Message sequence tracking for gap detection on clients
+  let supervisorMessageSequence = 0;
+  const agentMessageSequences = new Map<string, number>();
+
   // Stream agent session output to subscribed clients
   const broadcaster = messageBroadcaster;
 
@@ -2531,6 +2535,10 @@ async function bootstrap(): Promise<void> {
   // Stores both blocks and streaming_message_id for client-side deduplication
   const agentMessageAccumulator = new Map<string, ContentBlock[]>();
   const agentStreamingMessageIds = new Map<string, string>();
+
+  // Grace period for streaming state cleanup (allows reconnecting clients to recover)
+  const STREAMING_STATE_GRACE_PERIOD_MS = 10_000; // 10 seconds
+  const agentCleanupTimeouts = new Map<string, NodeJS.Timeout>();
 
   // Helper to get or create streaming_message_id for a session
   const getOrCreateAgentStreamingMessageId = (sessionId: string): string => {
@@ -2543,8 +2551,22 @@ async function bootstrap(): Promise<void> {
   };
 
   // Helper to clear streaming_message_id when response completes
+  // Schedules delayed cleanup instead of immediate deletion
   const clearAgentStreamingMessageId = (sessionId: string): void => {
-    agentStreamingMessageIds.delete(sessionId);
+    // Cancel any existing timeout for this session
+    const existingTimeout = agentCleanupTimeouts.get(sessionId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Schedule delayed cleanup
+    const timeout = setTimeout(() => {
+      agentStreamingMessageIds.delete(sessionId);
+      agentCleanupTimeouts.delete(sessionId);
+      logger.debug({ sessionId }, "Agent streaming state cleaned up after grace period");
+    }, STREAMING_STATE_GRACE_PERIOD_MS);
+
+    agentCleanupTimeouts.set(sessionId, timeout);
   };
 
   agentSessionManager.on(
@@ -2659,10 +2681,16 @@ async function bootstrap(): Promise<void> {
 
       // streamingMessageId was obtained earlier for saving - reuse it for broadcasting
 
+      // Get or initialize sequence counter for this agent session
+      const currentSequence = agentMessageSequences.get(sessionId) ?? 0;
+      const newSequence = currentSequence + 1;
+      agentMessageSequences.set(sessionId, newSequence);
+
       const outputEvent = {
         type: "session.output",
         session_id: sessionId,
         streaming_message_id: streamingMessageId,
+        sequence: newSequence,
         payload: {
           content_type: "agent",
           content: fullAccumulatedText, // Full accumulated text for backward compat
@@ -2674,17 +2702,25 @@ async function bootstrap(): Promise<void> {
 
       // Send to all subscribers via broadcaster
       // Broadcaster handles both direct WebSocket and tunnel connections
-      broadcaster.broadcastToSubscribers(
+      await broadcaster.broadcastToSubscribers(
         sessionId,
         JSON.stringify(outputEvent)
       );
 
       // Clear streaming state when response is complete
-      // IMPORTANT: Delete accumulator AFTER broadcast to ensure clients can request
-      // current_streaming_blocks via history.request until broadcast is delivered
+      // Uses delayed cleanup (grace period) instead of immediate deletion
+      // This allows reconnecting clients to recover streaming state via history.request
       if (isComplete) {
         clearAgentStreamingMessageId(sessionId);
-        agentMessageAccumulator.delete(sessionId);
+
+        // Schedule delayed accumulator cleanup
+        setTimeout(() => {
+          agentMessageAccumulator.delete(sessionId);
+          logger.debug(
+            { sessionId, messageId: streamingMessageId },
+            "Agent message accumulator cleaned up after grace period"
+          );
+        }, STREAMING_STATE_GRACE_PERIOD_MS);
       }
 
       // Check if this was a voice command that needs TTS response
@@ -2754,7 +2790,7 @@ async function bootstrap(): Promise<void> {
                 from_device_id: originDeviceId,
               },
             };
-            broadcaster.broadcastToSubscribers(
+            await broadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(voiceOutputEvent)
             );
@@ -2821,6 +2857,7 @@ async function bootstrap(): Promise<void> {
       const outputEvent = {
         type: "supervisor.output",
         streaming_message_id: streamingMessageId,
+        sequence: ++supervisorMessageSequence,
         payload: {
           content_type: "supervisor",
           content: textContent,
@@ -2836,7 +2873,15 @@ async function bootstrap(): Promise<void> {
       broadcaster.broadcastToAll(message);
 
       if (isComplete) {
-        supervisorMessageAccumulator.clear();
+        // Schedule delayed cleanup (grace period) instead of immediate clear
+        // This allows reconnecting clients to recover streaming state via history.request
+        setTimeout(() => {
+          supervisorMessageAccumulator.clear();
+          logger.debug(
+            { messageId: streamingMessageId },
+            "Supervisor message accumulator cleaned up after grace period"
+          );
+        }, STREAMING_STATE_GRACE_PERIOD_MS);
       }
 
       // Save assistant response to persistent history when streaming completes (global)
@@ -3004,7 +3049,7 @@ async function bootstrap(): Promise<void> {
     const batcher = new TerminalOutputBatcher({
       batchIntervalMs: env.TERMINAL_BATCH_INTERVAL_MS,
       maxBatchSize: env.TERMINAL_BATCH_MAX_SIZE,
-      onFlush: (batchedData: string) => {
+      onFlush: async (batchedData: string) => {
         // Add batched output to buffer and get sequence number
         const outputMessage = session.addOutputToBuffer(batchedData);
 
@@ -3019,7 +3064,7 @@ async function bootstrap(): Promise<void> {
           },
         };
 
-        broadcaster.broadcastToSubscribers(
+        await broadcaster.broadcastToSubscribers(
           sessionId.value,
           JSON.stringify(outputEvent)
         );

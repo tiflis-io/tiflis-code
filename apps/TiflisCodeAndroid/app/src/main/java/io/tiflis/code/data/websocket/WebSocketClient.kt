@@ -88,6 +88,44 @@ class WebSocketClient @Inject constructor() {
     private var lastPongTime: Long = 0
     private var reconnectAttempt = 0
 
+    // History load synchronization - prevents race conditions between history and live updates
+    private val historyLoadInProgress = mutableSetOf<String>()
+    private val pendingMessageUpdates = mutableMapOf<String, MutableList<suspend () -> Unit>>()
+
+    private fun isHistoryLoadingForSession(sessionKey: String?): Boolean {
+        val key = sessionKey ?: "supervisor"
+        return historyLoadInProgress.contains(key)
+    }
+
+    private fun markHistoryLoadStart(sessionKey: String?) {
+        val key = sessionKey ?: "supervisor"
+        historyLoadInProgress.add(key)
+    }
+
+    private fun markHistoryLoadEnd(sessionKey: String?) {
+        val key = sessionKey ?: "supervisor"
+        historyLoadInProgress.remove(key)
+
+        // Process pending updates
+        val pending = pendingMessageUpdates.remove(key)
+        pending?.let { updates ->
+            scope.launch {
+                for (update in updates) {
+                    try {
+                        update()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error processing pending update for $key", e)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun queueMessageUpdate(sessionKey: String?, update: suspend () -> Unit) {
+        val key = sessionKey ?: "supervisor"
+        pendingMessageUpdates.getOrPut(key) { mutableListOf() }.add(update)
+    }
+
     private data class ConnectionCredentialsInternal(
         val url: String,
         val tunnelId: String,

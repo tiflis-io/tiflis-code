@@ -78,9 +78,10 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
 
   /**
    * Broadcasts a message to all clients subscribed to a session (by session ID string).
-   * Sends targeted messages to each subscriber individually via forward.to_device.
+   * Sends targeted messages to each subscriber in parallel with timeout.
+   * Prevents slow clients from blocking others.
    */
-  broadcastToSubscribers(sessionId: string, message: string): void {
+  async broadcastToSubscribers(sessionId: string, message: string): Promise<void> {
     const session = new SessionIdClass(sessionId);
     const subscribers = this.deps.clientRegistry.getSubscribers(session);
     const authenticatedSubscribers = subscribers.filter(
@@ -91,9 +92,50 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
       return;
     }
 
-    // Send to each subscribed client individually
-    for (const client of authenticatedSubscribers) {
-      this.deps.tunnelClient.sendToDevice(client.deviceId.value, message);
-    }
+    const SEND_TIMEOUT_MS = 2000; // 2 seconds per client
+
+    // Send to all clients in parallel with timeout
+    const sendPromises = authenticatedSubscribers.map(async (client) => {
+      try {
+        // Race between actual send and timeout
+        await Promise.race([
+          new Promise<void>((resolve, reject) => {
+            const sent = this.deps.tunnelClient.sendToDevice(
+              client.deviceId.value,
+              message
+            );
+            if (sent) {
+              resolve();
+            } else {
+              reject(new Error(`sendToDevice returned false for ${client.deviceId.value}`));
+            }
+          }),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error(`Send timeout for ${client.deviceId.value}`)),
+              SEND_TIMEOUT_MS
+            )
+          ),
+        ]);
+
+        this.logger.debug(
+          { deviceId: client.deviceId.value, sessionId },
+          "Message sent to subscriber"
+        );
+      } catch (error) {
+        this.logger.warn(
+          {
+            deviceId: client.deviceId.value,
+            sessionId,
+            error: error instanceof Error ? error.message : String(error)
+          },
+          "Failed to send to subscriber (timeout or error)"
+        );
+        // Don't throw - let other sends complete
+      }
+    });
+
+    // Wait for all sends to complete or timeout (don't fail on individual errors)
+    await Promise.allSettled(sendPromises);
   }
 }

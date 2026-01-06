@@ -22,8 +22,9 @@ export interface MessageBroadcaster {
 
   /**
    * Broadcasts a message to all subscribers of a session by session ID string.
+   * Uses parallel sends with timeout to prevent slow clients from blocking others.
    */
-  broadcastToSubscribers(sessionId: string, message: string): void;
+  broadcastToSubscribers(sessionId: string, message: string): Promise<void>;
 
   /**
    * Sends a message to a specific client by device ID.

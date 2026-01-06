@@ -60,6 +60,95 @@ function parseContentBlocks(blocks: ServerContentBlock[]): ContentBlock[] {
 }
 
 /**
+ * Synchronization state for history loading
+ * Prevents race conditions between history.response and live updates
+ */
+const historyLoadState = {
+  supervisorInProgress: false,
+  agentSessionsInProgress: new Set<string>(),
+  pendingUpdates: new Map<string, Array<() => void>>(),
+
+  isHistoryLoadingForSession(sessionKey: string): boolean {
+    if (sessionKey === 'supervisor') {
+      return this.supervisorInProgress;
+    }
+    return this.agentSessionsInProgress.has(sessionKey);
+  },
+
+  markHistoryLoadStart(sessionKey: string): void {
+    if (sessionKey === 'supervisor') {
+      this.supervisorInProgress = true;
+    } else {
+      this.agentSessionsInProgress.add(sessionKey);
+    }
+  },
+
+  markHistoryLoadEnd(sessionKey: string): void {
+    if (sessionKey === 'supervisor') {
+      this.supervisorInProgress = false;
+    } else {
+      this.agentSessionsInProgress.delete(sessionKey);
+    }
+
+    // Process pending updates
+    this.processPendingUpdates(sessionKey);
+  },
+
+  queueUpdate(sessionKey: string, update: () => void): void {
+    const pending = this.pendingUpdates.get(sessionKey) ?? [];
+    pending.push(update);
+    this.pendingUpdates.set(sessionKey, pending);
+  },
+
+  processPendingUpdates(sessionKey: string): void {
+    const pending = this.pendingUpdates.get(sessionKey) ?? [];
+    this.pendingUpdates.delete(sessionKey);
+
+    for (const update of pending) {
+      try {
+        update();
+      } catch (error) {
+        logger.error({ error, sessionKey }, 'Error processing pending update');
+      }
+    }
+  },
+};
+
+/**
+ * Message sequence tracking for gap detection
+ * Detects if messages are being lost during transmission
+ */
+const sequenceTracking = {
+  lastSupervisorSequence: 0,
+  lastAgentSequences: new Map<string, number>(),
+
+  checkSupervisorSequence(sequence?: number): void {
+    if (sequence !== undefined) {
+      if (sequence > this.lastSupervisorSequence + 1) {
+        logger.warn(
+          { expected: this.lastSupervisorSequence + 1, received: sequence },
+          'Detected supervisor message gap - messages may have been lost'
+        );
+      }
+      this.lastSupervisorSequence = sequence;
+    }
+  },
+
+  checkAgentSequence(sessionId: string, sequence?: number): void {
+    if (sequence !== undefined) {
+      const lastSeq = this.lastAgentSequences.get(sessionId) ?? 0;
+      if (sequence > lastSeq + 1) {
+        logger.warn(
+          { sessionId, expected: lastSeq + 1, received: sequence },
+          'Detected agent message gap - messages may have been lost'
+        );
+      }
+      this.lastAgentSequences.set(sessionId, sequence);
+    }
+  },
+};
+
+/**
  * Handle incoming WebSocket messages and update stores
  */
 export function handleWebSocketMessage(message: unknown): void {
@@ -223,60 +312,64 @@ function handleSyncState(msg: SyncStateMessage): void {
 function handleHistoryResponse(msg: HistoryResponseMessage): void {
   const chatStore = useChatStore.getState();
   const { session_id, history, has_more, oldest_sequence, is_executing, current_streaming_blocks, streaming_message_id } = msg.payload;
-  
+
   logger.log('history.response received:', { session_id, historyCount: history?.length ?? 0, has_more, oldest_sequence, streaming_message_id });
-  
+
   const sessionKey = session_id ?? 'supervisor';
-  
-  chatStore.setHistoryPaginationState(sessionKey, {
-    oldestSequence: oldest_sequence,
-    hasMore: has_more,
-    isLoading: false,
-  });
 
-  if (history.length === 0) {
-    return;
-  }
+  // Mark history load in progress
+  historyLoadState.markHistoryLoadStart(sessionKey);
 
-  const sortedHistory = [...history].sort((a, b) => a.sequence - b.sequence);
+  try {
+    chatStore.setHistoryPaginationState(sessionKey, {
+      oldestSequence: oldest_sequence,
+      hasMore: has_more,
+      isLoading: false,
+    });
 
-  // IMPORTANT: Use message_id from server for deduplication
-  // Without this, each history load creates new UUIDs and duplicates appear
-  const messages: Message[] = sortedHistory.map((entry) => ({
-    id: entry.message_id ?? crypto.randomUUID(),
-    sessionId: sessionKey,
-    role: entry.role,
-    contentBlocks: entry.content_blocks
-      ? parseContentBlocks(entry.content_blocks)
-      : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: entry.content }],
-    isStreaming: false,
-    createdAt: new Date(entry.createdAt),
-  }));
-
-  if (session_id === null) {
-    chatStore.prependSupervisorMessages(messages);
-    if (is_executing) {
-      chatStore.setSupervisorIsLoading(true);
+    if (history.length === 0) {
+      return;
     }
-    if (current_streaming_blocks && current_streaming_blocks.length > 0) {
-      // Use streaming_message_id from server for deduplication across clients
-      // This ensures all clients use the same ID for the same streaming response
-      const messageId = streaming_message_id ?? crypto.randomUUID();
-      
-      // Check if we already have a streaming message with this ID (from another source)
-      const existingStreamingId = chatStore.supervisorStreamingMessageId;
-      if (existingStreamingId === messageId) {
-        // Already tracking this streaming message, just update blocks
-        chatStore.updateSupervisorStreamingBlocks(messageId, parseContentBlocks(current_streaming_blocks));
-      } else if (!chatStore.supervisorMessages.some(m => m.id === messageId)) {
-        // New streaming message, create it
-        const streamingMessage: Message = {
-          id: messageId,
-          sessionId: 'supervisor',
-          role: 'assistant',
-          contentBlocks: parseContentBlocks(current_streaming_blocks),
-          isStreaming: true,
-          createdAt: new Date(),
+
+    const sortedHistory = [...history].sort((a, b) => a.sequence - b.sequence);
+
+    // IMPORTANT: Use message_id from server for deduplication
+    // Without this, each history load creates new UUIDs and duplicates appear
+    const messages: Message[] = sortedHistory.map((entry) => ({
+      id: entry.message_id ?? crypto.randomUUID(),
+      sessionId: sessionKey,
+      role: entry.role,
+      contentBlocks: entry.content_blocks
+        ? parseContentBlocks(entry.content_blocks)
+        : [{ id: crypto.randomUUID(), blockType: 'text' as const, content: entry.content }],
+      isStreaming: false,
+      createdAt: new Date(entry.createdAt),
+    }));
+
+    if (session_id === null) {
+      chatStore.prependSupervisorMessages(messages);
+      if (is_executing) {
+        chatStore.setSupervisorIsLoading(true);
+      }
+      if (current_streaming_blocks && current_streaming_blocks.length > 0) {
+        // Use streaming_message_id from server for deduplication across clients
+        // This ensures all clients use the same ID for the same streaming response
+        const messageId = streaming_message_id ?? crypto.randomUUID();
+
+        // Check if we already have a streaming message with this ID (from another source)
+        const existingStreamingId = chatStore.supervisorStreamingMessageId;
+        if (existingStreamingId === messageId) {
+          // Already tracking this streaming message, just update blocks
+          chatStore.updateSupervisorStreamingBlocks(messageId, parseContentBlocks(current_streaming_blocks));
+        } else if (!chatStore.supervisorMessages.some(m => m.id === messageId)) {
+          // New streaming message, create it
+          const streamingMessage: Message = {
+            id: messageId,
+            sessionId: 'supervisor',
+            role: 'assistant',
+            contentBlocks: parseContentBlocks(current_streaming_blocks),
+            isStreaming: true,
+            createdAt: new Date(),
         };
         chatStore.addSupervisorMessage(streamingMessage);
         chatStore.setSupervisorStreamingMessageId(messageId);
@@ -317,6 +410,10 @@ function handleHistoryResponse(msg: HistoryResponseMessage): void {
         // If message already exists but not streaming, skip (it's completed)
       }
     }
+  }
+  } finally {
+    // Mark history load as complete and process any pending updates
+    historyLoadState.markHistoryLoadEnd(sessionKey);
   }
 }
 
@@ -411,9 +508,18 @@ function handleSessionTerminated(msg: { session_id: string }): void {
 }
 
 function handleSupervisorOutput(msg: SupervisorOutputMessage): void {
+  // Check for message gaps
+  sequenceTracking.checkSupervisorSequence(msg.sequence);
+
+  // If history load is in progress, queue this update to prevent race conditions
+  if (historyLoadState.isHistoryLoadingForSession('supervisor')) {
+    historyLoadState.queueUpdate('supervisor', () => handleSupervisorOutput(msg));
+    return;
+  }
+
   const chatStore = useChatStore.getState();
   const streamingId = chatStore.supervisorStreamingMessageId;
-  
+
   // Use streaming_message_id from server for deduplication across clients
   const serverMessageId = msg.streaming_message_id;
 
@@ -560,8 +666,18 @@ function handleSessionReplayData(msg: SessionReplayDataMessage): void {
 }
 
 function handleSessionOutput(msg: SessionOutputMessage): void {
-  const chatStore = useChatStore.getState();
   const sessionId = msg.session_id;
+
+  // Check for message gaps
+  sequenceTracking.checkAgentSequence(sessionId, msg.sequence);
+
+  // If history load is in progress, queue this update to prevent race conditions
+  if (historyLoadState.isHistoryLoadingForSession(sessionId)) {
+    historyLoadState.queueUpdate(sessionId, () => handleSessionOutput(msg));
+    return;
+  }
+
+  const chatStore = useChatStore.getState();
 
   if (msg.payload.content_type === 'terminal') {
     // Dispatch terminal output event for TerminalView

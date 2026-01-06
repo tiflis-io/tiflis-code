@@ -78,6 +78,48 @@ final class ChatViewModel: ObservableObject {
         messages.first { $0.id == messageId }
     }
 
+    // MARK: - History Load Synchronization
+
+    /// Tracks history loading state to prevent race conditions with live updates
+    private var historyLoadInProgress = Set<String>()
+    /// Queues pending message updates during history load
+    private var pendingMessageUpdates = [String: [()] -> Void]()
+
+    /// Check if history is currently loading for a session
+    private func isHistoryLoadingForSession(_ sessionId: String?) -> Bool {
+        let key = sessionId ?? "supervisor"
+        return historyLoadInProgress.contains(key)
+    }
+
+    /// Mark history load as in progress
+    private func markHistoryLoadStart(_ sessionId: String?) {
+        let key = sessionId ?? "supervisor"
+        historyLoadInProgress.insert(key)
+    }
+
+    /// Mark history load as complete and process pending updates
+    private func markHistoryLoadEnd(_ sessionId: String?) {
+        let key = sessionId ?? "supervisor"
+        historyLoadInProgress.remove(key)
+
+        // Process pending updates
+        if let pending = pendingMessageUpdates.removeValue(forKey: key) {
+            pending()
+        }
+    }
+
+    /// Queue a message update to be processed after history load completes
+    private func queueMessageUpdate(_ sessionId: String?, _ update: @escaping () -> Void) {
+        let key = sessionId ?? "supervisor"
+        var pending = pendingMessageUpdates[key] ?? { }
+        let oldPending = pending
+        pending = {
+            oldPending()
+            update()
+        }
+        pendingMessageUpdates[key] = pending
+    }
+
     // MARK: - Dependencies
 
     let session: Session
@@ -309,6 +351,14 @@ final class ChatViewModel: ObservableObject {
 
     /// Restore agent message history from session.subscribed response
     private func restoreHistoryFromSubscription(_ history: [[String: Any]], sessionId: String) {
+        // Mark history load in progress to prevent race with live updates
+        markHistoryLoadStart(sessionId)
+
+        defer {
+            // Mark history load complete and process pending updates
+            markHistoryLoadEnd(sessionId)
+        }
+
         // Sort history by sequence to ensure correct order
         let sortedHistory = history.sorted { item1, item2 in
             let seq1 = item1["sequence"] as? Int ?? 0
