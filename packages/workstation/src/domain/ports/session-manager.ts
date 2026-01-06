@@ -84,7 +84,7 @@ export interface SessionManager {
   /**
    * Gets backlog managers for supervisor tools.
    */
-  getBacklogManagers?.(): Map<string, any>;
+  getBacklogManagers?(): Map<string, any>;
 }
 
 /**
