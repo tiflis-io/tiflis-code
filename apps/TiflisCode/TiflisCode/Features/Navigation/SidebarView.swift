@@ -270,6 +270,7 @@ struct CreateSessionSheet: View {
     @State private var selectedWorkspace: String = ""
     @State private var selectedProject: String = ""
     @State private var isTerminal: Bool = false
+    @State private var isBacklog: Bool = false
 
     /// Get available projects for the selected workspace
     private var availableProjects: [ProjectConfig] {
@@ -355,6 +356,36 @@ struct CreateSessionSheet: View {
     private var realModeContent: some View {
         Form {
             Section("Session Type") {
+                // Agent options (base + aliases)
+                ForEach(agentOptions) { agent in
+                    AgentTypeRow(
+                        name: agent.isAlias ? "\(agent.name) (\(agent.baseType))" : agent.name.capitalized,
+                        type: agent.sessionType,
+                        isAlias: agent.isAlias,
+                        isSelected: !isTerminal && !isBacklog && selectedAgent?.name == agent.name
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        isTerminal = false
+                        isBacklog = false
+                        selectedAgent = agent
+                    }
+                }
+
+                // Backlog Agent option
+                AgentTypeRow(
+                    name: "Backlog",
+                    type: .backlogAgent,
+                    isAlias: false,
+                    isSelected: !isTerminal && isBacklog
+                )
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    isTerminal = false
+                    isBacklog = true
+                    selectedAgent = nil
+                }
+
                 // Terminal option
                 AgentTypeRow(
                     name: "Terminal",
@@ -365,22 +396,8 @@ struct CreateSessionSheet: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     isTerminal = true
+                    isBacklog = false
                     selectedAgent = nil
-                }
-
-                // Agent options (base + aliases)
-                ForEach(agentOptions) { agent in
-                    AgentTypeRow(
-                        name: agent.isAlias ? "\(agent.name) (\(agent.baseType))" : agent.name.capitalized,
-                        type: agent.sessionType,
-                        isAlias: agent.isAlias,
-                        isSelected: !isTerminal && selectedAgent?.name == agent.name
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        isTerminal = false
-                        selectedAgent = agent
-                    }
                 }
             }
 
@@ -421,6 +438,13 @@ struct CreateSessionSheet: View {
                             workspace: nil,
                             project: nil
                         )
+                    } else if isBacklog {
+                        appState.createSession(
+                            type: .backlogAgent,
+                            agentName: nil,
+                            workspace: selectedWorkspace.isEmpty ? nil : selectedWorkspace,
+                            project: selectedProject.isEmpty ? nil : selectedProject
+                        )
                     } else if let agent = selectedAgent {
                         appState.createSession(
                             type: agent.sessionType,
@@ -431,7 +455,15 @@ struct CreateSessionSheet: View {
                     }
                     dismiss()
                 }
-                .disabled(!isTerminal && (selectedAgent == nil || selectedWorkspace.isEmpty || selectedProject.isEmpty))
+                .disabled({
+                    if isTerminal {
+                        return false
+                    } else if isBacklog {
+                        return selectedWorkspace.isEmpty || selectedProject.isEmpty
+                    } else {
+                        return selectedAgent == nil || selectedWorkspace.isEmpty || selectedProject.isEmpty
+                    }
+                }())
             }
         }
         .onChange(of: selectedWorkspace) { _, _ in
@@ -440,7 +472,7 @@ struct CreateSessionSheet: View {
         }
         .onAppear {
             // Select first agent by default if available
-            if let firstAgent = agentOptions.first, selectedAgent == nil && !isTerminal {
+            if let firstAgent = agentOptions.first, selectedAgent == nil && !isTerminal && !isBacklog {
                 selectedAgent = firstAgent
             }
         }
