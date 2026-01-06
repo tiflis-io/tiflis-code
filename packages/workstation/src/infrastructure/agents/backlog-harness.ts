@@ -60,16 +60,19 @@ export class BacklogHarness extends EventEmitter {
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
   private startTime: number = 0;
+  private selectedAgent: string;
 
   constructor(
     backlog: Backlog,
     workingDir: string,
+    selectedAgent: string,
     agentSessionManager: AgentSessionManager,
     logger: Logger
   ) {
     super();
     this.backlog = backlog;
     this.workingDir = workingDir;
+    this.selectedAgent = selectedAgent;
     this.agentSessionManager = agentSessionManager;
     this.logger = logger;
   }
@@ -268,37 +271,29 @@ export class BacklogHarness extends EventEmitter {
     // Create a prompt for the coding agent based on task
     const prompt = this.buildTaskPrompt(task);
 
-    // Find or create agent session
-    let sessionId: string;
-    const existingSessions = this.agentSessionManager.listSessions();
-    const agentSession = existingSessions.find(
-      (s) => s.agentType === this.backlog.agent && s.workingDir === this.workingDir
+    // Create a unique session for this specific task iteration
+    const taskIndex = this.backlog.tasks.findIndex((t) => t.id === task.id) + 1;
+    const totalTasks = this.backlog.tasks.length;
+    const taskSessionId = `backlog-${this.backlog.id}-task-${task.id}`;
+    const taskAgentName = `Task ${taskIndex}/${totalTasks}: ${task.title}`;
+
+    this.logger.info(
+      { sessionId: taskSessionId, agent: this.selectedAgent, taskIndex, totalTasks },
+      'Creating new agent session for task iteration'
     );
 
-    if (agentSession) {
-      sessionId = agentSession.sessionId;
-      this.logger.debug(
-        { sessionId, agent: this.backlog.agent, workingDir: this.workingDir },
-        'Using existing agent session for task'
-      );
-    } else {
-      // Create a new agent session if one doesn't exist
-      this.logger.info(
-        { agent: this.backlog.agent, workingDir: this.workingDir },
-        'Creating new agent session for backlog task execution'
-      );
-      const newSession = this.agentSessionManager.createSession(
-        this.backlog.agent as any,
-        this.workingDir,
-        `backlog-${this.backlog.id}`,
-        this.backlog.agent
-      );
-      sessionId = newSession.sessionId;
-      this.logger.info(
-        { sessionId, agent: this.backlog.agent, workingDir: this.workingDir },
-        'Created new agent session for task'
-      );
-    }
+    const newSession = this.agentSessionManager.createSession(
+      this.selectedAgent as any,
+      this.workingDir,
+      taskSessionId,
+      taskAgentName
+    );
+    const sessionId = newSession.sessionId;
+
+    this.logger.info(
+      { sessionId, agent: this.selectedAgent, taskIndex, taskTitle: task.title },
+      'Created new agent session for task'
+    );
 
     // Execute command
     await new Promise<void>((resolve, reject) => {
@@ -538,15 +533,17 @@ Do NOT write "Task complete" or similar - just commit your code and include the 
 
   /**
    * Load backlog from file.
+   * @param selectedAgent - The agent type to use for harness execution
    */
   static loadFromFile(
     path: string,
+    selectedAgent: string,
     agentSessionManager: AgentSessionManager,
     logger: Logger
   ): BacklogHarness {
     const content = readFileSync(path, 'utf-8');
     const backlog = JSON.parse(content) as Backlog;
     const workingDir = path.substring(0, path.lastIndexOf('/'));
-    return new BacklogHarness(backlog, workingDir, agentSessionManager, logger);
+    return new BacklogHarness(backlog, workingDir, selectedAgent, agentSessionManager, logger);
   }
 }

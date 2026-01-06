@@ -28,6 +28,8 @@ export class BacklogAgentManager extends EventEmitter {
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
   private llmAgent: BacklogAgent;
+  private selectedAgent: string | null = null;
+  private agentSelectionInProgress: boolean = false;
 
   constructor(
     session: BacklogAgentSession,
@@ -54,6 +56,8 @@ export class BacklogAgentManager extends EventEmitter {
         listTasks: () => this.listTasksBlocks(),
         addTask: (title: string, description: string) =>
           this.addTaskCommand({ title, description }),
+        getAvailableAgents: () => this.getAvailableAgentsData(),
+        parseAgentSelection: (userResponse: string) => this.parseAgentSelectionData(userResponse),
       },
       logger
     );
@@ -95,9 +99,19 @@ export class BacklogAgentManager extends EventEmitter {
    * For MVP, this is a simple command processor that:
    * - Parses user intent (start_harness, add_task, get_status, etc.)
    * - Returns appropriate response
+   * - Handles agent selection if in progress
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
     this.conversationHistory.push({ role: 'user', content: userMessage });
+
+    // If agent selection is in progress, handle it first
+    if (this.agentSelectionInProgress && !this.selectedAgent) {
+      const selectionBlocks = await this.handleAgentSelection(userMessage);
+      const responseText = selectionBlocks.map((b: any) => b.content).join('\n');
+      this.conversationHistory.push({ role: 'assistant', content: responseText });
+      this.saveBacklog();
+      return selectionBlocks;
+    }
 
     // Use LLM agent to execute command (understands natural language)
     const blocks = await this.llmAgent.executeCommand(userMessage);
@@ -157,6 +171,7 @@ export class BacklogAgentManager extends EventEmitter {
 
   /**
    * Start harness execution.
+   * If agent not selected yet, ask user first.
    */
   private async startHarnessCommand(): Promise<ContentBlock[]> {
     if (this.harness) {
@@ -182,10 +197,141 @@ export class BacklogAgentManager extends EventEmitter {
       ];
     }
 
-    // Create harness
+    // If agent not selected yet, ask user first
+    if (!this.selectedAgent && !this.agentSelectionInProgress) {
+      return this.askForAgentSelection();
+    }
+
+    // If selection is in progress, wait for user response
+    if (this.agentSelectionInProgress) {
+      return [
+        {
+          id: 'agent-selection-pending',
+          block_type: 'status',
+          content: '⏳ Waiting for you to select an agent...',
+          metadata: { status: 'agent_selection_pending' },
+        },
+      ];
+    }
+
+    // Otherwise, proceed with harness creation
+    return this.createAndStartHarness();
+  }
+
+  /**
+   * Ask user which agent to use for harness execution.
+   */
+  private askForAgentSelection(): ContentBlock[] {
+    this.agentSelectionInProgress = true;
+
+    const agents = this.agentSessionManager.getAvailableAgents ?
+      Array.from(this.agentSessionManager.getAvailableAgents().values()) :
+      [];
+
+    const agentList = agents
+      .map((a) => `• **${a.name}**${a.isAlias ? ' (alias)' : ''}: ${a.description}`)
+      .join('\n');
+
+    const question = `
+🤖 **Select a coding agent** to execute the harness tasks:
+
+${agentList}
+
+Please respond with the agent name you'd like to use (e.g., "claude", "cursor", or your alias name).
+    `.trim();
+
+    return [
+      {
+        id: 'agent-selection-question',
+        block_type: 'text',
+        content: question,
+      },
+    ];
+  }
+
+  /**
+   * Handle user's agent selection response.
+   */
+  private async handleAgentSelection(userMessage: string): Promise<ContentBlock[]> {
+    // Try to parse the user's response
+    const availableAgents = this.agentSessionManager.getAvailableAgents ?
+      this.agentSessionManager.getAvailableAgents() :
+      new Map();
+
+    const agentNames = Array.from(availableAgents.keys());
+    const lowerMessage = userMessage.toLowerCase();
+
+    // Simple fuzzy matching - find agent name in user response
+    let selectedAgent: string | null = null;
+    for (const agentName of agentNames) {
+      if (lowerMessage.includes(agentName.toLowerCase())) {
+        selectedAgent = agentName;
+        break;
+      }
+    }
+
+    if (!selectedAgent) {
+      // No valid agent found - show available agents again
+      const agentList = agentNames
+        .map((name) => {
+          const config = availableAgents.get(name);
+          return `• **${name}**${config?.isAlias ? ' (alias)' : ''}: ${config?.description || ''}`;
+        })
+        .join('\n');
+
+      return [
+        {
+          id: 'agent-selection-invalid',
+          block_type: 'text',
+          content: `❌ I didn't recognize that agent name. Here are the available options:\n\n${agentList}\n\nPlease try again.`,
+        },
+      ];
+    }
+
+    // Agent selected successfully
+    this.selectedAgent = selectedAgent;
+    this.agentSelectionInProgress = false;
+
+    const selectedConfig = availableAgents.get(selectedAgent);
+    const confirmation = `✅ Great! I'll use **${selectedAgent}**${selectedConfig?.isAlias ? ' (alias)' : ''} to execute the tasks.
+
+Now starting the harness...`;
+
+    // Return confirmation and then create/start harness
+    const confirmationBlocks: ContentBlock[] = [
+      {
+        id: 'agent-selection-confirmed',
+        block_type: 'status',
+        content: confirmation,
+        metadata: { status: 'agent_selected' },
+      },
+    ];
+
+    // Trigger harness creation
+    const harnessBlocks = await this.createAndStartHarness();
+
+    return [...confirmationBlocks, ...harnessBlocks];
+  }
+
+  /**
+   * Create and start the harness with selected agent.
+   */
+  private async createAndStartHarness(): Promise<ContentBlock[]> {
+    if (!this.selectedAgent) {
+      return [
+        {
+          id: 'no-agent-selected',
+          block_type: 'error',
+          content: '❌ No agent selected. Please select an agent first.',
+        },
+      ];
+    }
+
+    // Create harness with selected agent
     this.harness = new BacklogHarness(
       this.backlog,
       this.workingDir,
+      this.selectedAgent,
       this.agentSessionManager,
       this.logger
     );
@@ -193,6 +339,12 @@ export class BacklogAgentManager extends EventEmitter {
     // Forward harness events
     this.harness.on('output', (blocks: ContentBlock[]) => {
       this.emit('output', blocks);
+    });
+
+    // Reset agent selection when harness completes
+    this.harness.on('harness-completed', () => {
+      this.selectedAgent = null;
+      this.agentSelectionInProgress = false;
     });
 
     this.session.setHarnessRunning(true);
@@ -212,6 +364,8 @@ export class BacklogAgentManager extends EventEmitter {
     });
 
     const worktreeDisplay = this.backlog.worktree || 'main';
+    const pendingCount = this.backlog.tasks.filter((t) => t.status === 'pending').length;
+    const inProgressCount = this.backlog.tasks.filter((t) => t.status === 'in_progress').length;
     const tasksInfo = inProgressCount > 0
       ? `${inProgressCount} task(s) in progress, ${pendingCount} pending`
       : `${pendingCount} task(s) to execute`;
@@ -232,7 +386,7 @@ export class BacklogAgentManager extends EventEmitter {
   }
 
   /**
-   * Stop harness execution.
+   * Stop harness execution and reset agent selection.
    */
   private stopHarnessCommand(): ContentBlock[] {
     if (!this.harness || !this.session.harnessRunning) {
@@ -248,11 +402,15 @@ export class BacklogAgentManager extends EventEmitter {
     this.harness.stop();
     this.session.setHarnessRunning(false);
 
+    // Reset agent selection when harness is stopped
+    this.selectedAgent = null;
+    this.agentSelectionInProgress = false;
+
     return [
       {
         id: 'harness-stopped',
         block_type: 'status',
-        content: '⏹️ Harness stopped.',
+        content: '⏹️ Harness stopped. Agent selection reset.',
         metadata: { status: 'harness_stopped' },
       },
     ];
@@ -508,6 +666,59 @@ ${tasksList}
     params.title = message.trim();
     params.description = '';
     return { type: 'add_task', params };
+  }
+
+  /**
+   * Get available agents data for the tools context.
+   */
+  private getAvailableAgentsData(): Promise<Array<{ name: string; description: string; isAlias: boolean }>> {
+    const availableAgents = this.agentSessionManager.getAvailableAgents ?
+      this.agentSessionManager.getAvailableAgents() :
+      new Map();
+
+    const agents = Array.from(availableAgents.values()).map((config) => ({
+      name: config.name,
+      description: config.description,
+      isAlias: config.isAlias,
+    }));
+
+    return Promise.resolve(agents);
+  }
+
+  /**
+   * Parse agent selection from user response.
+   */
+  private parseAgentSelectionData(userResponse: string): Promise<{ agentName: string | null; valid: boolean; message: string }> {
+    const availableAgents = this.agentSessionManager.getAvailableAgents ?
+      this.agentSessionManager.getAvailableAgents() :
+      new Map();
+
+    const agentNames = Array.from(availableAgents.keys());
+    const lowerResponse = userResponse.toLowerCase();
+
+    // Find agent name in user response
+    let selectedAgent: string | null = null;
+    for (const agentName of agentNames) {
+      if (lowerResponse.includes(agentName.toLowerCase())) {
+        selectedAgent = agentName;
+        break;
+      }
+    }
+
+    if (!selectedAgent) {
+      const availableList = agentNames.join(', ');
+      return Promise.resolve({
+        agentName: null,
+        valid: false,
+        message: `Invalid agent. Available agents: ${availableList}`,
+      });
+    }
+
+    return Promise.resolve({
+      agentName: selectedAgent,
+      valid: true,
+      message: `Selected agent: ${selectedAgent}`,
+    });
   }
 
   /**

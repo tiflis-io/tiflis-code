@@ -18,6 +18,8 @@ export interface BacklogToolsContext {
   resumeHarness: () => ContentBlock[];
   listTasks: () => ContentBlock[];
   addTask: (title: string, description: string) => ContentBlock[];
+  getAvailableAgents: () => Promise<Array<{ name: string; description: string; isAlias: boolean }>>;
+  parseAgentSelection: (userResponse: string) => Promise<{ agentName: string | null; valid: boolean; message: string }>;
 }
 
 /**
@@ -111,5 +113,34 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
     }
   );
 
-  return [getStatus, startHarness, stopHarness, pauseHarness, resumeHarness, listTasks, addTask];
+  const getAvailableAgents = tool(
+    async () => {
+      const agents = await context.getAvailableAgents();
+      const agentsList = agents
+        .map((a) => `- ${a.name}${a.isAlias ? ' (alias)' : ''}: ${a.description}`)
+        .join('\n');
+      return `Available agents:\n${agentsList}`;
+    },
+    {
+      name: 'get_available_agents',
+      description: 'Get list of all available coding agents (base agents and custom aliases)',
+      schema: z.object({}),
+    }
+  );
+
+  const parseAgentSelection = tool(
+    async ({ userResponse }: { userResponse: string }) => {
+      const result = await context.parseAgentSelection(userResponse);
+      return `Agent selection result: ${result.valid ? `Selected agent: ${result.agentName}` : result.message}`;
+    },
+    {
+      name: 'parse_agent_selection',
+      description: 'Parse user response to extract selected agent name and validate it against available agents',
+      schema: z.object({
+        userResponse: z.string().describe('The user response containing agent selection'),
+      }),
+    }
+  );
+
+  return [getStatus, startHarness, stopHarness, pauseHarness, resumeHarness, listTasks, addTask, getAvailableAgents, parseAgentSelection];
 }
