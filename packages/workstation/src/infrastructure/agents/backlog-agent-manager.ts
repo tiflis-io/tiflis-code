@@ -46,6 +46,7 @@ export class BacklogAgentManager extends EventEmitter {
     this.logger = logger;
 
     // Initialize LLM-based agent with tools context
+    // Now uses streaming mode from LangGraphAgent base class
     this.llmAgent = new BacklogAgent(
       {
         getStatus: () => this.getStatusBlocks(),
@@ -59,6 +60,7 @@ export class BacklogAgentManager extends EventEmitter {
         getAvailableAgents: () => this.getAvailableAgentsData(),
         parseAgentSelection: (userResponse: string) => this.parseAgentSelectionData(userResponse),
       },
+      workingDir,
       logger
     );
   }
@@ -94,11 +96,14 @@ export class BacklogAgentManager extends EventEmitter {
   }
 
   /**
-   * Process user command (simulate LLM interaction).
+   * Process user command using streaming LLM execution.
    *
-   * For MVP, this is a simple command processor that:
+   * This method now uses the unified streaming mode from LangGraphAgent
+   * which emits blocks in real-time to all connected clients.
+   *
+   * For MVP, the command processor:
    * - Parses user intent (start_harness, add_task, get_status, etc.)
-   * - Returns appropriate response
+   * - Returns appropriate response through LLM streaming
    * - Handles agent selection if in progress
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
@@ -113,17 +118,30 @@ export class BacklogAgentManager extends EventEmitter {
       return selectionBlocks;
     }
 
-    // Use LLM agent to execute command (understands natural language)
-    const blocks = await this.llmAgent.executeCommand(userMessage);
+    // Use LLM agent with streaming (emits blocks through EventEmitter)
+    // This is now unified with SupervisorAgent streaming
+    let streamedBlocks: ContentBlock[] = [];
 
-    // Record response in history
-    const responseText = blocks.map((b: any) => b.content).join('\n');
-    this.conversationHistory.push({ role: 'assistant', content: responseText });
+    // Listen to streaming blocks
+    const blockHandler = (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
+      streamedBlocks.push(...blocks);
+      if (isComplete && finalOutput) {
+        this.conversationHistory.push({ role: 'assistant', content: finalOutput });
+        this.saveBacklog();
+      }
+    };
 
-    // Save state
-    this.saveBacklog();
+    this.llmAgent.on('blocks', blockHandler);
 
-    return blocks;
+    try {
+      // Execute with streaming (blocks are emitted, not returned directly)
+      // Using deviceId 'backlog-manager' for internal streaming
+      await this.llmAgent.executeWithStream(userMessage, 'backlog-manager');
+    } finally {
+      this.llmAgent.removeListener('blocks', blockHandler);
+    }
+
+    return streamedBlocks;
   }
 
   /**

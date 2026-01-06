@@ -4,16 +4,15 @@
  * @license FSL-1.1-NC
  *
  * LangGraph-based Backlog Agent for executing backlog commands.
+ * Extends LangGraphAgent base class for unified streaming and state management.
  */
 
-import { ChatOpenAI } from '@langchain/openai';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { HumanMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
 import type { StructuredToolInterface } from '@langchain/core/tools';
-import { getEnv } from '../../config/env.js';
+import type { AgentStateManager } from '../../domain/ports/agent-state-manager.js';
+import { LangGraphAgent } from './base/lang-graph-agent.js';
+import { BacklogStateManager } from './base/backlog-state-manager.js';
 import { createBacklogAgentTools, type BacklogToolsContext } from './backlog-agent-tools.js';
-import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 
 /**
  * System prompt for the backlog agent.
@@ -52,161 +51,48 @@ Be helpful and informative. Always confirm actions and provide status updates.`;
 
 /**
  * LangGraph-based Backlog Agent.
+ *
+ * Extends LangGraphAgent to inherit:
+ * - Unified streaming execution via executeWithStream()
+ * - Conversation history management
+ * - Cancellation support
+ * - Event emission to all clients
+ *
+ * Provides streaming execution for autonomous backlog task completion
+ * with real-time progress updates to all connected clients.
  */
-export class BacklogAgent {
-  private readonly logger: Logger;
-  private agent: ReturnType<typeof createReactAgent> | null = null;
+export class BacklogAgent extends LangGraphAgent {
   private readonly toolsContext: BacklogToolsContext;
-  private initializationError: Error | null = null;
+  private readonly workingDir: string;
 
-  constructor(toolsContext: BacklogToolsContext, logger: Logger) {
-    this.logger = logger.child({ component: 'BacklogAgent' });
+  constructor(toolsContext: BacklogToolsContext, workingDir: string, logger: Logger) {
+    super(logger);
     this.toolsContext = toolsContext;
+    this.workingDir = workingDir;
 
-    // Defer agent initialization to first use to avoid blocking session restoration
+    // Initialize the LangGraph agent with tools
     this.initializeAgent();
   }
 
   /**
-   * Initializes the agent lazily on first use.
+   * Implements abstract method: build system prompt for Backlog Agent.
    */
-  private initializeAgent(): void {
-    if (this.agent || this.initializationError) {
-      return; // Already initialized or failed
-    }
-
-    try {
-      // Create LLM
-      const env = getEnv();
-      const llm = this.createLLM(env);
-
-      // Create tools
-      const tools: StructuredToolInterface[] = createBacklogAgentTools(this.toolsContext);
-
-      this.logger.info({ toolCount: tools.length }, 'Creating Backlog Agent with tools');
-
-      // Create LangGraph ReAct agent with max iterations to prevent infinite loops
-      this.agent = createReactAgent({
-        llm,
-        tools,
-        maxIterations: 5,
-      });
-    } catch (error) {
-      this.initializationError = error instanceof Error ? error : new Error(String(error));
-      this.logger.error({ error: this.initializationError }, 'Failed to initialize BacklogAgent');
-    }
+  protected buildSystemPrompt(): string {
+    return BACKLOG_AGENT_SYSTEM_PROMPT;
   }
 
   /**
-   * Creates the LLM instance based on configuration.
+   * Implements abstract method: create tools for Backlog Agent.
    */
-  private createLLM(env: ReturnType<typeof getEnv>): ChatOpenAI {
-    const provider = env.AGENT_PROVIDER;
-    const apiKey = env.AGENT_API_KEY;
-    const modelName = env.AGENT_MODEL_NAME;
-    const baseUrl = env.AGENT_BASE_URL;
-    const temperature = env.AGENT_TEMPERATURE;
-
-    if (!apiKey) {
-      throw new Error('AGENT_API_KEY is required for Backlog Agent');
-    }
-
-    this.logger.info({ provider, model: modelName }, 'Initializing LLM for Backlog Agent');
-
-    return new ChatOpenAI({
-      openAIApiKey: apiKey,
-      modelName,
-      temperature,
-      configuration: baseUrl
-        ? {
-            baseURL: baseUrl,
-          }
-        : undefined,
-    });
+  protected createTools(): StructuredToolInterface[] {
+    return createBacklogAgentTools(this.toolsContext);
   }
 
   /**
-   * Executes a command through the backlog agent.
+   * Implements abstract method: create state manager for Backlog Agent.
+   * Uses file-backed persistence for backlog state and conversation history.
    */
-  async executeCommand(userMessage: string): Promise<ContentBlock[]> {
-    // Ensure agent is initialized
-    this.initializeAgent();
-
-    // Check for initialization errors
-    if (this.initializationError) {
-      this.logger.error(
-        { error: this.initializationError.message },
-        'Cannot execute command - agent initialization failed'
-      );
-      return [
-        {
-          id: 'backlog-error',
-          block_type: 'error',
-          content: `Failed to initialize backlog agent: ${this.initializationError.message}`,
-        },
-      ];
-    }
-
-    if (!this.agent) {
-      this.logger.error('Agent is not initialized after initialization attempt');
-      return [
-        {
-          id: 'backlog-error',
-          block_type: 'error',
-          content: 'Backlog agent is not initialized',
-        },
-      ];
-    }
-
-    try {
-      // Build messages
-      const messages: BaseMessage[] = [
-        {
-          type: 'system',
-          content: BACKLOG_AGENT_SYSTEM_PROMPT,
-        } as any,
-        new HumanMessage(userMessage),
-      ];
-
-      // Execute the agent with timeout (30 seconds max)
-      const timeoutPromise = new Promise<{ messages: BaseMessage[] }>((_, reject) =>
-        setTimeout(() => reject(new Error('Backlog agent execution timeout (30s)')), 30000)
-      );
-
-      const result = (await Promise.race([
-        this.agent.invoke({ messages }),
-        timeoutPromise,
-      ])) as { messages: BaseMessage[] };
-
-      // Extract the final response
-      const agentMessages = result.messages;
-      const lastMessage = agentMessages[agentMessages.length - 1];
-      const content = lastMessage?.content;
-      const output =
-        typeof content === 'string'
-          ? content
-          : JSON.stringify(content);
-
-      this.logger.debug({ output: output.slice(0, 200) }, 'Backlog command completed via LLM');
-
-      // Return as content block
-      return [
-        {
-          id: 'backlog-response',
-          block_type: 'text',
-          content: output,
-        },
-      ];
-    } catch (error) {
-      this.logger.error({ error, message: userMessage }, 'Backlog command failed via LLM');
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      return [
-        {
-          id: 'backlog-error',
-          block_type: 'error',
-          content: `Error: ${errorMessage}`,
-        },
-      ];
-    }
+  protected createStateManager(): AgentStateManager {
+    return new BacklogStateManager(this.workingDir, this.logger);
   }
 }
