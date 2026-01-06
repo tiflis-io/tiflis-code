@@ -138,7 +138,7 @@ export class SessionReplayService {
         payload: message,
       };
 
-      this.messageBroadcaster.broadcastToSubscribers(sessionId, JSON.stringify(event));
+      await this.messageBroadcaster.broadcastToSubscribers(sessionId, JSON.stringify(event));
 
       if (delayMs > 0) {
         await this.delay(delayMs);
@@ -156,7 +156,7 @@ export class SessionReplayService {
       },
     };
 
-    this.messageBroadcaster.broadcastToSubscribers(sessionId, JSON.stringify(completeEvent));
+    await this.messageBroadcaster.broadcastToSubscribers(sessionId, JSON.stringify(completeEvent));
   }
 
   /**

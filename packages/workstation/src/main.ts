@@ -1898,14 +1898,20 @@ async function bootstrap(): Promise<void> {
               is_complete: true,
             },
           };
-          await messageBroadcaster.broadcastToSubscribers(
+          void messageBroadcaster.broadcastToSubscribers(
             sessionId,
             JSON.stringify(cancelOutput)
-          );
-          logger.info(
-            { sessionId },
-            "Broadcasted cancel message to subscribers"
-          );
+          ).then(() => {
+            logger.info(
+              { sessionId },
+              "Broadcasted cancel message to subscribers"
+            );
+          }).catch((error: unknown) => {
+            logger.error(
+              { sessionId, error },
+              "Failed to broadcast cancel message"
+            );
+          });
 
           // Persist cancellation message to database for history sync
           chatHistoryService.saveAgentMessage(sessionId, "assistant", "", [
@@ -3049,7 +3055,8 @@ async function bootstrap(): Promise<void> {
     const batcher = new TerminalOutputBatcher({
       batchIntervalMs: env.TERMINAL_BATCH_INTERVAL_MS,
       maxBatchSize: env.TERMINAL_BATCH_MAX_SIZE,
-      onFlush: async (batchedData: string) => {
+      onFlush: (batchedData: string) => {
+        void (async () => {
         // Add batched output to buffer and get sequence number
         const outputMessage = session.addOutputToBuffer(batchedData);
 
@@ -3068,6 +3075,7 @@ async function bootstrap(): Promise<void> {
           sessionId.value,
           JSON.stringify(outputEvent)
         );
+        })();
       },
     });
 

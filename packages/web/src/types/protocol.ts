@@ -208,6 +208,7 @@ export interface SupervisorCommandMessage extends BaseMessage {
 export interface SupervisorOutputMessage extends BaseMessage {
   type: 'supervisor.output';
   streaming_message_id?: string; // Stable ID for deduplication across clients
+  sequence?: number; // Message sequence number for gap detection
   payload: {
     content_type: 'supervisor';
     content: string;
@@ -293,12 +294,12 @@ export interface SessionOutputMessage extends BaseMessage {
   type: 'session.output';
   session_id: string;
   streaming_message_id?: string; // Stable ID for deduplication across clients
+  sequence?: number; // Message sequence number for gap detection
   payload: {
     content_type: 'agent' | 'terminal' | 'transcription';
     content: string;
     content_blocks?: ServerContentBlock[];
     timestamp: number;
-    sequence?: number;
     is_complete?: boolean;
     audio?: string;
   };
