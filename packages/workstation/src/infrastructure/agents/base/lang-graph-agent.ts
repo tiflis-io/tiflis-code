@@ -87,7 +87,8 @@ export abstract class LangGraphAgent extends EventEmitter {
    * Called after successful execution completion.
    * Subclasses can override to perform agent-specific post-execution logic.
    */
-  protected async onExecutionComplete(blocks: ContentBlock[], finalOutput: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  protected async onExecutionComplete(_blocks: ContentBlock[], _finalOutput: string): Promise<void> {
     // Base implementation: do nothing
     // Subclasses override for custom behavior (e.g., BacklogAgent may persist to files)
   }

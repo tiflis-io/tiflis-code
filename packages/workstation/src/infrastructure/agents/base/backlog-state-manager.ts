@@ -11,7 +11,6 @@ import { existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import type { Logger } from 'pino';
 import type { AgentStateManager, ConversationEntry } from '../../../domain/ports/agent-state-manager.js';
-import type { Backlog } from '../../../domain/value-objects/backlog.js';
 
 /**
  * Implements state persistence for BacklogAgent.
