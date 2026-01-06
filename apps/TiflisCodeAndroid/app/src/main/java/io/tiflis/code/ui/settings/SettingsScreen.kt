@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -106,7 +107,7 @@ fun SettingsScreen(
                         headlineContent = { Text("Exit Demo Mode") },
                         leadingContent = {
                             Icon(
-                                Icons.Default.ExitToApp,
+                                Icons.AutoMirrored.Default.ExitToApp,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.error
                             )

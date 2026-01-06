@@ -83,7 +83,7 @@ final class ChatViewModel: ObservableObject {
     /// Tracks history loading state to prevent race conditions with live updates
     private var historyLoadInProgress = Set<String>()
     /// Queues pending message updates during history load
-    private var pendingMessageUpdates = [String: [()] -> Void]()
+    private var pendingMessageUpdates = [String: () -> Void]()
 
     /// Check if history is currently loading for a session
     private func isHistoryLoadingForSession(_ sessionId: String?) -> Bool {
