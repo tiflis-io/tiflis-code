@@ -145,9 +145,12 @@ export function createSessionTools(
           return `Error: Unknown agent "${agentName}". Available agents: ${available}`;
         }
 
-        // Normalize worktree: "main" means the project root, not a worktree directory
-        // This handles cases where LLM passes worktree: "main" instead of omitting it
-        const normalizedWorktree = worktree === 'main' ? undefined : worktree;
+        // Normalize worktree: "main" and "master" mean the project root, not a worktree directory
+        // This handles cases where LLM passes worktree: "main" or worktree: "master" instead of omitting it
+        let normalizedWorktree = worktree;
+        if (normalizedWorktree && (normalizedWorktree.toLowerCase() === 'main' || normalizedWorktree.toLowerCase() === 'master')) {
+          normalizedWorktree = undefined;
+        }
 
         // Resolve the working directory
         const workingDir = workspaceDiscovery.resolvePath(workspace, project, normalizedWorktree);
@@ -200,8 +203,12 @@ export function createSessionTools(
       worktree?: string;
     }) => {
       try {
-        // Normalize worktree: "main" means the project root, not a worktree directory
-        const normalizedWorktree = worktree === 'main' ? undefined : worktree;
+        // Normalize worktree: "main" and "master" mean the project root, not a worktree directory
+        // This handles cases where LLM passes worktree: "main" or worktree: "master" instead of omitting it
+        let normalizedWorktree = worktree;
+        if (normalizedWorktree && (normalizedWorktree.toLowerCase() === 'main' || normalizedWorktree.toLowerCase() === 'master')) {
+          normalizedWorktree = undefined;
+        }
 
         let workingDir: string;
 

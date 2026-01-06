@@ -61,7 +61,14 @@ export class CreateSessionUseCase {
    * Creates a new session.
    */
   async execute(params: CreateSessionParams): Promise<CreateSessionResult> {
-    const { requestId, sessionType, agentName, workspace, project, worktree, backlogAgent, backlogId } = params;
+    const { requestId, sessionType, agentName, workspace, project, worktree: rawWorktree, backlogAgent, backlogId } = params;
+
+    // Normalize worktree: treat "main" and "master" as undefined (no worktree suffix)
+    // This handles cases where LLM incorrectly passes worktree="main"
+    let worktree = rawWorktree;
+    if (worktree && (worktree.toLowerCase() === 'main' || worktree.toLowerCase() === 'master')) {
+      worktree = undefined;
+    }
 
     this.logger.info({ requestId, sessionType, agentName, workspace, project, worktree, backlogAgent, backlogId }, 'CreateSession execute called');
 

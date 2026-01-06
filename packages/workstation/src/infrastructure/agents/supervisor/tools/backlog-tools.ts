@@ -120,7 +120,7 @@ export function createBacklogTools(
             session_type: 'backlog-agent',
             workspace: args.workspace,
             project: args.project,
-            worktree: args.worktree,
+            worktree: normalizedWorktree,
             working_dir: workingDir,
           },
         }));
