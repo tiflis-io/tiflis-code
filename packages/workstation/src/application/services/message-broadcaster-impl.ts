@@ -89,10 +89,28 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     );
 
     if (authenticatedSubscribers.length === 0) {
+      // Log when no subscribers are found - helps diagnose delivery issues
+      // Parse message to get type for better debugging
+      let messageType = 'unknown';
+      try {
+        const parsed = JSON.parse(message);
+        messageType = parsed.type ?? 'unknown';
+      } catch {
+        // Ignore parse errors
+      }
+      this.logger.debug(
+        { sessionId, messageType, totalSubscribers: subscribers.length },
+        "No authenticated subscribers found for session"
+      );
       return;
     }
 
     const SEND_TIMEOUT_MS = 2000; // 2 seconds per client
+
+    this.logger.debug(
+      { sessionId, subscriberCount: authenticatedSubscribers.length },
+      "Broadcasting message to subscribers"
+    );
 
     // Send to all clients in parallel with timeout
     const sendPromises = authenticatedSubscribers.map(async (client) => {
@@ -136,6 +154,13 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     });
 
     // Wait for all sends to complete or timeout (don't fail on individual errors)
-    await Promise.allSettled(sendPromises);
+    const results = await Promise.allSettled(sendPromises);
+    const failedCount = results.filter(r => r.status === 'rejected').length;
+    if (failedCount > 0) {
+      this.logger.warn(
+        { sessionId, totalSubscribers: authenticatedSubscribers.length, failedCount },
+        "Some subscribers failed to receive message"
+      );
+    }
   }
 }

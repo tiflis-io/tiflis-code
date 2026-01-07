@@ -176,8 +176,10 @@ export class HandleDisconnectionUseCase {
     }
 
     // Check HTTP polling clients (watchOS)
-    // Use a longer timeout for HTTP clients since they poll less frequently
-    const httpTimeoutMs = timeoutMs * 4; // 4x the normal timeout (e.g., 3 minutes)
+    // Use slightly longer timeout for HTTP clients since they poll less frequently
+    // but need to detect dead clients quickly to avoid message loss
+    // 1.5x allows ~22 seconds (3 missed pings at ~5s intervals) before cleanup
+    const httpTimeoutMs = Math.ceil(timeoutMs * 1.5);
     if (this.httpClientRegistry) {
       const timedOutHttpClients = this.httpClientRegistry.findTimedOut(httpTimeoutMs);
       for (const httpClient of timedOutHttpClients) {

@@ -1213,7 +1213,7 @@ async function bootstrap(): Promise<void> {
     },
 
     // Clear supervisor conversation history (global)
-    "supervisor.clear_context": (socket, message) => {
+    "supervisor.clear_context": async (socket, message) => {
       const clearMessage = message as { id: string; device_id?: string };
 
       // Verify client is authenticated
@@ -1226,7 +1226,8 @@ async function bootstrap(): Promise<void> {
 
       if (isAuthenticated) {
         // Clear context (in-memory, persistent, and notifies all clients)
-        supervisorAgent.clearContext();
+        // CRITICAL: Must await to ensure all clearing is done before responding
+        await supervisorAgent.clearContext();
 
         sendToDevice(
           socket,

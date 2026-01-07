@@ -513,15 +513,30 @@ export class SupervisorAgent extends EventEmitter {
    * - Persistent history in database
    * - Notifies all connected clients
    */
-  clearContext(): void {
+  async clearContext(): Promise<void> {
+    this.logger.info({ isExecuting: this.isExecuting, isCancelled: this.isCancelled }, 'Starting context clear');
+
+    // If there's active execution, cancel it immediately
+    if (this.isExecuting || this.isProcessingCommand) {
+      this.logger.info('Active execution detected during context clear, aborting stream');
+      this.cancel();
+      // Give the stream a moment to stop processing
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+
     // Clear in-memory history
     this.conversationHistory = [];
     this.isCancelled = false;
 
-    // Clear persistent history
+    // Clear persistent history and wait for completion
     const chatHistoryService = this.getChatHistoryService?.();
     if (chatHistoryService) {
-      chatHistoryService.clearSupervisorHistory();
+      try {
+        await chatHistoryService.clearSupervisorHistory();
+        this.logger.debug('Persistent supervisor history cleared');
+      } catch (error) {
+        this.logger.error({ error }, 'Failed to clear persistent supervisor history');
+      }
     }
 
     // Notify all clients that context was cleared
@@ -531,7 +546,15 @@ export class SupervisorAgent extends EventEmitter {
         type: 'supervisor.context_cleared',
         payload: { timestamp: Date.now() },
       });
-      broadcaster.broadcastToAll(clearNotification);
+      try {
+        // Broadcast to all connected clients (fire-and-forget, but critical for UI sync)
+        broadcaster.broadcastToAll(clearNotification);
+        this.logger.info('Broadcast context cleared notification to all clients - clients should empty their message history');
+      } catch (error) {
+        this.logger.error({ error }, 'Failed to broadcast context cleared - clients may show stale messages');
+      }
+    } else {
+      this.logger.warn('MessageBroadcaster not available - context cleared but clients may not be notified');
     }
 
     this.logger.info('Supervisor context cleared (in-memory, persistent, and clients notified)');
