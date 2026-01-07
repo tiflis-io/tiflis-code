@@ -11,6 +11,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, AIMessage, isAIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
+import Mutex from 'async-lock';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
@@ -109,6 +110,15 @@ export class SupervisorAgent extends EventEmitter {
   private isProcessingCommand = false;
   /** Timestamp when current execution started (for race condition protection) */
   private executionStartedAt = 0;
+  /** FIX #9: Mutex for context clear synchronization */
+  private readonly clearContextLock = new Mutex();
+  private static readonly CLEAR_CONTEXT_TIMEOUT_MS = 10000; // 10 seconds
+  /** FIX #6: Broadcast acknowledgment tracking */
+  private broadcastAcknowledgments = new Map<string, {
+    deviceIds: Set<string>;
+    timestamp: number;
+    timeout: NodeJS.Timeout;
+  }>();
 
   constructor(config: SupervisorAgentConfig) {
     super();
@@ -508,56 +518,116 @@ export class SupervisorAgent extends EventEmitter {
   }
 
   /**
-   * Clears supervisor context completely:
-   * - In-memory conversation history
-   * - Persistent history in database
-   * - Notifies all connected clients
+   * Clears supervisor context completely with multi-device synchronization:
+   * - Acquires lock to prevent concurrent execution during clear
+   * - Cancels active execution streams
+   * - Clears in-memory conversation history
+   * - Clears persistent history in database
+   * - Broadcasts notification to all clients with ack tracking (FIX #6, #9)
    */
   async clearContext(): Promise<void> {
-    this.logger.info({ isExecuting: this.isExecuting, isCancelled: this.isCancelled }, 'Starting context clear');
+    // FIX #9: Use mutex to serialize clear operations and prevent concurrent execution
+    return this.clearContextLock.acquire('clear', async () => {
+      this.logger.info({ isExecuting: this.isExecuting }, 'Acquiring lock for context clear');
 
-    // If there's active execution, cancel it immediately
-    if (this.isExecuting || this.isProcessingCommand) {
-      this.logger.info('Active execution detected during context clear, aborting stream');
-      this.cancel();
-      // Give the stream a moment to stop processing
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
+      // If there's active execution, cancel it immediately
+      if (this.isExecuting || this.isProcessingCommand) {
+        this.logger.info('Active execution detected, cancelling before clear');
+        this.cancel();
+        // Give the stream a moment to stop processing
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
 
-    // Clear in-memory history
-    this.conversationHistory = [];
-    this.isCancelled = false;
+      // Clear in-memory history (protected by lock)
+      this.conversationHistory = [];
+      this.isCancelled = false;
 
-    // Clear persistent history and wait for completion
-    const chatHistoryService = this.getChatHistoryService?.();
-    if (chatHistoryService) {
-      try {
-        await chatHistoryService.clearSupervisorHistory();
-        this.logger.debug('Persistent supervisor history cleared');
-      } catch (error) {
-        this.logger.error({ error }, 'Failed to clear persistent supervisor history');
+      // Clear persistent history and wait for completion
+      const chatHistoryService = this.getChatHistoryService?.();
+      if (chatHistoryService) {
+        try {
+          await chatHistoryService.clearSupervisorHistory();
+          this.logger.debug('Persistent supervisor history cleared');
+        } catch (error) {
+          this.logger.error({ error }, 'Failed to clear persistent supervisor history');
+        }
+      }
+
+      // Notify all clients that context was cleared - with ack tracking (FIX #6)
+      const broadcaster = this.getMessageBroadcaster?.();
+      if (broadcaster) {
+        const broadcastId = `clear_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+        const clearNotification = JSON.stringify({
+          type: 'supervisor.context_cleared',
+          payload: { timestamp: Date.now(), broadcast_id: broadcastId },
+        });
+
+        try {
+          // Get list of subscribers for ack tracking
+          const clientRegistry = (broadcaster as any).deps?.clientRegistry;
+          let deviceIds: Set<string> = new Set();
+
+          if (clientRegistry && typeof clientRegistry.getAllClients === 'function') {
+            const allClients = clientRegistry.getAllClients();
+            if (allClients) {
+              allClients.forEach((client: any) => {
+                if (client.isAuthenticated) {
+                  deviceIds.add(client.deviceId.value);
+                }
+              });
+            }
+          }
+
+          // Track acknowledgments from devices (FIX #6)
+          if (deviceIds.size > 0) {
+            this.broadcastAcknowledgments.set(broadcastId, {
+              deviceIds,
+              timestamp: Date.now(),
+              timeout: setTimeout(() => {
+                const ack = this.broadcastAcknowledgments.get(broadcastId);
+                if (ack && ack.deviceIds.size > 0) {
+                  this.logger.warn({
+                    broadcastId,
+                    missingDevices: Array.from(ack.deviceIds),
+                  }, 'Context clear broadcast - missing acks from devices');
+                }
+                this.broadcastAcknowledgments.delete(broadcastId);
+              }, 5000), // 5 second timeout
+            });
+          }
+
+          // Broadcast to all connected clients
+          broadcaster.broadcastToAll(clearNotification);
+          this.logger.info({
+            broadcastId,
+            deviceCount: deviceIds.size,
+          }, 'Broadcasted context cleared notification to all clients');
+        } catch (error) {
+          this.logger.error({ error }, 'Failed to broadcast context cleared');
+        }
+      } else {
+        this.logger.warn('MessageBroadcaster not available');
+      }
+
+      this.logger.info('Supervisor context cleared (lock released)');
+    }, { timeout: SupervisorAgent.CLEAR_CONTEXT_TIMEOUT_MS });
+  }
+
+  /**
+   * FIX #6: Records acknowledgment from a device for context clear broadcast.
+   */
+  recordClearAck(broadcastId: string, deviceId: string): void {
+    const ack = this.broadcastAcknowledgments.get(broadcastId);
+    if (ack) {
+      ack.deviceIds.delete(deviceId);
+      this.logger.debug({ broadcastId, deviceId, remaining: ack.deviceIds.size }, 'Received clear ack');
+
+      if (ack.deviceIds.size === 0) {
+        clearTimeout(ack.timeout);
+        this.broadcastAcknowledgments.delete(broadcastId);
+        this.logger.info({ broadcastId }, 'All devices acknowledged context clear');
       }
     }
-
-    // Notify all clients that context was cleared
-    const broadcaster = this.getMessageBroadcaster?.();
-    if (broadcaster) {
-      const clearNotification = JSON.stringify({
-        type: 'supervisor.context_cleared',
-        payload: { timestamp: Date.now() },
-      });
-      try {
-        // Broadcast to all connected clients (fire-and-forget, but critical for UI sync)
-        broadcaster.broadcastToAll(clearNotification);
-        this.logger.info('Broadcast context cleared notification to all clients - clients should empty their message history');
-      } catch (error) {
-        this.logger.error({ error }, 'Failed to broadcast context cleared - clients may show stale messages');
-      }
-    } else {
-      this.logger.warn('MessageBroadcaster not available - context cleared but clients may not be notified');
-    }
-
-    this.logger.info('Supervisor context cleared (in-memory, persistent, and clients notified)');
   }
 
   /**

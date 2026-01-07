@@ -89,13 +89,23 @@ export class MobileClient {
 
   /**
    * Sends a message to the client.
+   * Returns false if send fails (socket error, not connected, etc.).
    */
   send(message: string): boolean {
     if (!this.isConnected || this._socket.readyState !== 1) {
       return false;
     }
-    this._socket.send(message);
-    return true;
+    try {
+      this._socket.send(message);
+      return true;
+    } catch (error) {
+      // Socket.send() can throw if:
+      // - Buffer is full (backpressure)
+      // - Connection is lost between readyState check and send
+      // - Memory allocation fails
+      // Return false to allow caller to handle retry/buffering
+      return false;
+    }
   }
 
   /**
