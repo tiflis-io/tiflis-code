@@ -8,6 +8,7 @@
  */
 
 import { execSync } from "child_process";
+import { existsSync } from "fs";
 
 /**
  * Cached shell environment after first retrieval.
@@ -15,10 +16,28 @@ import { execSync } from "child_process";
 let cachedShellEnv: NodeJS.ProcessEnv | null = null;
 
 /**
- * Gets the user's default shell from environment.
+ * Resolves the shell to use, validating it exists.
+ * Falls back through alternatives if primary shell is not available.
  */
-function getDefaultShell(): string {
-  return process.env.SHELL ?? "/bin/bash";
+function resolveShell(): string {
+  const primaryShell = process.env.SHELL;
+
+  // Try primary shell from SHELL environment variable
+  if (primaryShell && existsSync(primaryShell)) {
+    return primaryShell;
+  }
+
+  // Try common shell alternatives
+  const fallbackShells = ["/bin/zsh", "/bin/bash", "/bin/sh"];
+
+  for (const shell of fallbackShells) {
+    if (existsSync(shell)) {
+      return shell;
+    }
+  }
+
+  // Last resort: return /bin/bash
+  return "/bin/bash";
 }
 
 /**
@@ -36,7 +55,7 @@ export function getShellEnv(): NodeJS.ProcessEnv {
     return cachedShellEnv;
   }
 
-  const shell = getDefaultShell();
+  const shell = resolveShell();
   const isZsh = shell.includes("zsh");
   const isBash = shell.includes("bash");
 
@@ -103,9 +122,13 @@ export function getShellEnv(): NodeJS.ProcessEnv {
     // If shell env retrieval fails, fall back to process.env
     // This ensures the app still works even if shell sourcing fails
     console.warn(
-      "Failed to retrieve shell environment, using process.env:",
-      error instanceof Error ? error.message : String(error)
+      "Failed to retrieve shell environment from shell",
+      {
+        shell,
+        error: error instanceof Error ? error.message : String(error),
+      }
     );
+    console.warn("Using process.env as fallback");
     cachedShellEnv = { ...process.env };
     return cachedShellEnv;
   }
