@@ -54,6 +54,11 @@ export class TunnelClient {
   private registrationTimeout: NodeJS.Timeout | null = null;
   private messageBuffer: string[] = [];
 
+  /** FIX #3: Retry configuration for send operations */
+  private static readonly MAX_SEND_RETRIES = 3;
+  private static readonly SEND_RETRY_DELAY_MS = 100; // 100ms initial delay
+  private sendRetryMap = new Map<string, number>(); // Message ID -> attempt count
+
   constructor(config: TunnelClientConfig, callbacks: TunnelClientCallbacks) {
     this.config = config;
     this.callbacks = callbacks;
@@ -176,8 +181,9 @@ export class TunnelClient {
   }
 
   /**
-   * Sends a message to the tunnel (for forwarding to clients).
-   * Detects send failures and triggers reconnection.
+   * Sends a message to the tunnel (for forwarding to clients) with retry logic (FIX #3).
+   * Buffers during reconnection, retries on transient failures with exponential backoff.
+   * Returns true if send was successful or queued for retry.
    */
   send(message: string): boolean {
     if (this.state !== 'registered' || !this.ws) {
@@ -193,20 +199,59 @@ export class TunnelClient {
     if (this.ws.readyState !== WebSocket.OPEN) {
       this.logger.warn(
         { readyState: this.ws.readyState },
-        'Socket not open, triggering reconnection'
+        'Socket not open, buffering message and triggering reconnection'
       );
+      this.messageBuffer.push(message);
       this.handleSendFailure();
+      return true; // Will retry after reconnection
+    }
+
+    return this.sendWithRetry(message, 0);
+  }
+
+  /**
+   * FIX #3: Send with exponential backoff retry.
+   * On failure, schedules retry with exponential delay (100ms, 200ms, 400ms).
+   */
+  private sendWithRetry(message: string, attempt: number): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      if (attempt === 0) {
+        this.messageBuffer.push(message);
+      }
       return false;
     }
 
-    // Send with error callback to detect failures
-    this.ws.send(message, (error) => {
-      if (error) {
-        this.logger.error({ error }, 'Send failed, triggering reconnection');
-        this.handleSendFailure();
+    try {
+      this.ws.send(message, (error) => {
+        if (error) {
+          if (attempt < TunnelClient.MAX_SEND_RETRIES) {
+            const delay = TunnelClient.SEND_RETRY_DELAY_MS * Math.pow(2, attempt);
+            this.logger.debug(
+              { attempt: attempt + 1, delay, errorType: (error as Error).name },
+              'Send failed, scheduling retry with exponential backoff'
+            );
+
+            setTimeout(() => {
+              this.sendWithRetry(message, attempt + 1);
+            }, delay);
+          } else {
+            this.logger.error(
+              { error: (error as Error).message, attempts: attempt + 1 },
+              'Send failed after all retries, buffering message'
+            );
+            this.messageBuffer.push(message);
+            this.handleSendFailure();
+          }
+        }
+      });
+      return true;
+    } catch (error) {
+      this.logger.error({ error: (error as Error).message }, 'Unexpected error in send');
+      if (attempt === 0) {
+        this.messageBuffer.push(message);
       }
-    });
-    return true;
+      return false;
+    }
   }
 
   /**

@@ -2466,6 +2466,29 @@ async function bootstrap(): Promise<void> {
               logger,
               subscriptionService
             );
+          } else if (messageType === "supervisor.context_cleared.ack") {
+            // FIX #6: Handle supervisor context clear acknowledgments
+            // Device is acknowledging that it cleared context
+            try {
+              const ackData = data as {
+                payload?: { broadcast_id?: string; device_id?: string };
+              };
+              const broadcastId = ackData.payload?.broadcast_id;
+              const deviceId = ackData.payload?.device_id;
+
+              if (broadcastId && deviceId && supervisorAgent) {
+                supervisorAgent.recordClearAck(broadcastId, deviceId);
+                logger.debug(
+                  { broadcastId, deviceId },
+                  "Recorded context clear acknowledgment"
+                );
+              }
+            } catch (ackError) {
+              logger.warn(
+                { error: ackError, message: message.slice(0, 100) },
+                "Failed to process context clear acknowledgment"
+              );
+            }
           } else {
             // Route other message types through message router
             // For tunnel messages, we need to send responses via tunnelClient

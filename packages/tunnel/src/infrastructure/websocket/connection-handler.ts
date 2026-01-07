@@ -386,20 +386,47 @@ export class ConnectionHandler {
 
   /**
    * Handles WebSocket connection close.
+   *
+   * FIX #8: Ensures immediate removal from registries and atomic cleanup.
+   * When a socket closes, we must immediately remove the client/workstation
+   * from the registry to prevent:
+   * 1. Message routing to closed connections
+   * 2. Subscription duplicates on reconnect
+   * 3. Socket resource leaks
    */
   private handleClose(socket: WebSocket): void {
     const meta = this.meta.get(socket);
     if (!meta) return;
 
-    if (meta.role === "workstation" && meta.tunnelId) {
-      this.deps.handleDisconnection.handleWorkstationDisconnection(
-        TunnelId.create(meta.tunnelId)
-      );
-    } else if (meta.role === "client" && meta.deviceId) {
-      this.deps.handleDisconnection.handleClientDisconnection(meta.deviceId);
-    }
+    try {
+      if (meta.role === "workstation" && meta.tunnelId) {
+        this.logger.info(
+          { tunnelId: meta.tunnelId },
+          "Workstation socket closed - handling disconnection"
+        );
+        this.deps.handleDisconnection.handleWorkstationDisconnection(
+          TunnelId.create(meta.tunnelId)
+        );
+      } else if (meta.role === "client" && meta.deviceId) {
+        // FIX #8: Immediately remove from registry to prevent stale references
+        const removed = this.deps.clientRegistry.unregister(meta.deviceId);
+        this.logger.info(
+          { deviceId: meta.deviceId, removed },
+          "Client socket closed - removed from registry"
+        );
 
-    this.meta.delete(socket);
+        // Then handle disconnection (which may notify workstation)
+        this.deps.handleDisconnection.handleClientDisconnection(meta.deviceId);
+      }
+    } catch (error) {
+      this.logger.error(
+        { error, role: meta.role, deviceId: meta.deviceId },
+        "Error during socket close handling"
+      );
+    } finally {
+      // Always clean up metadata
+      this.meta.delete(socket);
+    }
   }
 
   /**
