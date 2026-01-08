@@ -247,6 +247,7 @@ export default function Home() {
         <div className="text-center">
           <h2 className="text-3xl font-bold mb-8">Created by</h2>
           <div className="inline-flex flex-col items-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/avatar.png"
               alt="Roman Barinov"

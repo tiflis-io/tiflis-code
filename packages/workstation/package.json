@@ -1,6 +1,6 @@
 {
   "name": "@tiflis-io/tiflis-code-workstation",
-  "version": "0.3.29",
+  "version": "0.3.30",
   "description": "Workstation server for tiflis-code - manages agent sessions and terminal access",
   "author": "Roman Barinov <rbarinov@gmail.com>",
   "license": "FSL-1.1-NC",
@@ -67,6 +67,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@types/async-lock": "^1.4.2",
     "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
     "@types/ws": "^8.5.13",

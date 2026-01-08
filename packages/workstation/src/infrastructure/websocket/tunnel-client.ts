@@ -54,10 +54,8 @@ export class TunnelClient {
   private registrationTimeout: NodeJS.Timeout | null = null;
   private messageBuffer: string[] = [];
 
-  /** FIX #3: Retry configuration for send operations */
   private static readonly MAX_SEND_RETRIES = 3;
-  private static readonly SEND_RETRY_DELAY_MS = 100; // 100ms initial delay
-  private sendRetryMap = new Map<string, number>(); // Message ID -> attempt count
+  private static readonly SEND_RETRY_DELAY_MS = 100;
 
   constructor(config: TunnelClientConfig, callbacks: TunnelClientCallbacks) {
     this.config = config;

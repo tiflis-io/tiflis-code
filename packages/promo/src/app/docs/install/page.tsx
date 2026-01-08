@@ -244,6 +244,7 @@ curl -fsSL https://code.tiflis.io/install-workstation.sh | bash`}</CodeBlock>
 
           <div className="flex flex-wrap gap-4 mt-6">
             <a href="#" className="hover:opacity-80 transition-opacity">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
                 alt="Download on the App Store"
@@ -251,6 +252,7 @@ curl -fsSL https://code.tiflis.io/install-workstation.sh | bash`}</CodeBlock>
               />
             </a>
             <a href="#" className="hover:opacity-80 transition-opacity">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
                 alt="Get it on Google Play"

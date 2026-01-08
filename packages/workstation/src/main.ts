@@ -59,6 +59,7 @@ import {
   getDisabledBaseAgents,
   type BaseAgentType,
 } from "./config/constants.js";
+import type { ISupervisorAgent } from "./domain/ports/supervisor-agent-interface.js";
 import { SupervisorAgent } from "./infrastructure/agents/supervisor/supervisor-agent.js";
 import { MockSupervisorAgent } from "./infrastructure/mock/mock-supervisor-agent.js";
 import { MockAgentSessionManager } from "./infrastructure/mock/mock-agent-session-manager.js";
@@ -568,13 +569,11 @@ async function bootstrap(): Promise<void> {
   // Placeholder for late-bound message broadcaster
   let messageBroadcaster: MessageBroadcasterImpl | null = null;
 
-  // Create Supervisor Agent (mock or real based on MOCK_MODE)
-  // Note: MockSupervisorAgent implements the same interface as SupervisorAgent
-  const supervisorAgent: SupervisorAgent = env.MOCK_MODE
+  const supervisorAgent: ISupervisorAgent = env.MOCK_MODE
     ? new MockSupervisorAgent({
         logger,
         fixturesPath: env.MOCK_FIXTURES_PATH,
-      }) as SupervisorAgent
+      })
     : new SupervisorAgent({
         sessionManager,
         agentSessionManager,

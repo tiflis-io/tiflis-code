@@ -133,36 +133,29 @@ export class HeadlessAgentExecutor extends EventEmitter {
       cwd: this.workingDir,
       env: {
         ...shellEnv,
-        // Apply alias env vars (e.g., CLAUDE_CONFIG_DIR)
         ...aliasEnvVars,
-        // Ensure proper terminal environment
         TERM: "xterm-256color",
-        // Disable interactive prompts
         CI: "true",
       },
-      stdio: ["ignore", "pipe", "pipe"], // stdin ignored, stdout/stderr piped
-      detached: true, // Create new process group for clean termination
-      // Ensure child doesn't interfere with parent's signal handling
-      // @ts-expect-error - Node.js 16+ option
-      ignoreParentSignals: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      detached: true,
     });
 
-    // Setup stdout handler - ignore data after kill
-    this.subprocess.stdout?.on("data", (data: Buffer) => {
+    const proc = this.subprocess;
+
+    proc.stdout?.on("data", (data: Buffer) => {
       if (this.isKilled) return;
       const text = data.toString();
       this.emit("stdout", text);
     });
 
-    // Setup stderr handler - ignore data after kill
-    this.subprocess.stderr?.on("data", (data: Buffer) => {
+    proc.stderr?.on("data", (data: Buffer) => {
       if (this.isKilled) return;
       const text = data.toString();
       this.emit("stderr", text);
     });
 
-    // Setup exit handler
-    this.subprocess.on("exit", (code: number | null) => {
+    proc.on("exit", (code: number | null) => {
       this.clearExecutionTimeout();
       if (!this.isKilled) {
         this.emit("exit", code);
@@ -170,15 +163,13 @@ export class HeadlessAgentExecutor extends EventEmitter {
       this.subprocess = null;
     });
 
-    // Setup error handler
-    this.subprocess.on("error", (error: Error) => {
+    proc.on("error", (error: Error) => {
       this.clearExecutionTimeout();
       if (!this.isKilled) {
         this.emit("error", error);
       }
     });
 
-    // Start execution timeout timer
     this.startExecutionTimeout();
   }
 

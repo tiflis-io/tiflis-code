@@ -30,5 +30,11 @@ export interface MessageBroadcaster {
    * Sends a message to a specific client by device ID.
    */
   sendToClient(deviceId: string, message: string): boolean;
+
+  /**
+   * Gets all authenticated device IDs.
+   * Used for broadcast acknowledgment tracking.
+   */
+  getAuthenticatedDeviceIds(): string[];
 }
 

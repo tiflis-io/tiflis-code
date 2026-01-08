@@ -9,6 +9,7 @@
 
 import { EventEmitter } from "events";
 import type { Logger } from "pino";
+import type { ISupervisorAgent, SupervisorResult } from "../../domain/ports/supervisor-agent-interface.js";
 import type { ContentBlock } from "../../domain/value-objects/content-block.js";
 import {
   createTextBlock,
@@ -27,21 +28,7 @@ export interface MockSupervisorAgentConfig {
   fixturesPath?: string;
 }
 
-/**
- * Result from mock supervisor execution.
- */
-export interface MockSupervisorResult {
-  output: string;
-  sessionId?: string;
-}
-
-/**
- * Mock Supervisor Agent for screenshot automation.
- *
- * This agent returns pre-defined responses from fixtures,
- * simulating realistic streaming behavior for UI screenshots.
- */
-export class MockSupervisorAgent extends EventEmitter {
+export class MockSupervisorAgent extends EventEmitter implements ISupervisorAgent {
   private readonly logger: Logger;
   private readonly fixturesPath?: string;
   private readonly fixture: MockFixture | null;
@@ -78,7 +65,7 @@ export class MockSupervisorAgent extends EventEmitter {
     command: string,
     deviceId: string,
     _currentSessionId?: string
-  ): MockSupervisorResult {
+  ): SupervisorResult {
     this.logger.info({ command, deviceId }, "Mock supervisor execute");
 
     const response = this.getResponse(command);
@@ -269,9 +256,16 @@ export class MockSupervisorAgent extends EventEmitter {
     return [...this.conversationHistory];
   }
 
-  /**
-   * Sleep utility.
-   */
+  clearContext(): Promise<void> {
+    this.conversationHistory = [];
+    this.isCancelled = false;
+    this.logger.info("Mock context cleared");
+    return Promise.resolve();
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-empty-function
+  recordClearAck(_broadcastId: string, _deviceId: string): void {}
+
   private sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }

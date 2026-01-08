@@ -51,10 +51,9 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
       this.authBuffers.set(deviceId, []);
     }
 
-    const buffer = this.authBuffers.get(deviceId);
+    const buffer = this.authBuffers.get(deviceId) ?? [];
     buffer.push({ sessionId, message, timestamp: Date.now() });
 
-    // Clean expired messages (older than TTL)
     const now = Date.now();
     const filtered = buffer.filter(
       item => now - item.timestamp < MessageBroadcasterImpl.AUTH_BUFFER_TTL_MS
@@ -242,5 +241,12 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
         "Some subscribers failed to receive message"
       );
     }
+  }
+
+  getAuthenticatedDeviceIds(): string[] {
+    const clients = this.deps.clientRegistry.getAll();
+    return clients
+      .filter(c => c.isAuthenticated)
+      .map(c => c.deviceId.value);
   }
 }

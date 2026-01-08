@@ -208,8 +208,8 @@ export default function Hero() {
             <div className="relative rounded-[3rem] bg-gray-900 p-3 shadow-2xl">
               {/* Dynamic Island */}
               <div className="absolute top-4 left-1/2 -translate-x-1/2 w-24 h-7 bg-black rounded-full z-10" />
-              {/* Screen */}
               <div className="rounded-[2.5rem] overflow-hidden bg-black">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src="/screenshots/1-navigation.jpg"
                   alt="Tiflis Code iOS App"
@@ -236,8 +236,8 @@ export default function Hero() {
             transition: "opacity 0.1s ease-out, transform 0.1s ease-out",
           }}
         >
-          {/* App Store Badge */}
           <a href="#" className="hover:opacity-80 transition-opacity">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://developer.apple.com/assets/elements/badges/download-on-the-app-store.svg"
               alt="Download on the App Store"
@@ -245,8 +245,8 @@ export default function Hero() {
             />
           </a>
 
-          {/* Google Play Badge */}
           <a href="#" className="hover:opacity-80 transition-opacity">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png"
               alt="Get it on Google Play"

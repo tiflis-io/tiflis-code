@@ -182,9 +182,10 @@ class ToastManager {
   }
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const toastManager = new ToastManager();
 
-// Hook for using toasts
+// eslint-disable-next-line react-refresh/only-export-components
 export function useToasts(): Toast[] {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
 
@@ -195,7 +196,7 @@ export function useToasts(): Toast[] {
   return toasts;
 }
 
-// Convenience function for showing toasts
+// eslint-disable-next-line react-refresh/only-export-components
 export const toastFunctions = {
   show: (toast: Omit<Toast, 'id'>) => toastManager.show(toast),
   success: (title: string, description?: string) =>

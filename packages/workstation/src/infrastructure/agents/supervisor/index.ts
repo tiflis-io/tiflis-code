@@ -4,6 +4,7 @@
  * @license FSL-1.1-NC
  */
 
-export { SupervisorAgent, type SupervisorAgentConfig, type SupervisorResult } from './supervisor-agent.js';
+export { SupervisorAgent, type SupervisorAgentConfig } from './supervisor-agent.js';
+export type { SupervisorResult } from '../../../domain/ports/supervisor-agent-interface.js';
 export * from './tools/index.js';
 

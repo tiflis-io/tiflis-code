@@ -12,14 +12,13 @@ import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, AIMessage, isAIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
 import AsyncLock from 'async-lock';
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type AsyncLockType = any;
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../domain/ports/workspace-discovery.js';
 import type { MessageBroadcaster } from '../../../domain/ports/message-broadcaster.js';
 import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
+import type { ISupervisorAgent, SupervisorResult } from '../../../domain/ports/supervisor-agent-interface.js';
 import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
@@ -59,14 +58,6 @@ export interface SupervisorAgentConfig {
 }
 
 /**
- * Result from supervisor agent execution.
- */
-export interface SupervisorResult {
-  output: string;
-  sessionId?: string;
-}
-
-/**
  * Conversation history entry.
  */
 interface ConversationEntry {
@@ -99,7 +90,7 @@ export interface SupervisorAgentEvents {
  *
  * Note: Conversation history is global (shared across all devices connected to this workstation).
  */
-export class SupervisorAgent extends EventEmitter {
+export class SupervisorAgent extends EventEmitter implements ISupervisorAgent {
   private readonly logger: Logger;
   private readonly agent: ReturnType<typeof createReactAgent>;
   private readonly getMessageBroadcaster?: () => MessageBroadcaster | null;
@@ -112,9 +103,7 @@ export class SupervisorAgent extends EventEmitter {
   private isProcessingCommand = false;
   /** Timestamp when current execution started (for race condition protection) */
   private executionStartedAt = 0;
-  /** FIX #9: Mutex for context clear synchronization */
-  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
-  private readonly clearContextLock: AsyncLockType = new AsyncLock();
+  private readonly clearContextLock = new AsyncLock();
   private static readonly CLEAR_CONTEXT_TIMEOUT_MS = 10000; // 10 seconds
   /** FIX #6: Broadcast acknowledgment tracking */
   private broadcastAcknowledgments = new Map<string, {
@@ -532,9 +521,7 @@ export class SupervisorAgent extends EventEmitter {
    * - Clears persistent history in database
    * - Broadcasts notification to all clients with ack tracking (FIX #6, #9)
    */
-  clearContext(): Promise<void> {
-    // FIX #9: Use mutex to serialize clear operations and prevent concurrent execution
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+  async clearContext(): Promise<void> {
     await this.clearContextLock.acquire('clear', async () => {
       this.logger.info({ isExecuting: this.isExecuting }, 'Acquiring lock for context clear');
 
@@ -571,19 +558,7 @@ export class SupervisorAgent extends EventEmitter {
         });
 
         try {
-// Get list of subscribers for ack tracking
-          const clientRegistry = (broadcaster as { deps: { clientRegistry: { getAllClients: () => Iterable<{ isAuthenticated: boolean; deviceId: { value: string } }> } } }).deps.clientRegistry;
-          const deviceIds = new Set<string>();
-
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          if (clientRegistry) {
-            const allClients = clientRegistry.getAllClients();
-            for (const client of allClients) {
-              if (client.isAuthenticated) {
-                deviceIds.add(client.deviceId.value);
-              }
-            }
-          }
+          const deviceIds = new Set<string>(broadcaster.getAuthenticatedDeviceIds());
 
           // Track acknowledgments from devices (FIX #6)
           if (deviceIds.size > 0) {
