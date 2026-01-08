@@ -11,6 +11,7 @@ import type { TunnelId } from '../../domain/value-objects/tunnel-id.js';
 import type { WorkstationRegistry } from '../../domain/ports/workstation-registry.js';
 import type { ClientRegistry } from '../../domain/ports/client-registry.js';
 import type { HttpClientRegistry } from '../../domain/ports/http-client-registry.js';
+import type { WebSocket } from 'ws';
 
 /**
  * In-memory implementation of WorkstationRegistry.
@@ -69,7 +70,7 @@ export class InMemoryClientRegistry implements ClientRegistry {
    */
   validateSubscriptions(deviceId: string, currentSocket: WebSocket): void {
     const existing = this.clients.get(deviceId);
-    if (existing && existing._socket !== currentSocket) {
+    if (existing && existing.socket !== currentSocket) {
       // This is a reconnecting device with a new socket
       // The old entry is stale and should not be used
       // It will be replaced by the new client registration

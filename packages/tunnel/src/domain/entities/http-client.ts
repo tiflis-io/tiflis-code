@@ -117,7 +117,7 @@ export class HttpClient {
     // Trim old messages if queue is too large
     if (this._messageQueue.length > HttpClient.MAX_QUEUE_SIZE) {
       const droppedCount = this._messageQueue.length - HttpClient.MAX_QUEUE_SIZE;
-      const oldestSequence = this._messageQueue[0].sequence;
+      const oldestSequence = this._messageQueue[0]?.sequence;
 
       this._messageQueue = this._messageQueue.slice(-HttpClient.MAX_QUEUE_SIZE);
       dropped = true;
