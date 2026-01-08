@@ -67,7 +67,7 @@ export class InMemoryClientRegistry implements ClientRegistry {
    * When a device reconnects with a new socket, the old client entry becomes stale
    * and should be removed to prevent duplicate subscriptions.
    */
-  validateSubscriptions(deviceId: string, currentSocket: any): void {
+  validateSubscriptions(deviceId: string, currentSocket: WebSocket): void {
     const existing = this.clients.get(deviceId);
     if (existing && existing._socket !== currentSocket) {
       // This is a reconnecting device with a new socket

@@ -164,7 +164,7 @@ export function useWebSocket() {
       }, 5000);
 pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
-    [credentials, connectionState]
+    [credentials, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
   );
 
   // Send agent command
@@ -214,7 +214,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
           state.setMessageSendStatus(messageId, 'failed');
         }
       }, 5000);
-      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
+pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials]
   );
@@ -395,7 +395,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
           setMessageSendStatus(messageId, 'failed');
         }
       }, 10000); // Longer timeout for voice (STT processing)
-      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
+pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials, connectionState, addSupervisorMessage, addPendingAck, setSupervisorIsLoading, setMessageSendStatus]
   );
@@ -477,7 +477,7 @@ pendingAckTimeoutsRef.current.set(messageId, timeoutId);
           state.setMessageSendStatus(messageId, 'failed');
         }
       }, 10000); // Longer timeout for voice (STT processing)
-      pendingAckTimeoutsRef.current.set(messageId, timeoutId);
+pendingAckTimeoutsRef.current.set(messageId, timeoutId);
     },
     [credentials, connectionState]
   );

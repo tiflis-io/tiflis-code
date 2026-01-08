@@ -29,11 +29,11 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
   private readonly logger: Logger;
 
   /** FIX #4: Buffer messages for devices during auth flow */
-  private authBuffers = new Map<string, Array<{
+  private authBuffers = new Map<string, {
     sessionId: string;
     message: string;
     timestamp: number;
-  }>>();
+  }[]>();
   private static readonly AUTH_BUFFER_TTL_MS = 5000; // 5 second buffer TTL
 
   constructor(deps: MessageBroadcasterImplDeps) {
@@ -51,7 +51,7 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
       this.authBuffers.set(deviceId, []);
     }
 
-    const buffer = this.authBuffers.get(deviceId)!;
+    const buffer = this.authBuffers.get(deviceId);
     buffer.push({ sessionId, message, timestamp: Date.now() });
 
     // Clean expired messages (older than TTL)
@@ -72,8 +72,8 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
    * Called from main.ts after subscription restore completes.
    * Returns buffered messages so they can be sent to subscribed sessions.
    */
-  flushAuthBuffer(deviceId: string): Array<{ sessionId: string; message: string }> {
-    const buffer = this.authBuffers.get(deviceId) || [];
+  flushAuthBuffer(deviceId: string): { sessionId: string; message: string }[] {
+    const buffer = this.authBuffers.get(deviceId) ?? [];
     this.authBuffers.delete(deviceId);
 
     // Remove expired messages before returning
@@ -172,7 +172,7 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
         // Parse message to get type for better debugging
         let messageType = 'unknown';
         try {
-          const parsed = JSON.parse(message);
+          const parsed = JSON.parse(message) as { type?: string };
           messageType = parsed.type ?? 'unknown';
         } catch {
           // Ignore parse errors

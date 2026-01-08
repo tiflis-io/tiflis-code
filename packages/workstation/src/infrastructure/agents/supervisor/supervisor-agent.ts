@@ -11,7 +11,9 @@ import { ChatOpenAI } from '@langchain/openai';
 import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage, AIMessage, isAIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
-import Mutex from 'async-lock';
+import AsyncLock from 'async-lock';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AsyncLockType = any;
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
@@ -111,7 +113,8 @@ export class SupervisorAgent extends EventEmitter {
   /** Timestamp when current execution started (for race condition protection) */
   private executionStartedAt = 0;
   /** FIX #9: Mutex for context clear synchronization */
-  private readonly clearContextLock = new Mutex();
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call
+  private readonly clearContextLock: AsyncLockType = new AsyncLock();
   private static readonly CLEAR_CONTEXT_TIMEOUT_MS = 10000; // 10 seconds
   /** FIX #6: Broadcast acknowledgment tracking */
   private broadcastAcknowledgments = new Map<string, {
@@ -151,7 +154,11 @@ export class SupervisorAgent extends EventEmitter {
         config.workspacesRoot,
         config.getMessageBroadcaster,
         config.getChatHistoryService,
-        () => this.clearContext(),
+        () => {
+          this.clearContext().catch((error: unknown) => {
+            this.logger.error({ error }, 'Failed to clear supervisor context');
+          });
+        },
         terminateSessionCallback
       ),
       ...createFilesystemTools(config.workspacesRoot),
@@ -525,9 +532,10 @@ export class SupervisorAgent extends EventEmitter {
    * - Clears persistent history in database
    * - Broadcasts notification to all clients with ack tracking (FIX #6, #9)
    */
-  async clearContext(): Promise<void> {
+  clearContext(): Promise<void> {
     // FIX #9: Use mutex to serialize clear operations and prevent concurrent execution
-    return this.clearContextLock.acquire('clear', async () => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-member-access
+    await this.clearContextLock.acquire('clear', async () => {
       this.logger.info({ isExecuting: this.isExecuting }, 'Acquiring lock for context clear');
 
       // If there's active execution, cancel it immediately
@@ -546,7 +554,7 @@ export class SupervisorAgent extends EventEmitter {
       const chatHistoryService = this.getChatHistoryService?.();
       if (chatHistoryService) {
         try {
-          await chatHistoryService.clearSupervisorHistory();
+          chatHistoryService.clearSupervisorHistory();
           this.logger.debug('Persistent supervisor history cleared');
         } catch (error) {
           this.logger.error({ error }, 'Failed to clear persistent supervisor history');
@@ -563,18 +571,17 @@ export class SupervisorAgent extends EventEmitter {
         });
 
         try {
-          // Get list of subscribers for ack tracking
-          const clientRegistry = (broadcaster as any).deps?.clientRegistry;
-          let deviceIds: Set<string> = new Set();
+// Get list of subscribers for ack tracking
+          const clientRegistry = (broadcaster as { deps: { clientRegistry: { getAllClients: () => Iterable<{ isAuthenticated: boolean; deviceId: { value: string } }> } } }).deps.clientRegistry;
+          const deviceIds = new Set<string>();
 
-          if (clientRegistry && typeof clientRegistry.getAllClients === 'function') {
+          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+          if (clientRegistry) {
             const allClients = clientRegistry.getAllClients();
-            if (allClients) {
-              allClients.forEach((client: any) => {
-                if (client.isAuthenticated) {
-                  deviceIds.add(client.deviceId.value);
-                }
-              });
+            for (const client of allClients) {
+              if (client.isAuthenticated) {
+                deviceIds.add(client.deviceId.value);
+              }
             }
           }
 

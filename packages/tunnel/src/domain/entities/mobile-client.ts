@@ -98,7 +98,7 @@ export class MobileClient {
     try {
       this._socket.send(message);
       return true;
-    } catch (error) {
+    } catch {
       // Socket.send() can throw if:
       // - Buffer is full (backpressure)
       // - Connection is lost between readyState check and send

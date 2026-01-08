@@ -130,7 +130,7 @@ export class Workstation {
     try {
       this._socket.send(message);
       return true;
-    } catch (error) {
+    } catch {
       // Socket.send() can throw if buffer is full or connection is lost
       // Return false to allow caller to handle retry/buffering
       return false;

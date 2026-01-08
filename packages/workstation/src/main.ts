@@ -279,7 +279,7 @@ function handleAuthMessageViaTunnel(
               );
             }
           }
-        })().catch((error) => {
+        })().catch((error: unknown) => {
           logger.error({ error, deviceId }, "Error flushing buffered messages");
         });
       }
@@ -570,11 +570,11 @@ async function bootstrap(): Promise<void> {
 
   // Create Supervisor Agent (mock or real based on MOCK_MODE)
   // Note: MockSupervisorAgent implements the same interface as SupervisorAgent
-  const supervisorAgent = env.MOCK_MODE
-    ? (new MockSupervisorAgent({
+  const supervisorAgent: SupervisorAgent = env.MOCK_MODE
+    ? new MockSupervisorAgent({
         logger,
         fixturesPath: env.MOCK_FIXTURES_PATH,
-      }) as unknown as SupervisorAgent)
+      }) as SupervisorAgent
     : new SupervisorAgent({
         sessionManager,
         agentSessionManager,
@@ -660,9 +660,10 @@ async function bootstrap(): Promise<void> {
       // FIX #4: Flush buffered messages for this device after subscriptions are restored
       // Messages may have been buffered during the auth flow window (before auth_complete)
       // Now that subscriptions are restored, we can deliver those buffered messages
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (broadcaster) {
         const bufferedMessages = broadcaster.flushAuthBuffer(deviceId);
-        if (bufferedMessages.length > 0) {
+if (bufferedMessages.length > 0) {
           logger.info(
             { deviceId, messageCount: bufferedMessages.length },
             "Flushing buffered messages after subscription restore"
@@ -2529,6 +2530,7 @@ async function bootstrap(): Promise<void> {
               const broadcastId = ackData.payload?.broadcast_id;
               const deviceId = ackData.payload?.device_id;
 
+              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
               if (broadcastId && deviceId && supervisorAgent) {
                 supervisorAgent.recordClearAck(broadcastId, deviceId);
                 logger.debug(

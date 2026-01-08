@@ -227,7 +227,7 @@ export class TunnelClient {
           if (attempt < TunnelClient.MAX_SEND_RETRIES) {
             const delay = TunnelClient.SEND_RETRY_DELAY_MS * Math.pow(2, attempt);
             this.logger.debug(
-              { attempt: attempt + 1, delay, errorType: (error as Error).name },
+              { attempt: attempt + 1, delay, errorType: error.name },
               'Send failed, scheduling retry with exponential backoff'
             );
 
@@ -236,7 +236,7 @@ export class TunnelClient {
             }, delay);
           } else {
             this.logger.error(
-              { error: (error as Error).message, attempts: attempt + 1 },
+              { error: error.message, attempts: attempt + 1 },
               'Send failed after all retries, buffering message'
             );
             this.messageBuffer.push(message);
