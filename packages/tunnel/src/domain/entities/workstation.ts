@@ -121,13 +121,20 @@ export class Workstation {
 
   /**
    * Sends a message to the workstation.
+   * Returns false if send fails (socket error, not connected, etc.).
    */
   send(message: string): boolean {
     if (!this.isOnline || this._socket.readyState !== 1) {
       return false;
     }
-    this._socket.send(message);
-    return true;
+    try {
+      this._socket.send(message);
+      return true;
+    } catch (error) {
+      // Socket.send() can throw if buffer is full or connection is lost
+      // Return false to allow caller to handle retry/buffering
+      return false;
+    }
   }
 
   /**

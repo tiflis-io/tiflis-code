@@ -529,17 +529,26 @@ export class HttpClientOperationsUseCase {
   queueMessageForTunnel(tunnelId: TunnelId, message: string): number {
     const clients = this.httpClientRegistry.getByTunnelId(tunnelId);
     let queuedCount = 0;
+    let droppedCount = 0;
 
     for (const client of clients) {
       if (client.isActive) {
-        client.queueMessage(message);
+        const result = client.queueMessage(message);
         queuedCount++;
+        if (result.dropped) {
+          droppedCount++;
+        }
       }
     }
 
     if (queuedCount > 0) {
       this.logger.debug(
-        { tunnelId: tunnelId.value, queuedCount, totalClients: clients.length },
+        {
+          tunnelId: tunnelId.value,
+          queuedCount,
+          droppedCount,
+          totalClients: clients.length,
+        },
         'Message queued for HTTP clients'
       );
     }

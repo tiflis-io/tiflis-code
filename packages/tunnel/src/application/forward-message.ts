@@ -138,22 +138,28 @@ export class ForwardMessageUseCase {
 
     // Queue for HTTP polling clients (watchOS)
     let httpQueuedCount = 0;
+    let httpDroppedCount = 0;
     if (this.httpClientRegistry) {
       const httpClients = this.httpClientRegistry.getByTunnelId(tunnelId);
       for (const httpClient of httpClients) {
         if (httpClient.isActive) {
-          httpClient.queueMessage(message);
+          const result = httpClient.queueMessage(message);
           httpQueuedCount++;
+          if (result.dropped) {
+            httpDroppedCount++;
+          }
         }
       }
     }
 
+    // Log metrics
     this.logger.info(
       {
         tunnelId: tunnelId.value,
         wsClients: clients.length,
         wsSent: sentCount,
         httpClients: httpQueuedCount,
+        httpDropped: httpDroppedCount,
         messageType,
       },
       'forwardToClients'
@@ -205,8 +211,11 @@ export class ForwardMessageUseCase {
     if (this.httpClientRegistry) {
       const httpClient = this.httpClientRegistry.get(deviceId);
       if (httpClient && httpClient.tunnelId.value === tunnelId.value && httpClient.isActive) {
-        httpClient.queueMessage(payload);
-        this.logger.debug({ tunnelId: tunnelId.value, deviceId }, 'forwardToDevice via HTTP queue');
+        const result = httpClient.queueMessage(payload);
+        this.logger.debug(
+          { tunnelId: tunnelId.value, deviceId, dropped: result.dropped },
+          'forwardToDevice via HTTP queue'
+        );
         return true;
       }
     }

@@ -4,6 +4,7 @@
  * @license FSL-1.1-NC
  */
 
+import type { Logger } from 'pino';
 import type { TunnelId } from '../value-objects/tunnel-id.js';
 
 export type HttpClientStatus = 'active' | 'inactive';
@@ -11,6 +12,7 @@ export type HttpClientStatus = 'active' | 'inactive';
 export interface HttpClientProps {
   deviceId: string;
   tunnelId: TunnelId;
+  logger?: Logger;
 }
 
 export interface QueuedMessage {
@@ -27,6 +29,7 @@ export interface QueuedMessage {
 export class HttpClient {
   private readonly _deviceId: string;
   private readonly _tunnelId: TunnelId;
+  private readonly _logger?: Logger;
   private _status: HttpClientStatus;
   private _lastPollAt: Date;
   private readonly _connectedAt: Date;
@@ -41,6 +44,7 @@ export class HttpClient {
   constructor(props: HttpClientProps) {
     this._deviceId = props.deviceId;
     this._tunnelId = props.tunnelId;
+    this._logger = props.logger;
     this._status = 'active';
     this._lastPollAt = new Date();
     this._connectedAt = new Date();
@@ -97,8 +101,9 @@ export class HttpClient {
 
   /**
    * Queues a message for delivery to this client.
+   * Returns { sequence, dropped } where dropped indicates if messages were lost due to overflow.
    */
-  queueMessage(message: string): number {
+  queueMessage(message: string): { sequence: number; dropped: boolean } {
     this._sequence++;
     const queuedMessage: QueuedMessage = {
       sequence: this._sequence,
@@ -108,12 +113,25 @@ export class HttpClient {
 
     this._messageQueue.push(queuedMessage);
 
+    let dropped = false;
     // Trim old messages if queue is too large
     if (this._messageQueue.length > HttpClient.MAX_QUEUE_SIZE) {
+      const droppedCount = this._messageQueue.length - HttpClient.MAX_QUEUE_SIZE;
+      const oldestSequence = this._messageQueue[0].sequence;
+
       this._messageQueue = this._messageQueue.slice(-HttpClient.MAX_QUEUE_SIZE);
+      dropped = true;
+
+      // CRITICAL: Log message loss for observability
+      this._logger?.warn({
+        deviceId: this._deviceId,
+        droppedCount,
+        oldestDroppedSequence: oldestSequence,
+        queueSize: HttpClient.MAX_QUEUE_SIZE,
+      }, 'HTTP queue overflow - messages were dropped');
     }
 
-    return this._sequence;
+    return { sequence: this._sequence, dropped };
   }
 
   /**

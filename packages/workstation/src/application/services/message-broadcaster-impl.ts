@@ -19,14 +19,77 @@ export interface MessageBroadcasterImplDeps {
 
 /**
  * Implementation of message broadcaster using tunnel client.
+ *
+ * FIX #4: Subscription restoration buffer
+ * Buffers messages for devices during auth flow (workstation_online → auth_complete window)
+ * to prevent message loss when subscriptions are being restored.
  */
 export class MessageBroadcasterImpl implements MessageBroadcaster {
   private readonly deps: MessageBroadcasterImplDeps;
   private readonly logger: Logger;
 
+  /** FIX #4: Buffer messages for devices during auth flow */
+  private authBuffers = new Map<string, Array<{
+    sessionId: string;
+    message: string;
+    timestamp: number;
+  }>>();
+  private static readonly AUTH_BUFFER_TTL_MS = 5000; // 5 second buffer TTL
+
   constructor(deps: MessageBroadcasterImplDeps) {
     this.deps = deps;
     this.logger = deps.logger.child({ service: "broadcaster" });
+  }
+
+  /**
+   * FIX #4: Buffers a message for a device during auth flow.
+   * Called when subscribing clients are not yet authenticated.
+   * Messages are buffered with TTL and flushed when auth completes.
+   */
+  private bufferMessageForAuth(deviceId: string, sessionId: string, message: string): void {
+    if (!this.authBuffers.has(deviceId)) {
+      this.authBuffers.set(deviceId, []);
+    }
+
+    const buffer = this.authBuffers.get(deviceId)!;
+    buffer.push({ sessionId, message, timestamp: Date.now() });
+
+    // Clean expired messages (older than TTL)
+    const now = Date.now();
+    const filtered = buffer.filter(
+      item => now - item.timestamp < MessageBroadcasterImpl.AUTH_BUFFER_TTL_MS
+    );
+    this.authBuffers.set(deviceId, filtered);
+
+    this.logger.debug(
+      { deviceId, bufferSize: filtered.length },
+      'Buffered message for authenticating device'
+    );
+  }
+
+  /**
+   * FIX #4: Flushes buffered messages for a device after authentication.
+   * Called from main.ts after subscription restore completes.
+   * Returns buffered messages so they can be sent to subscribed sessions.
+   */
+  flushAuthBuffer(deviceId: string): Array<{ sessionId: string; message: string }> {
+    const buffer = this.authBuffers.get(deviceId) || [];
+    this.authBuffers.delete(deviceId);
+
+    // Remove expired messages before returning
+    const now = Date.now();
+    const validMessages = buffer.filter(
+      item => now - item.timestamp < MessageBroadcasterImpl.AUTH_BUFFER_TTL_MS
+    );
+
+    if (validMessages.length > 0) {
+      this.logger.info(
+        { deviceId, messageCount: validMessages.length },
+        'Flushing auth buffer - delivering buffered messages'
+      );
+    }
+
+    return validMessages;
   }
 
   /**
@@ -80,6 +143,8 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
    * Broadcasts a message to all clients subscribed to a session (by session ID string).
    * Sends targeted messages to each subscriber in parallel with timeout.
    * Prevents slow clients from blocking others.
+   *
+   * FIX #4: Also buffers messages for unauthenticated subscribers during auth flow.
    */
   async broadcastToSubscribers(sessionId: string, message: string): Promise<void> {
     const session = new SessionIdClass(sessionId);
@@ -89,10 +154,43 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     );
 
     if (authenticatedSubscribers.length === 0) {
+      // FIX #4: Check for unauthenticated subscribers (might be in auth flow)
+      const unauthenticatedCount = subscribers.length - authenticatedSubscribers.length;
+      if (unauthenticatedCount > 0) {
+        this.logger.debug(
+          { sessionId, unauthenticatedCount },
+          "Subscribers are authenticating - buffering message for delivery after auth"
+        );
+
+        // Buffer message for each unauthenticated subscriber
+        for (const client of subscribers) {
+          if (!client.isAuthenticated) {
+            this.bufferMessageForAuth(client.deviceId.value, sessionId, message);
+          }
+        }
+      } else {
+        // Parse message to get type for better debugging
+        let messageType = 'unknown';
+        try {
+          const parsed = JSON.parse(message);
+          messageType = parsed.type ?? 'unknown';
+        } catch {
+          // Ignore parse errors
+        }
+        this.logger.debug(
+          { sessionId, messageType },
+          "No subscribers found for session"
+        );
+      }
       return;
     }
 
     const SEND_TIMEOUT_MS = 2000; // 2 seconds per client
+
+    this.logger.debug(
+      { sessionId, subscriberCount: authenticatedSubscribers.length },
+      "Broadcasting message to subscribers"
+    );
 
     // Send to all clients in parallel with timeout
     const sendPromises = authenticatedSubscribers.map(async (client) => {
@@ -136,6 +234,13 @@ export class MessageBroadcasterImpl implements MessageBroadcaster {
     });
 
     // Wait for all sends to complete or timeout (don't fail on individual errors)
-    await Promise.allSettled(sendPromises);
+    const results = await Promise.allSettled(sendPromises);
+    const failedCount = results.filter(r => r.status === 'rejected').length;
+    if (failedCount > 0) {
+      this.logger.warn(
+        { sessionId, totalSubscribers: authenticatedSubscribers.length, failedCount },
+        "Some subscribers failed to receive message"
+      );
+    }
   }
 }
