@@ -212,7 +212,8 @@ function handleAuthMessageViaTunnel(
   tunnelClient: TunnelClient,
   authenticateClient: AuthenticateClientUseCase,
   logger: ReturnType<typeof createLogger>,
-  subscriptionService?: SubscriptionService | null
+  subscriptionService?: SubscriptionService | null,
+  messageBroadcaster?: MessageBroadcasterImpl | null
 ): void {
   // Validate auth message with zod schema
   const authResult = AuthMessageSchema.safeParse(data);
@@ -250,6 +251,37 @@ function handleAuthMessageViaTunnel(
           { deviceId, restored: restored.length },
           "Restored subscriptions from database on tunnel auth"
         );
+      }
+    }
+
+    // FIX #4: Flush buffered messages for this device after subscriptions are restored
+    // Messages may have been buffered during the auth flow window (before auth_complete)
+    // Now that subscriptions are restored, we can deliver those buffered messages
+    if (messageBroadcaster) {
+      const bufferedMessages = messageBroadcaster.flushAuthBuffer(deviceId);
+      if (bufferedMessages.length > 0) {
+        logger.info(
+          { deviceId, messageCount: bufferedMessages.length },
+          "Flushing buffered messages after subscription restore"
+        );
+        // Send buffered messages to their respective sessions (fire and forget)
+        (async () => {
+          for (const bufferedMsg of bufferedMessages) {
+            try {
+              await messageBroadcaster.broadcastToSubscribers(
+                bufferedMsg.sessionId,
+                bufferedMsg.message
+              );
+            } catch (error) {
+              logger.error(
+                { error, deviceId, sessionId: bufferedMsg.sessionId },
+                "Failed to send buffered message"
+              );
+            }
+          }
+        })().catch((error) => {
+          logger.error({ error, deviceId }, "Error flushing buffered messages");
+        });
       }
     }
 
@@ -599,7 +631,7 @@ async function bootstrap(): Promise<void> {
 
   // Create message handlers
   const createMessageHandlers = (): MessageHandlers => ({
-    auth: (socket, message) => {
+    auth: async (socket, message) => {
       const authMessage = message as {
         payload: { auth_key: string; device_id: string };
       };
@@ -622,6 +654,26 @@ async function bootstrap(): Promise<void> {
             { deviceId, restored: restored.length },
             "Restored subscriptions from database on auth"
           );
+        }
+      }
+
+      // FIX #4: Flush buffered messages for this device after subscriptions are restored
+      // Messages may have been buffered during the auth flow window (before auth_complete)
+      // Now that subscriptions are restored, we can deliver those buffered messages
+      if (broadcaster) {
+        const bufferedMessages = broadcaster.flushAuthBuffer(deviceId);
+        if (bufferedMessages.length > 0) {
+          logger.info(
+            { deviceId, messageCount: bufferedMessages.length },
+            "Flushing buffered messages after subscription restore"
+          );
+          // Send buffered messages to their respective sessions
+          for (const bufferedMsg of bufferedMessages) {
+            await broadcaster.broadcastToSubscribers(
+              bufferedMsg.sessionId,
+              bufferedMsg.message
+            );
+          }
         }
       }
 
@@ -2464,7 +2516,8 @@ async function bootstrap(): Promise<void> {
               tunnelClient,
               authenticateClient,
               logger,
-              subscriptionService
+              subscriptionService,
+              broadcaster
             );
           } else if (messageType === "supervisor.context_cleared.ack") {
             // FIX #6: Handle supervisor context clear acknowledgments
