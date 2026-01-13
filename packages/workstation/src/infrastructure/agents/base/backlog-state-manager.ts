@@ -12,48 +12,35 @@ import { join } from 'path';
 import type { Logger } from 'pino';
 import type { AgentStateManager, ConversationEntry } from '../../../domain/ports/agent-state-manager.js';
 
-/**
- * Implements state persistence for BacklogAgent.
- * Saves conversation history and backlog state to files (and optionally database for future integration).
- */
 export class BacklogStateManager implements AgentStateManager {
   constructor(
     private readonly workingDir: string,
     private readonly logger: Logger
   ) {}
 
-  /**
-   * Conversation history file path.
-   */
   private getHistoryPath(): string {
     return join(this.workingDir, 'conversation-history.json');
   }
 
-  /**
-   * Load conversation history from file.
-   */
-  async loadHistory(): Promise<ConversationEntry[]> {
+  loadHistory(): Promise<ConversationEntry[]> {
     const historyPath = this.getHistoryPath();
 
     if (!existsSync(historyPath)) {
-      return [];
+      return Promise.resolve([]);
     }
 
     try {
       const content = readFileSync(historyPath, 'utf-8');
       const data = JSON.parse(content) as ConversationEntry[];
       this.logger.debug({ messageCount: data.length }, 'Loaded conversation history from file');
-      return data;
+      return Promise.resolve(data);
     } catch (error) {
       this.logger.error({ error }, 'Failed to load conversation history from file');
-      return [];
+      return Promise.resolve([]);
     }
   }
 
-  /**
-   * Save conversation history to file.
-   */
-  async saveHistory(history: ConversationEntry[]): Promise<void> {
+  saveHistory(history: ConversationEntry[]): Promise<void> {
     const historyPath = this.getHistoryPath();
 
     try {
@@ -62,12 +49,10 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to save conversation history to file');
     }
+    return Promise.resolve();
   }
 
-  /**
-   * Clear conversation history.
-   */
-  async clearHistory(): Promise<void> {
+  clearHistory(): Promise<void> {
     const historyPath = this.getHistoryPath();
 
     try {
@@ -78,42 +63,34 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to clear conversation history');
     }
+    return Promise.resolve();
   }
 
-  /**
-   * Load additional agent-specific state (backlog).
-   * @param key - State key ('backlog' for backlog state)
-   */
-  async loadAdditionalState<T>(key: string): Promise<T | null> {
+  loadAdditionalState<T>(key: string): Promise<T | null> {
     if (key !== 'backlog') {
-      return null;
+      return Promise.resolve(null);
     }
 
     const backlogPath = join(this.workingDir, 'backlog.json');
 
     if (!existsSync(backlogPath)) {
-      return null;
+      return Promise.resolve(null);
     }
 
     try {
       const content = readFileSync(backlogPath, 'utf-8');
       const data = JSON.parse(content) as T;
       this.logger.debug('Loaded backlog state from file');
-      return data;
+      return Promise.resolve(data);
     } catch (error) {
       this.logger.error({ error }, 'Failed to load backlog state from file');
-      return null;
+      return Promise.resolve(null);
     }
   }
 
-  /**
-   * Save additional agent-specific state (backlog).
-   * @param key - State key ('backlog' for backlog state)
-   * @param state - State to save
-   */
-  async saveAdditionalState<T>(key: string, state: T): Promise<void> {
+  saveAdditionalState(key: string, state: unknown): Promise<void> {
     if (key !== 'backlog') {
-      return;
+      return Promise.resolve();
     }
 
     const backlogPath = join(this.workingDir, 'backlog.json');
@@ -124,12 +101,10 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to save backlog state to file');
     }
+    return Promise.resolve();
   }
 
-  /**
-   * Cleanup resources.
-   */
-  async close(): Promise<void> {
-    // No resources to clean up
+  close(): Promise<void> {
+    return Promise.resolve();
   }
 }

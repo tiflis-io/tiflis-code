@@ -63,6 +63,9 @@ export const SESSION_CONFIG = {
   /** Maximum number of concurrent terminal sessions */
   MAX_TERMINAL_SESSIONS: 5,
 
+  /** Maximum number of concurrent backlog sessions */
+  MAX_BACKLOG_SESSIONS: 10,
+
   /** Default terminal columns */
   DEFAULT_TERMINAL_COLS: 80,
 

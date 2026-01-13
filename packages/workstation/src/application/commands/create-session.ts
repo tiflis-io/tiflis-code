@@ -223,10 +223,9 @@ export class CreateSessionUseCase {
         throw new SessionLimitReachedError('terminal', SESSION_CONFIG.MAX_TERMINAL_SESSIONS);
       }
     } else if (sessionType === 'backlog-agent') {
-      // Backlog sessions have their own limit (usually higher, since they're autonomous)
       const count = this.deps.sessionManager.countByType('backlog-agent');
-      if (count >= (SESSION_CONFIG.MAX_BACKLOG_SESSIONS || 10)) {
-        throw new SessionLimitReachedError('backlog', SESSION_CONFIG.MAX_BACKLOG_SESSIONS || 10);
+      if (count >= SESSION_CONFIG.MAX_BACKLOG_SESSIONS) {
+        throw new SessionLimitReachedError('backlog', SESSION_CONFIG.MAX_BACKLOG_SESSIONS);
       }
     } else if (sessionType !== 'supervisor') {
       const agentCount =

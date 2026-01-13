@@ -54,12 +54,12 @@ export interface HarnessEvents {
  */
 export class BacklogHarness extends EventEmitter {
   private backlog: Backlog;
-  private isRunning: boolean = false;
-  private isPaused: boolean = false;
+  private isRunning = false;
+  private isPaused = false;
   private workingDir: string;
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
-  private startTime: number = 0;
+  private startTime = 0;
   private selectedAgent: string;
 
   constructor(
@@ -98,13 +98,12 @@ export class BacklogHarness extends EventEmitter {
       id: 'harness-start',
       block_type: 'status',
       content: `🚀 Starting Harness. Total tasks: ${this.backlog.tasks.length}`,
-      metadata: { status: 'running' },
     });
 
     try {
       await this.executeLoop();
-    } catch (error) {
-      this.logger.error('Harness error:', error);
+    } catch (error: unknown) {
+      this.logger.error({ error }, 'Harness error');
       this.broadcastOutput({
         id: 'harness-error',
         block_type: 'error',
@@ -130,7 +129,6 @@ export class BacklogHarness extends EventEmitter {
       id: 'harness-pause',
       block_type: 'status',
       content: '⏸️ Harness paused',
-      metadata: { status: 'paused' },
     });
   }
 
@@ -149,7 +147,6 @@ export class BacklogHarness extends EventEmitter {
       id: 'harness-resume',
       block_type: 'status',
       content: '▶️ Harness resumed',
-      metadata: { status: 'running' },
     });
   }
 
@@ -164,7 +161,6 @@ export class BacklogHarness extends EventEmitter {
       id: 'harness-stop',
       block_type: 'status',
       content: '⏹️ Harness stopped',
-      metadata: { status: 'stopped' },
     });
   }
 
@@ -176,11 +172,12 @@ export class BacklogHarness extends EventEmitter {
     let failedCount = 0;
 
     while (this.isRunning) {
-      // If paused, wait
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- isRunning can change during await
       while (this.isPaused && this.isRunning) {
         await this.sleep(1000);
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- isRunning can change during await
       if (!this.isRunning) break;
 
       // Find next pending task
@@ -200,7 +197,7 @@ export class BacklogHarness extends EventEmitter {
         await this.executeTask(task);
         completedCount++;
       } catch (error) {
-        this.logger.error(`Task ${task.id} failed:`, error);
+        this.logger.error({ error, taskId: task.id }, `Task ${task.id} failed`);
         failedCount++;
 
         this.emit('task-failed', {
@@ -220,7 +217,7 @@ export class BacklogHarness extends EventEmitter {
 
     // Emit completion event
     const duration = Date.now() - this.startTime;
-    const summary = this.backlog.summary || {
+    const summary = this.backlog.summary ?? {
       total: this.backlog.tasks.length,
       completed: completedCount,
       failed: failedCount,
@@ -239,12 +236,6 @@ export class BacklogHarness extends EventEmitter {
       id: 'harness-complete',
       block_type: 'status',
       content: `✅ Harness completed. Completed: ${summary.completed}/${summary.total}, Failed: ${summary.failed}`,
-      metadata: {
-        status: 'completed',
-        completed: summary.completed,
-        failed: summary.failed,
-        total: summary.total,
-      },
     });
   }
 
@@ -265,7 +256,6 @@ export class BacklogHarness extends EventEmitter {
       id: `task-${task.id}-start`,
       block_type: 'status',
       content: `📌 Task ${task.id}: ${task.title}`,
-      metadata: { task_id: task.id, status: 'started' },
     });
 
     // Create a prompt for the coding agent based on task
@@ -282,8 +272,9 @@ export class BacklogHarness extends EventEmitter {
       'Creating new agent session for task iteration'
     );
 
+    const agentType = this.selectedAgent as 'cursor' | 'claude' | 'opencode';
     const newSession = this.agentSessionManager.createSession(
-      this.selectedAgent as any,
+      agentType,
       this.workingDir,
       taskSessionId,
       taskAgentName
@@ -295,10 +286,10 @@ export class BacklogHarness extends EventEmitter {
       'Created new agent session for task'
     );
 
-    // Execute command
     await new Promise<void>((resolve, reject) => {
       let isResolved = false;
-      let timeoutHandle: NodeJS.Timeout | undefined;
+      // eslint-disable-next-line prefer-const -- reassigned inside setTimeout callback
+      let executionTimeoutHandle: NodeJS.Timeout | undefined;
 
       const onBlocks = (emittedSessionId: string, blocks: ContentBlock[], isComplete: boolean) => {
         // Only process blocks for this specific session
@@ -320,16 +311,16 @@ export class BacklogHarness extends EventEmitter {
           if (block.block_type === 'text') {
             const content = block.content;
 
-            // Look for various commit hash patterns
-            const commitMatch = content.match(/commit\s+([a-f0-9]{7,40})/i);
+            const commitRegex = /commit\s+([a-f0-9]{7,40})/i;
+            const commitMatch = commitRegex.exec(content);
             if (commitMatch) {
               commitHash = commitMatch[1];
               hasCommitDetected = true;
               break;
             }
 
-            // Also look for "HEAD is now at" pattern from git
-            const headMatch = content.match(/HEAD\s+is\s+now\s+at\s+([a-f0-9]{7,40})/i);
+            const headRegex = /HEAD\s+is\s+now\s+at\s+([a-f0-9]{7,40})/i;
+            const headMatch = headRegex.exec(content);
             if (headMatch) {
               commitHash = headMatch[1];
               hasCommitDetected = true;
@@ -340,7 +331,7 @@ export class BacklogHarness extends EventEmitter {
 
         if (hasCommitDetected && commitHash) {
           isResolved = true;
-          if (timeoutHandle) clearTimeout(timeoutHandle);
+          if (executionTimeoutHandle) clearTimeout(executionTimeoutHandle);
           this.agentSessionManager.removeListener('blocks', onBlocks);
 
           const duration = Date.now() - startTime;
@@ -366,10 +357,10 @@ export class BacklogHarness extends EventEmitter {
           return;
         }
 
-        // If execution is complete but no commit was found, fail the task
+        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- isComplete can be false
         if (isComplete && !isResolved) {
           isResolved = true;
-          if (timeoutHandle) clearTimeout(timeoutHandle);
+          if (executionTimeoutHandle) clearTimeout(executionTimeoutHandle);
           this.agentSessionManager.removeListener('blocks', onBlocks);
 
           const duration = Date.now() - startTime;
@@ -400,7 +391,7 @@ export class BacklogHarness extends EventEmitter {
       this.agentSessionManager.on('blocks', onBlocks);
 
       // Execute with timeout (30 minutes per task)
-      timeoutHandle = setTimeout(() => {
+      executionTimeoutHandle = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
           this.agentSessionManager.removeListener('blocks', onBlocks);
@@ -422,15 +413,15 @@ export class BacklogHarness extends EventEmitter {
         }
       }, 30 * 60 * 1000); // 30 minutes
 
-      // Start execution
       this.agentSessionManager
         .executeCommand(sessionId, prompt)
-        .catch((error) => {
+        .catch((error: unknown) => {
           if (!isResolved) {
             isResolved = true;
-            if (timeoutHandle) clearTimeout(timeoutHandle);
+            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- executionTimeoutHandle is assigned in setTimeout callback
+            if (executionTimeoutHandle) clearTimeout(executionTimeoutHandle);
             this.agentSessionManager.removeListener('blocks', onBlocks);
-            reject(error as Error);
+            reject(error instanceof Error ? error : new Error(String(error)));
           }
         });
     });
@@ -484,7 +475,7 @@ Do NOT write "Task complete" or similar - just commit your code and include the 
 
     return task.dependencies.every((depId) => {
       const depTask = this.backlog.tasks.find((t) => t.id === depId);
-      return depTask && depTask.status === 'completed';
+      return depTask?.status === 'completed';
     });
   }
 
@@ -513,7 +504,7 @@ Do NOT write "Task complete" or similar - just commit your code and include the 
       writeFileSync(backlogPath, JSON.stringify(this.backlog, null, 2));
       this.logger.debug(`Saved backlog to ${backlogPath}`);
     } catch (error) {
-      this.logger.error('Failed to save backlog:', error);
+      this.logger.error({ error }, 'Failed to save backlog');
     }
   }
 

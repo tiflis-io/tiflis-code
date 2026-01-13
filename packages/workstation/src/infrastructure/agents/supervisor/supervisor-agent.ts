@@ -11,10 +11,12 @@ import type { Logger } from 'pino';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
+import type { BacklogAgentManager } from '../backlog-agent-manager.js';
 import type { WorkspaceDiscovery } from '../../../domain/ports/workspace-discovery.js';
 import type { MessageBroadcaster } from '../../../domain/ports/message-broadcaster.js';
 import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
 import type { AgentStateManager } from '../../../domain/ports/agent-state-manager.js';
+import type { ContentBlock } from '../../../domain/value-objects/content-block.js';
 import { LangGraphAgent } from '../base/lang-graph-agent.js';
 import { SupervisorStateManager } from './supervisor-state-manager.js';
 import { createWorkspaceTools } from './tools/workspace-tools.js';
@@ -256,7 +258,7 @@ IMPORTANT: You MUST validate the project path EXISTS before creating a backlog s
 
 Step 1: Call \`list_worktrees\` for the project to see all available branches/worktrees
 Step 2: PARSE THE OUTPUT CAREFULLY:
-   - Output format: "Worktrees for \"workspace/project\":\n- worktree-name: branch-name (/path/to/directory)"
+   - Output format: "Worktrees for 'workspace/project':\n- worktree-name: branch-name (/path/to/directory)"
    - Example: "- main: main (/Users/roman/tiflis-code-work/roman/eva)"
    - This means the main branch is at /Users/roman/tiflis-code-work/roman/eva (NO --main suffix!)
 Step 3: Determine the correct worktree parameter:
@@ -360,7 +362,7 @@ Creating worktrees with \`create_worktree\`:
       ...Object.values(createBacklogTools(
         this.sessionManager,
         this.agentSessionManager,
-        this.sessionManager.getBacklogManagers?.() ?? new Map(),
+        (this.sessionManager.getBacklogManagers?.() ?? new Map()) as Map<string, BacklogAgentManager>,
         this.workspacesRoot,
         this.getMessageBroadcaster,
         this.logger
@@ -386,17 +388,14 @@ Creating worktrees with \`create_worktree\`:
    * - Notifies all connected clients
    */
   clearContext(): void {
-    // Clear in-memory history
     this.conversationHistory = [];
     this.isCancelled = false;
 
-    // Clear persistent history
     const chatHistoryService = this.getChatHistoryService?.();
     if (chatHistoryService) {
       chatHistoryService.clearSupervisorHistory();
     }
 
-    // Notify all clients that context was cleared
     const broadcaster = this.getMessageBroadcaster?.();
     if (broadcaster) {
       const clearNotification = JSON.stringify({
@@ -407,5 +406,45 @@ Creating worktrees with \`create_worktree\`:
     }
 
     this.logger.info('Supervisor context cleared (in-memory, persistent, and clients notified)');
+  }
+
+  /**
+   * Synchronous execute method for ISupervisorAgent interface compatibility.
+   * Internally calls executeWithStream and returns a result.
+   */
+  async execute(
+    command: string,
+    deviceId: string,
+    _currentSessionId?: string
+  ): Promise<SupervisorResult> {
+    let output = '';
+
+    const blockHandler = (_deviceId: string, _blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
+      if (isComplete && finalOutput) {
+        output = finalOutput;
+      }
+    };
+
+    this.on('blocks', blockHandler);
+
+    try {
+      await this.executeWithStream(command, deviceId);
+    } finally {
+      this.removeListener('blocks', blockHandler);
+    }
+
+    return { output };
+  }
+
+  clearHistory(): void {
+    this.clearContext();
+  }
+
+  /**
+   * Records acknowledgment of context clear from a device.
+   * Used for multi-device synchronization.
+   */
+  recordClearAck(_broadcastId: string, _deviceId: string): void {
+    this.logger.debug({ _broadcastId, _deviceId }, 'Context clear acknowledgment received');
   }
 }

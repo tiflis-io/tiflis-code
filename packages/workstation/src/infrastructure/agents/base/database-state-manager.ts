@@ -10,72 +10,51 @@
 import type { AgentStateManager, ConversationEntry } from '../../../domain/ports/agent-state-manager.js';
 import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
 
-/**
- * Implements state persistence for agents that use database storage.
- * Conversation history is persisted through ChatHistoryService.
- */
 export class DatabaseStateManager implements AgentStateManager {
   constructor(private readonly chatHistoryService: ChatHistoryService) {}
 
-  /**
-   * Load conversation history from database.
-   */
-  async loadHistory(): Promise<ConversationEntry[]> {
+  loadHistory(): Promise<ConversationEntry[]> {
     const history = this.chatHistoryService.getSupervisorHistory();
-    return history.map((entry) => ({
+    const entries: ConversationEntry[] = history.map((entry) => ({
       role: entry.role as 'user' | 'assistant',
       content: entry.content,
-      timestamp: entry.createdAt ? new Date(entry.createdAt).getTime() : undefined,
+      timestamp: new Date(entry.createdAt).getTime(),
     }));
+    return Promise.resolve(entries);
   }
 
-  /**
-   * Save conversation history to database.
-   * Note: Individual messages are saved one at a time via saveSupervisorMessage.
-   * For efficiency, only the last message in the history (most recent) is persisted
-   * if it's not already in the database.
-   */
-  async saveHistory(history: ConversationEntry[]): Promise<void> {
-    // Only save the most recent message if history was updated
-    if (history.length === 0) return;
+  saveHistory(history: ConversationEntry[]): Promise<void> {
+    if (history.length === 0) return Promise.resolve();
 
     const lastEntry = history[history.length - 1];
-    // Check if this message is already in the database by comparing with most recent stored message
+    if (!lastEntry) return Promise.resolve();
+
+    // Skip system messages as they're not supported by saveSupervisorMessage
+    if (lastEntry.role === 'system') return Promise.resolve();
+
     const storedHistory = this.chatHistoryService.getSupervisorHistory(1);
     const mostRecentStored = storedHistory[0];
 
-    // Only save if content differs (new message)
     if (!mostRecentStored || mostRecentStored.content !== lastEntry.content) {
       this.chatHistoryService.saveSupervisorMessage(lastEntry.role, lastEntry.content);
     }
+    return Promise.resolve();
   }
 
-  /**
-   * Clear conversation history from database.
-   */
-  async clearHistory(): Promise<void> {
-    await this.chatHistoryService.clearSupervisorHistory();
+  clearHistory(): Promise<void> {
+    this.chatHistoryService.clearSupervisorHistory();
+    return Promise.resolve();
   }
 
-  /**
-   * Load additional agent-specific state (not used for Supervisor).
-   */
-  async loadAdditionalState<T>(_key: string): Promise<T | null> {
-    // Supervisor doesn't use additional state
-    return null;
+  loadAdditionalState<T>(_key: string): Promise<T | null> {
+    return Promise.resolve(null);
   }
 
-  /**
-   * Save additional agent-specific state (not used for Supervisor).
-   */
-  async saveAdditionalState<T>(_key: string, _state: T): Promise<void> {
-    // Supervisor doesn't use additional state
+  saveAdditionalState(_key: string, _state: unknown): Promise<void> {
+    return Promise.resolve();
   }
 
-  /**
-   * Cleanup resources.
-   */
-  async close(): Promise<void> {
-    // No resources to clean up
+  close(): Promise<void> {
+    return Promise.resolve();
   }
 }

@@ -87,7 +87,6 @@ export abstract class LangGraphAgent extends EventEmitter {
    * Called after successful execution completion.
    * Subclasses can override to perform agent-specific post-execution logic.
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected async onExecutionComplete(_blocks: ContentBlock[], _finalOutput: string): Promise<void> {
     // Base implementation: do nothing
     // Subclasses override for custom behavior (e.g., BacklogAgent may persist to files)
@@ -200,7 +199,10 @@ export abstract class LangGraphAgent extends EventEmitter {
 
       this.logger.info({ deviceId }, `Starting LangGraph agent stream for ${this.constructor.name}`);
       // Stream the agent execution
-      const stream = await this.agent!.stream(
+      if (!this.agent) {
+        throw new Error('Agent not initialized');
+      }
+      const stream = await this.agent.stream(
         { messages },
         {
           streamMode: 'values',

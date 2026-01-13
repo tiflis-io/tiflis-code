@@ -23,13 +23,14 @@ import { SupervisorSession } from '../../domain/entities/supervisor-session.js';
 import { AgentSession, isAgentType } from '../../domain/entities/agent-session.js';
 import type { AgentType } from '../../domain/entities/agent-session.js';
 import { SessionId } from '../../domain/value-objects/session-id.js';
-import type { WorkspacePath } from '../../domain/value-objects/workspace-path.js';
+import { WorkspacePath } from '../../domain/value-objects/workspace-path.js';
 import type { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
 import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session.js';
 import { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
-import { SessionRepository } from './repositories/session-repository.js';
+import type { SessionRepository } from './repositories/session-repository.js';
+import type { SessionRow } from './database/schema.js';
 
 export interface InMemorySessionManagerConfig {
   ptyManager: TerminalManager;
@@ -69,7 +70,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.ptyManager = config.ptyManager;
     this.agentSessionManager = config.agentSessionManager;
     this.logger = config.logger.child({ component: 'session-manager' });
-    this.backlogManagers = config.backlogManagers || new Map();
+    this.backlogManagers = config.backlogManagers ?? new Map<string, BacklogAgentManager>();
     this.sessionRepository = config.sessionRepository;
 
     // Sync agent session events
@@ -79,15 +80,15 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   /**
    * Restores persisted sessions from the database on startup.
    */
-  async restoreSessions(): Promise<void> {
+  restoreSessions(): Promise<void> {
     this.logger.info('restoreSessions() called');
 
     if (!this.sessionRepository) {
       this.logger.warn('No session repository - skipping session restoration');
-      return;
+      return Promise.resolve();
     }
 
-    let persistedSessions: any[] = [];
+    let persistedSessions: SessionRow[] = [];
     try {
       persistedSessions = this.sessionRepository.getActive();
       this.logger.info(
@@ -97,14 +98,14 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
       if (persistedSessions.length === 0) {
         this.logger.info('No persisted sessions found in database');
-        return;
+        return Promise.resolve();
       }
     } catch (dbError) {
       this.logger.error(
         { error: dbError instanceof Error ? dbError.message : String(dbError) },
         'Error fetching sessions from database'
       );
-      return;
+      return Promise.resolve();
     }
 
     let backlogRestoreCount = 0;
@@ -123,7 +124,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
           if (existsSync(backlogPath)) {
             try {
               const backlogContent = readFileSync(backlogPath, 'utf-8');
-              const backlogData = JSON.parse(backlogContent);
+              const backlogData = JSON.parse(backlogContent) as { agent?: string };
               if (backlogData.agent && ['claude', 'cursor', 'opencode'].includes(backlogData.agent)) {
                 agentName = backlogData.agent;
               }
@@ -131,7 +132,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
                 { sessionId: persistedSession.id, agentName },
                 'Loaded agent type from backlog.json'
               );
-            } catch (parseError) {
+            } catch (parseError: unknown) {
               this.logger.warn(
                 { sessionId: persistedSession.id, error: parseError },
                 'Failed to parse backlog.json, using default agent'
@@ -139,20 +140,19 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
             }
           }
 
-          // Restore backlog session with correct agent name
           const backlogSession = new BacklogAgentSession({
             id: new SessionId(persistedSession.id),
-            type: 'backlog-agent' as any,
+            type: 'backlog-agent',
             workspacePath: persistedSession.workspace
-              ? {
-                  workspace: persistedSession.workspace,
-                  project: persistedSession.project || '',
-                  worktree: persistedSession.worktree,
-                }
+              ? new WorkspacePath(
+                  persistedSession.workspace,
+                  persistedSession.project ?? undefined,
+                  persistedSession.worktree ?? undefined
+                )
               : undefined,
             workingDir: persistedSession.workingDir,
             agentName,
-            backlogId: `${persistedSession.project}-${Date.now()}`,
+            backlogId: `${persistedSession.project ?? 'unknown'}-${Date.now()}`,
           });
 
           this.sessions.set(persistedSession.id, backlogSession);
@@ -209,6 +209,8 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
       },
       'Session restoration complete'
     );
+
+    return Promise.resolve();
   }
 
   /**
@@ -291,7 +293,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     }
 
     if (sessionType === 'backlog-agent') {
-      return this.createBacklogSession(workingDir, backlogAgent || 'claude', backlogId, params.workspacePath);
+      return this.createBacklogSession(workingDir, backlogAgent ?? 'claude', backlogId, params.workspacePath);
     }
 
     // Agent sessions (cursor, claude, opencode)
@@ -345,7 +347,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     if (this.sessionRepository) {
       this.sessionRepository.create({
         id: sessionId.value,
-        type: agentName || agentType,
+        type: agentName ?? agentType,
         workspace: workspacePath?.workspace,
         project: workspacePath?.project,
         worktree: workspacePath?.worktree,
@@ -524,18 +526,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   /**
    * Creates a backlog agent session.
    */
-  private async createBacklogSession(
+  private createBacklogSession(
     workingDir: string,
     backlogAgent: 'claude' | 'cursor' | 'opencode',
     backlogId?: string,
     workspacePath?: WorkspacePath
-  ): Promise<BacklogAgentSession> {
+  ): BacklogAgentSession {
     const sessionId = new SessionId(`backlog-${nanoid(8)}`);
-    const finalBacklogId = backlogId || `backlog-${nanoid(8)}`;
+    const finalBacklogId = backlogId ?? `backlog-${nanoid(8)}`;
 
     const session = new BacklogAgentSession({
       id: sessionId,
-      type: 'backlog-agent' as any,
+      type: 'backlog-agent',
       workspacePath,
       workingDir,
       agentName: backlogAgent,

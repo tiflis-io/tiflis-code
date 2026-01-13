@@ -67,7 +67,6 @@ export interface ISupervisorAgent extends EventEmitter {
     history: { role: 'user' | 'assistant'; content: string }[]
   ): void;
 
-  // Context management
-  clearContext(): Promise<void>;
+  clearContext(): void;
   recordClearAck(broadcastId: string, deviceId: string): void;
 }

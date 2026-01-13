@@ -12,13 +12,13 @@ import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 
 export interface BacklogToolsContext {
   getStatus: () => ContentBlock[];
-  startHarness: () => Promise<ContentBlock[]>;
+  startHarness: () => ContentBlock[];
   stopHarness: () => ContentBlock[];
   pauseHarness: () => ContentBlock[];
   resumeHarness: () => ContentBlock[];
   listTasks: () => ContentBlock[];
   addTask: (title: string, description: string) => ContentBlock[];
-  getAvailableAgents: () => Promise<Array<{ name: string; description: string; isAlias: boolean }>>;
+  getAvailableAgents: () => Promise<{ name: string; description: string; isAlias: boolean }[]>;
   parseAgentSelection: (userResponse: string) => Promise<{ agentName: string | null; valid: boolean; message: string }>;
 }
 
@@ -27,9 +27,9 @@ export interface BacklogToolsContext {
  */
 export function createBacklogAgentTools(context: BacklogToolsContext) {
   const getStatus = tool(
-    async () => {
+    () => {
       const blocks = context.getStatus();
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'get_backlog_status',
@@ -39,9 +39,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const startHarness = tool(
-    async () => {
-      const blocks = await context.startHarness();
-      return blocks.map((b: any) => b.content).join('\n');
+    () => {
+      const blocks = context.startHarness();
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'start_backlog_harness',
@@ -51,9 +51,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const stopHarness = tool(
-    async () => {
+    () => {
       const blocks = context.stopHarness();
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'stop_backlog_harness',
@@ -63,9 +63,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const pauseHarness = tool(
-    async () => {
+    () => {
       const blocks = context.pauseHarness();
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'pause_backlog_harness',
@@ -75,9 +75,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const resumeHarness = tool(
-    async () => {
+    () => {
       const blocks = context.resumeHarness();
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'resume_backlog_harness',
@@ -87,9 +87,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const listTasks = tool(
-    async () => {
+    () => {
       const blocks = context.listTasks();
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'list_backlog_tasks',
@@ -99,9 +99,9 @@ export function createBacklogAgentTools(context: BacklogToolsContext) {
   );
 
   const addTask = tool(
-    async ({ title, description }: { title: string; description: string }) => {
+    ({ title, description }: { title: string; description: string }) => {
       const blocks = context.addTask(title, description);
-      return blocks.map((b: any) => b.content).join('\n');
+      return blocks.map((b) => b.content).join('\n');
     },
     {
       name: 'add_backlog_task',

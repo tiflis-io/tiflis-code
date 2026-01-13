@@ -13,24 +13,9 @@ import type { SessionManager } from '../../../../domain/ports/session-manager.js
 import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
 import { BacklogAgentManager } from '../../backlog-agent-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
-import type { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
-import { BacklogAgentSession } from '../../../../domain/entities/backlog-agent-session.js';
+import { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
+import type { BacklogAgentSession } from '../../../../domain/entities/backlog-agent-session.js';
 
-/**
- * Tool registry for backlog operations.
- */
-export interface BacklogToolsRegistry {
-  createBacklogSession: ReturnType<typeof tool>;
-  listBacklogSessions: ReturnType<typeof tool>;
-  getBacklogStatus: ReturnType<typeof tool>;
-  addTaskToBacklog: ReturnType<typeof tool>;
-  startBacklogHarness: ReturnType<typeof tool>;
-  stopBacklogHarness: ReturnType<typeof tool>;
-}
-
-/**
- * Create backlog tools for supervisor.
- */
 export function createBacklogTools(
   sessionManager: SessionManager,
   agentSessionManager: AgentSessionManager,
@@ -38,7 +23,7 @@ export function createBacklogTools(
   workspacesRoot?: string,
   getMessageBroadcaster?: () => MessageBroadcaster | null,
   logger?: Logger
-): BacklogToolsRegistry {
+) {
   const createBacklogSession = tool(
     async (args: {
       workspace: string;
@@ -46,7 +31,7 @@ export function createBacklogTools(
       worktree?: string;
       backlogId?: string;
     }) => {
-      const finalBacklogId = args.backlogId || `${args.project}-${Date.now()}`;
+      const finalBacklogId = args.backlogId ?? `${args.project}-${Date.now()}`;
 
       // Normalize worktree: treat "main" and "master" as undefined (no worktree suffix)
       // This handles cases where LLM incorrectly passes worktree="main"
@@ -56,7 +41,7 @@ export function createBacklogTools(
       }
 
       // Construct working directory path using workspacesRoot if available
-      const root = workspacesRoot || '/workspaces';
+      const root = workspacesRoot ?? '/workspaces';
       let workingDir: string;
 
       if (!normalizedWorktree) {
@@ -67,11 +52,11 @@ export function createBacklogTools(
         workingDir = join(root, args.workspace, `${args.project}--${normalizedWorktree}`);
       }
 
-      const workspacePath: WorkspacePath = {
-        workspace: args.workspace,
-        project: args.project,
-        worktree: normalizedWorktree,
-      };
+      const workspacePath = new WorkspacePath(
+        args.workspace,
+        args.project,
+        normalizedWorktree
+      );
 
       // Validate that the project directory exists before creating backlog session
       if (!existsSync(workingDir)) {
@@ -81,26 +66,33 @@ export function createBacklogTools(
         return `❌ ERROR: Project path does not exist: ${workingDir}\n\nPlease make sure:\n1. The workspace "${args.workspace}" exists\n2. The project "${args.project}" exists\n3. ${details}\n\nUse list_worktrees to see available branches for the project.`;
       }
 
-      // Backlog uses the default model (same as Supervisor)
-      // It doesn't accept a specific agent - uses system defaults
-      const defaultAgent = 'backlog';
-
-      // Create backlog session via sessionManager with proper parameters
       const session = await sessionManager.createSession({
         sessionType: 'backlog-agent',
         workspacePath,
         workingDir,
-        backlogAgent: defaultAgent,
         backlogId: finalBacklogId,
       });
 
-      if (!session || session.type !== 'backlog-agent') {
+      if (session.type !== 'backlog-agent') {
         return `Failed to create backlog session`;
       }
 
       // Create backlog manager
       const backlogSession = session as BacklogAgentSession;
-      const backlogLogger = logger || { debug: () => {}, info: () => {}, warn: () => {}, error: () => {}, child: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }) } as any;
+      // Create a minimal no-op logger if none provided
+      const noopFn = (): void => { /* no-op */ };
+      const noopLogger = {
+        level: 'silent',
+        debug: noopFn,
+        info: noopFn,
+        warn: noopFn,
+        error: noopFn,
+        fatal: noopFn,
+        trace: noopFn,
+        silent: noopFn,
+        child: () => noopLogger,
+      } as unknown as Logger;
+      const backlogLogger = logger ?? noopLogger;
       const manager = BacklogAgentManager.createEmpty(
         backlogSession,
         workingDir,
@@ -141,7 +133,7 @@ export function createBacklogTools(
   );
 
   const listBacklogSessions = tool(
-    async () => {
+    () => {
       const sessions = Array.from(backlogManagers.entries())
         .map(
           ([sessionId, manager]) =>
@@ -163,14 +155,14 @@ export function createBacklogTools(
   );
 
   const getBacklogStatus = tool(
-    async (args: { sessionId: string }) => {
+    (args: { sessionId: string }) => {
       const manager = backlogManagers.get(args.sessionId);
       if (!manager) {
         return `Backlog session "${args.sessionId}" not found`;
       }
 
       const backlog = manager.getBacklog();
-      const summary = backlog.summary || {
+      const summary = backlog.summary ?? {
         total: backlog.tasks.length,
         completed: 0,
         failed: 0,
@@ -179,7 +171,7 @@ export function createBacklogTools(
       };
 
       const percentage = summary.total > 0 ? (summary.completed / summary.total) * 100 : 0;
-      const worktreeDisplay = backlog.worktree || 'main';
+      const worktreeDisplay = backlog.worktree ?? 'main';
 
       return `
 📊 Backlog: ${backlog.id}

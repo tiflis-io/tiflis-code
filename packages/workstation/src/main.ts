@@ -1304,9 +1304,7 @@ if (bufferedMessages.length > 0) {
         directClient?.isAuthenticated ?? tunnelClient?.isAuthenticated;
 
       if (isAuthenticated) {
-        // Clear context (in-memory, persistent, and notifies all clients)
-        // CRITICAL: Must await to ensure all clearing is done before responding
-        await supervisorAgent.clearContext();
+        supervisorAgent.clearContext();
 
         sendToDevice(
           socket,
@@ -1471,8 +1469,8 @@ if (bufferedMessages.length > 0) {
             .some((s) => s.sessionId === sessionId);
 
         // Check if this is a backlog-agent session
-        const backlogManagers = sessionManager.getBacklogManagers?.();
-        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+        const backlogManagers = sessionManager.getBacklogManagers();
+        const isBacklogSession = backlogManagers.has(sessionId);
 
         if (agentSession || isPersistedAgent || isBacklogSession) {
           // For agent and backlog-agent sessions, just track subscription without sessionManager validation
@@ -1580,8 +1578,8 @@ if (bufferedMessages.length > 0) {
         const sessionId = unsubscribeMessage.session_id;
 
         // Check if this is a backlog-agent session
-        const backlogManagers = sessionManager.getBacklogManagers?.();
-        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+        const backlogManagers = sessionManager.getBacklogManagers();
+        const isBacklogSession = backlogManagers.has(sessionId);
 
         if (isBacklogSession) {
           // For backlog-agent sessions, just unsubscribe the client
@@ -1659,15 +1657,10 @@ if (bufferedMessages.length > 0) {
       cancelledDuringTranscription.delete(sessionId);
 
       // Check if this is a backlog agent session
-      if (!sessionManager) {
-        logger.error({ sessionId }, "sessionManager not initialized");
-        return;
-      }
+      const backlogManagers = sessionManager.getBacklogManagers();
+      const isBacklogSession = backlogManagers.has(sessionId);
 
-      const backlogManagers = sessionManager.getBacklogManagers?.();
-      const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
-
-      if (backlogManagers && isBacklogSession) {
+      if (isBacklogSession) {
         const manager = backlogManagers.get(sessionId);
         if (!manager) {
           logger.error(
@@ -1692,10 +1685,12 @@ if (bufferedMessages.length > 0) {
               message_id: messageId,
             },
           };
-          messageBroadcaster?.broadcastToSubscribers(
-            sessionId,
-            JSON.stringify(errorMessage)
-          );
+          if (messageBroadcaster) {
+            void messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(errorMessage)
+            );
+          }
           return;
         }
 
@@ -1711,7 +1706,7 @@ if (bufferedMessages.length > 0) {
 
           // Save assistant response blocks to chat history
           if (blocks.length > 0) {
-            const assistantContent = blocks.map((b: any) => b.content || "").join("\n");
+            const assistantContent = blocks.map((b) => b.content).join("\n");
             chatHistoryService.saveMessage(
               sessionId,
               createAssistantMessage(assistantContent),
@@ -1725,14 +1720,14 @@ if (bufferedMessages.length > 0) {
             const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
 
             // Convert blocks from backend format (block_type) to protocol format (blockType) for web client
-            const protocolBlocks = blocks.map((block: any) => ({
+            const protocolBlocks = blocks.map((block) => ({
               id: block.id,
               blockType: block.block_type,
-              content: block.content || "",
-              metadata: block.metadata,
+              content: block.content,
+              metadata: 'metadata' in block ? block.metadata : undefined,
             }));
 
-            const contentText = protocolBlocks.map((b: any) => b.content).join("\n");
+            const contentText = protocolBlocks.map((b) => b.content).join("\n");
 
             // Send two messages: first as streaming (is_complete: false), then as complete (is_complete: true)
             // This matches the behavior of agent sessions and allows the web client to properly track the response lifecycle
@@ -1751,7 +1746,7 @@ if (bufferedMessages.length > 0) {
               },
             };
 
-            messageBroadcaster.broadcastToSubscribers(
+            void messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(streamingMessage)
             );
@@ -1770,7 +1765,7 @@ if (bufferedMessages.length > 0) {
               },
             };
 
-            messageBroadcaster.broadcastToSubscribers(
+            void messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(completionMessage)
             );
@@ -1814,7 +1809,7 @@ if (bufferedMessages.length > 0) {
               },
             };
 
-            messageBroadcaster.broadcastToSubscribers(
+            void messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(errorStreamingMessage)
             );
@@ -1833,7 +1828,7 @@ if (bufferedMessages.length > 0) {
               },
             };
 
-            messageBroadcaster.broadcastToSubscribers(
+            void messageBroadcaster.broadcastToSubscribers(
               sessionId,
               JSON.stringify(errorCompletionMessage)
             );

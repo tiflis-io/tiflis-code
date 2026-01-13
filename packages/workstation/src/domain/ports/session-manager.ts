@@ -81,10 +81,7 @@ export interface SessionManager {
    */
   count(): number;
 
-  /**
-   * Gets backlog managers for supervisor tools.
-   */
-  getBacklogManagers?(): Map<string, any>;
+  getBacklogManagers?(): Map<string, unknown>;
 }
 
 /**

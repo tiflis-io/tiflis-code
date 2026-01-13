@@ -4,9 +4,7 @@
  * @license FSL-1.1-NC
  */
 
-import type { SessionId } from '../value-objects/session-id.js';
-import type { WorkspacePath } from '../value-objects/workspace-path.js';
-import { Session, type BaseSessionProps } from './session.js';
+import { Session, type BaseSessionProps, type SessionType } from './session.js';
 
 /**
  * Properties for creating a backlog agent session.
@@ -28,12 +26,12 @@ export interface BacklogAgentSessionProps extends BaseSessionProps {
 export class BacklogAgentSession extends Session {
   private readonly _agentName: string;
   private readonly _backlogId: string;
-  private _harnessRunning: boolean = false;
+  private _harnessRunning = false;
 
   constructor(props: BacklogAgentSessionProps) {
     super({
       ...props,
-      type: 'backlog-agent' as any, // Override to backlog-agent
+      type: 'backlog-agent' as SessionType,
     });
     this._agentName = props.agentName;
     this._backlogId = props.backlogId;
@@ -60,10 +58,10 @@ export class BacklogAgentSession extends Session {
     }
   }
 
-  async terminate(): Promise<void> {
+  terminate(): Promise<void> {
     this._harnessRunning = false;
     this.markTerminated();
-    // Cleanup will be handled by BacklogAgentManager
+    return Promise.resolve();
   }
 
   override toInfo() {

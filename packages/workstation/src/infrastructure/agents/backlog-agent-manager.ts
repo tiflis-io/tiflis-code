@@ -15,6 +15,7 @@ import { BacklogHarness } from './backlog-harness.js';
 import { BacklogAgent } from './backlog-agent.js';
 import type { AgentSessionManager } from './agent-session-manager.js';
 import type { ContentBlock } from '../../domain/value-objects/content-block.js';
+import { getAvailableAgents } from '../../config/constants.js';
 
 /**
  * Manages a BacklogAgent session including LLM interaction and Harness orchestration.
@@ -23,13 +24,13 @@ export class BacklogAgentManager extends EventEmitter {
   private session: BacklogAgentSession;
   private backlog: Backlog;
   private harness: BacklogHarness | null = null;
-  private conversationHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+  private conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [];
   private workingDir: string;
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
   private llmAgent: BacklogAgent;
   private selectedAgent: string | null = null;
-  private agentSelectionInProgress: boolean = false;
+  private agentSelectionInProgress = false;
 
   constructor(
     session: BacklogAgentSession,
@@ -89,8 +90,8 @@ export class BacklogAgentManager extends EventEmitter {
         const content = readFileSync(backlogPath, 'utf-8');
         this.backlog = BacklogSchema.parse(JSON.parse(content));
         this.logger.debug('Updated backlog from file');
-      } catch (error) {
-        this.logger.error('Failed to load backlog from file:', error);
+      } catch (error: unknown) {
+        this.logger.error({ error }, 'Failed to load backlog from file');
       }
     }
   }
@@ -111,16 +112,14 @@ export class BacklogAgentManager extends EventEmitter {
 
     // If agent selection is in progress, handle it first
     if (this.agentSelectionInProgress && !this.selectedAgent) {
-      const selectionBlocks = await this.handleAgentSelection(userMessage);
-      const responseText = selectionBlocks.map((b: any) => b.content).join('\n');
+      const selectionBlocks = this.handleAgentSelection(userMessage);
+      const responseText = selectionBlocks.map((b) => b.content).join('\n');
       this.conversationHistory.push({ role: 'assistant', content: responseText });
       this.saveBacklog();
       return selectionBlocks;
     }
 
-    // Use LLM agent with streaming (emits blocks through EventEmitter)
-    // This is now unified with SupervisorAgent streaming
-    let streamedBlocks: ContentBlock[] = [];
+    const streamedBlocks: ContentBlock[] = [];
 
     // Listen to streaming blocks
     const blockHandler = (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
@@ -148,7 +147,7 @@ export class BacklogAgentManager extends EventEmitter {
    * Get status blocks for current backlog.
    */
   private getStatusBlocks(): ContentBlock[] {
-    const summary = this.backlog.summary || {
+    const summary = this.backlog.summary ?? {
       total: this.backlog.tasks.length,
       completed: 0,
       failed: 0,
@@ -159,7 +158,7 @@ export class BacklogAgentManager extends EventEmitter {
     const percentage =
       summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0;
 
-    const worktreeDisplay = this.backlog.worktree || 'main';
+    const worktreeDisplay = this.backlog.worktree ?? 'main';
 
     const statusText = `
 📊 **Backlog Status**: ${this.backlog.id}
@@ -187,11 +186,7 @@ export class BacklogAgentManager extends EventEmitter {
     ];
   }
 
-  /**
-   * Start harness execution.
-   * If agent not selected yet, ask user first.
-   */
-  private async startHarnessCommand(): Promise<ContentBlock[]> {
+  private startHarnessCommand(): ContentBlock[] {
     if (this.harness) {
       return [
         {
@@ -220,14 +215,12 @@ export class BacklogAgentManager extends EventEmitter {
       return this.askForAgentSelection();
     }
 
-    // If selection is in progress, wait for user response
     if (this.agentSelectionInProgress) {
       return [
         {
           id: 'agent-selection-pending',
           block_type: 'status',
           content: '⏳ Waiting for you to select an agent...',
-          metadata: { status: 'agent_selection_pending' },
         },
       ];
     }
@@ -242,9 +235,7 @@ export class BacklogAgentManager extends EventEmitter {
   private askForAgentSelection(): ContentBlock[] {
     this.agentSelectionInProgress = true;
 
-    const agents = this.agentSessionManager.getAvailableAgents ?
-      Array.from(this.agentSessionManager.getAvailableAgents().values()) :
-      [];
+    const agents = Array.from(getAvailableAgents().values());
 
     const agentList = agents
       .map((a) => `• **${a.name}**${a.isAlias ? ' (alias)' : ''}: ${a.description}`)
@@ -270,21 +261,17 @@ Please respond with the agent name you'd like to use (e.g., "claude", "cursor", 
   /**
    * Handle user's agent selection response.
    */
-  private async handleAgentSelection(userMessage: string): Promise<ContentBlock[]> {
-    // Try to parse the user's response
-    const availableAgents = this.agentSessionManager.getAvailableAgents ?
-      this.agentSessionManager.getAvailableAgents() :
-      new Map();
+  private handleAgentSelection(userMessage: string): ContentBlock[] {
+    const availableAgents = getAvailableAgents();
 
     const agentNames = Array.from(availableAgents.keys());
     const selectedAgent = this.findBestAgentMatch(userMessage, agentNames);
 
     if (!selectedAgent) {
-      // No valid agent found - show available agents again
       const agentList = agentNames
         .map((name) => {
           const config = availableAgents.get(name);
-          return `• **${name}**${config?.isAlias ? ' (alias)' : ''}: ${config?.description || ''}`;
+          return `• **${name}**${config?.isAlias ? ' (alias)' : ''}: ${config?.description ?? ''}`;
         })
         .join('\n');
 
@@ -297,7 +284,6 @@ Please respond with the agent name you'd like to use (e.g., "claude", "cursor", 
       ];
     }
 
-    // Agent selected successfully
     this.selectedAgent = selectedAgent;
     this.agentSelectionInProgress = false;
 
@@ -306,18 +292,15 @@ Please respond with the agent name you'd like to use (e.g., "claude", "cursor", 
 
 Now starting the harness...`;
 
-    // Return confirmation and then create/start harness
     const confirmationBlocks: ContentBlock[] = [
       {
         id: 'agent-selection-confirmed',
         block_type: 'status',
         content: confirmation,
-        metadata: { status: 'agent_selected' },
       },
     ];
 
-    // Trigger harness creation
-    const harnessBlocks = await this.createAndStartHarness();
+    const harnessBlocks = this.createAndStartHarness();
 
     return [...confirmationBlocks, ...harnessBlocks];
   }
@@ -395,31 +378,42 @@ Now starting the harness...`;
   private levenshteinDistance(str1: string, str2: string): number {
     const len1 = str1.length;
     const len2 = str2.length;
-    const matrix: number[][] = Array(len1 + 1)
-      .fill(null)
-      .map(() => Array(len2 + 1).fill(0));
+    const matrix: number[][] = Array.from(
+      { length: len1 + 1 },
+      () => Array.from({ length: len2 + 1 }, () => 0)
+    );
 
-    for (let i = 0; i <= len1; i++) matrix[i][0] = i;
-    for (let j = 0; j <= len2; j++) matrix[0][j] = j;
+    for (let i = 0; i <= len1; i++) {
+      const row = matrix[i];
+      if (row) row[0] = i;
+    }
+    for (let j = 0; j <= len2; j++) {
+      const firstRow = matrix[0];
+      if (firstRow) firstRow[j] = j;
+    }
 
     for (let i = 1; i <= len1; i++) {
       for (let j = 1; j <= len2; j++) {
         const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j - 1] + cost
-        );
+        const row = matrix[i];
+        const prevRow = matrix[i - 1];
+        if (row && prevRow) {
+          row[j] = Math.min(
+            (prevRow[j] ?? 0) + 1,
+            (row[j - 1] ?? 0) + 1,
+            (prevRow[j - 1] ?? 0) + cost
+          );
+        }
       }
     }
 
-    return matrix[len1][len2];
+    return matrix[len1]?.[len2] ?? 0;
   }
 
   /**
    * Create and start the harness with selected agent.
    */
-  private async createAndStartHarness(): Promise<ContentBlock[]> {
+  private createAndStartHarness(): ContentBlock[] {
     if (!this.selectedAgent) {
       return [
         {
@@ -430,7 +424,6 @@ Now starting the harness...`;
       ];
     }
 
-    // Create harness with selected agent
     this.harness = new BacklogHarness(
       this.backlog,
       this.workingDir,
@@ -439,12 +432,10 @@ Now starting the harness...`;
       this.logger
     );
 
-    // Forward harness events
     this.harness.on('output', (blocks: ContentBlock[]) => {
       this.emit('output', blocks);
     });
 
-    // Reset agent selection when harness completes
     this.harness.on('harness-completed', () => {
       this.selectedAgent = null;
       this.agentSelectionInProgress = false;
@@ -452,9 +443,8 @@ Now starting the harness...`;
 
     this.session.setHarnessRunning(true);
 
-    // Start in background
-    this.harness.start().catch((error) => {
-      this.logger.error('Harness error:', error);
+    void this.harness.start().catch((error: unknown) => {
+      this.logger.error({ error }, 'Harness error');
       this.session.setHarnessRunning(false);
       const errorMsg = error instanceof Error ? error.message : 'Unknown error';
       this.emit('output', [
@@ -466,7 +456,7 @@ Now starting the harness...`;
       ]);
     });
 
-    const worktreeDisplay = this.backlog.worktree || 'main';
+    const worktreeDisplay = this.backlog.worktree ?? 'main';
     const pendingCount = this.backlog.tasks.filter((t) => t.status === 'pending').length;
     const inProgressCount = this.backlog.tasks.filter((t) => t.status === 'in_progress').length;
     const tasksInfo = inProgressCount > 0
@@ -478,7 +468,6 @@ Now starting the harness...`;
         id: 'harness-started',
         block_type: 'status',
         content: `🚀 Harness started for ${worktreeDisplay}. ${tasksInfo}.`,
-        metadata: { status: 'harness_started' },
       },
       {
         id: 'harness-notice',
@@ -514,14 +503,10 @@ Now starting the harness...`;
         id: 'harness-stopped',
         block_type: 'status',
         content: '⏹️ Harness stopped. Agent selection reset.',
-        metadata: { status: 'harness_stopped' },
       },
     ];
   }
 
-  /**
-   * Pause harness execution.
-   */
   private pauseHarnessCommand(): ContentBlock[] {
     if (!this.harness || !this.session.harnessRunning) {
       return [
@@ -540,14 +525,10 @@ Now starting the harness...`;
         id: 'harness-paused',
         block_type: 'status',
         content: '⏸️ Harness paused (current task will complete).',
-        metadata: { status: 'harness_paused' },
       },
     ];
   }
 
-  /**
-   * Resume harness execution.
-   */
   private resumeHarnessCommand(): ContentBlock[] {
     if (!this.harness) {
       return [
@@ -566,7 +547,6 @@ Now starting the harness...`;
         id: 'harness-resumed',
         block_type: 'status',
         content: '▶️ Harness resumed.',
-        metadata: { status: 'harness_resumed' },
       },
     ];
   }
@@ -575,15 +555,18 @@ Now starting the harness...`;
    * Add a new task to backlog.
    */
   private addTaskCommand(params: Record<string, string>): ContentBlock[] {
+    const priorityValue = params.priority as 'low' | 'medium' | 'high' | undefined;
+    const complexityValue = params.complexity as 'simple' | 'moderate' | 'complex' | undefined;
     const newTask = {
       id: Math.max(0, ...this.backlog.tasks.map((t) => t.id)) + 1,
-      title: params.title || 'Untitled',
-      description: params.description || '',
+      title: params.title ?? 'Untitled',
+      description: params.description ?? '',
       acceptance_criteria: params.criteria ? [params.criteria] : [],
-      dependencies: [],
-      priority: (params.priority as any) || 'medium',
-      complexity: (params.complexity as any) || 'moderate',
+      dependencies: [] as number[],
+      priority: priorityValue ?? 'medium',
+      complexity: complexityValue ?? 'moderate',
       status: 'pending' as const,
+      retry_count: 0,
     };
 
     this.backlog.tasks.push(newTask);
@@ -600,31 +583,6 @@ Now starting the harness...`;
   /**
    * Reorder tasks by priority/dependency.
    */
-  private reorderTasksCommand(_params: Record<string, string>): ContentBlock[] {
-    // Simple reorder: completed first, then in_progress, then by priority
-    const priorityOrder = { high: 0, medium: 1, low: 2 };
-
-    this.backlog.tasks.sort((a, b) => {
-      if (a.status === 'completed' && b.status !== 'completed') return 1;
-      if (a.status !== 'completed' && b.status === 'completed') return -1;
-      if (a.status === 'in_progress' && b.status !== 'in_progress') return -1;
-      if (a.status !== 'in_progress' && b.status === 'in_progress') return 1;
-      return priorityOrder[a.priority as keyof typeof priorityOrder] -
-        priorityOrder[b.priority as keyof typeof priorityOrder];
-    });
-
-    return [
-      {
-        id: 'tasks-reordered',
-        block_type: 'text',
-        content: '✅ Tasks reordered by priority and status.',
-      },
-    ];
-  }
-
-  /**
-   * List all tasks with better formatting.
-   */
   private listTasksBlocks(): ContentBlock[] {
     const statusEmoji: Record<string, string> = {
       pending: '⬜',
@@ -636,7 +594,7 @@ Now starting the harness...`;
 
     const tasksList = this.backlog.tasks
       .map((t) => {
-        const emoji = statusEmoji[t.status] || '❓';
+        const emoji = statusEmoji[t.status] ?? '❓';
         const status = t.status.replace('_', ' ').toUpperCase();
         let line = `${emoji} **${t.id}. ${t.title}** [${status}]`;
 
@@ -651,7 +609,7 @@ Now starting the harness...`;
       })
       .join('\n\n');
 
-    const summary = this.backlog.summary || {
+    const summary = this.backlog.summary ?? {
       total: this.backlog.tasks.length,
       completed: 0,
       failed: 0,
@@ -683,101 +641,8 @@ ${tasksList}
     ];
   }
 
-  /**
-   * Show help.
-   */
-  private helpBlocks(): ContentBlock[] {
-    const help = `
-🆘 **Available Commands**:
-
-\`\`\`
-- status                    Show backlog progress
-- list                      List all tasks
-- start                     Start Harness execution
-- stop                      Stop Harness
-- pause                     Pause Harness
-- resume                    Resume Harness
-- add [title] [description] Add new task
-\`\`\`
-
-**Examples**:
-- "What's the status?"
-- "Start executing"
-- "Show all tasks"
-    `.trim();
-
-    return [
-      {
-        id: 'help',
-        block_type: 'text',
-        content: help,
-      },
-    ];
-  }
-
-  /**
-   * Parse user message to extract command.
-   */
-  private parseCommand(message: string): { type: string; params: Record<string, string> } {
-    const lower = message.toLowerCase();
-    const params: Record<string, string> = {};
-
-    if (
-      lower.includes('status') ||
-      lower.includes('progress') ||
-      lower.includes('how many')
-    ) {
-      return { type: 'get_status', params };
-    }
-
-    if (lower.includes('start') || lower.includes('run')) {
-      return { type: 'start_harness', params };
-    }
-
-    if (lower.includes('stop') || lower.includes('terminate')) {
-      return { type: 'stop_harness', params };
-    }
-
-    if (lower.includes('pause')) {
-      return { type: 'pause_harness', params };
-    }
-
-    if (lower.includes('resume') || lower.includes('continue')) {
-      return { type: 'resume_harness', params };
-    }
-
-    if (lower.includes('list') || lower.includes('show')) {
-      return { type: 'list_tasks', params };
-    }
-
-    if (lower.includes('add') || lower.includes('create')) {
-      // Extract title and description from message
-      const parts = message.split(/['"\n]/);
-      if (parts.length > 1) {
-        params.title = parts[1].trim();
-        params.description = parts[2]?.trim() || '';
-      }
-      return { type: 'add_task', params };
-    }
-
-    if (lower.includes('help')) {
-      return { type: 'help', params };
-    }
-
-    // Treat freeform text as a new task to add
-    // This allows natural interaction without requiring "add" keyword
-    params.title = message.trim();
-    params.description = '';
-    return { type: 'add_task', params };
-  }
-
-  /**
-   * Get available agents data for the tools context.
-   */
-  private getAvailableAgentsData(): Promise<Array<{ name: string; description: string; isAlias: boolean }>> {
-    const availableAgents = this.agentSessionManager.getAvailableAgents ?
-      this.agentSessionManager.getAvailableAgents() :
-      new Map();
+  private getAvailableAgentsData(): Promise<{ name: string; description: string; isAlias: boolean }[]> {
+    const availableAgents = getAvailableAgents();
 
     const agents = Array.from(availableAgents.values()).map((config) => ({
       name: config.name,
@@ -788,14 +653,8 @@ ${tasksList}
     return Promise.resolve(agents);
   }
 
-  /**
-   * Parse agent selection from user response.
-   * Uses improved fuzzy matching to handle natural language variations.
-   */
   private parseAgentSelectionData(userResponse: string): Promise<{ agentName: string | null; valid: boolean; message: string }> {
-    const availableAgents = this.agentSessionManager.getAvailableAgents ?
-      this.agentSessionManager.getAvailableAgents() :
-      new Map();
+    const availableAgents = getAvailableAgents();
 
     const agentNames = Array.from(availableAgents.keys());
     const selectedAgent = this.findBestAgentMatch(userResponse, agentNames);
@@ -816,16 +675,13 @@ ${tasksList}
     });
   }
 
-  /**
-   * Save backlog to file.
-   */
   private saveBacklog(): void {
     const backlogPath = join(this.workingDir, 'backlog.json');
     try {
       writeFileSync(backlogPath, JSON.stringify(this.backlog, null, 2));
-      this.logger.debug(`Saved backlog to ${backlogPath}`);
-    } catch (error) {
-      this.logger.error('Failed to save backlog:', error);
+      this.logger.debug({ backlogPath }, 'Saved backlog');
+    } catch (error: unknown) {
+      this.logger.error({ error }, 'Failed to save backlog');
     }
   }
 
@@ -838,11 +694,12 @@ ${tasksList}
     agentSessionManager: AgentSessionManager,
     logger: Logger
   ): BacklogAgentManager {
+    const agentType = session.agentName as 'claude' | 'cursor' | 'opencode';
     const backlog: Backlog = {
       id: session.backlogId,
-      project: workingDir.split('/').pop() || 'project',
+      project: workingDir.split('/').pop() ?? 'project',
       worktree: session.workspacePath?.worktree,
-      agent: session.agentName as any,
+      agent: agentType,
       source: { type: 'manual' },
       created_at: new Date().toISOString(),
       tasks: [],

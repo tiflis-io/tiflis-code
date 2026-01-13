@@ -35,12 +35,7 @@ export interface AgentStateManager {
    */
   loadAdditionalState<T>(key: string): Promise<T | null>;
 
-  /**
-   * Save additional agent-specific state
-   * @param key - State key identifier
-   * @param state - State to save
-   */
-  saveAdditionalState<T>(key: string, state: T): Promise<void>;
+  saveAdditionalState(key: string, state: unknown): Promise<void>;
 
   /**
    * Called when state manager is no longer needed (cleanup)

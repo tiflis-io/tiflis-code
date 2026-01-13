@@ -256,11 +256,10 @@ export class MockSupervisorAgent extends EventEmitter implements ISupervisorAgen
     return [...this.conversationHistory];
   }
 
-  clearContext(): Promise<void> {
+  clearContext(): void {
     this.conversationHistory = [];
     this.isCancelled = false;
     this.logger.info("Mock context cleared");
-    return Promise.resolve();
   }
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function
