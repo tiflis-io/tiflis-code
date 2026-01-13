@@ -142,7 +142,7 @@ export function ChatView({
           aria-label="Chat messages"
           aria-live="polite"
         >
-          <div className="max-w-3xl mx-auto">
+          <div className="max-w-3xl lg:max-w-4xl xl:max-w-5xl 2xl:max-w-6xl mx-auto">
             {/* Load more trigger and indicator at top */}
             {!isSubscribing && messages.length > 0 && (
               <div ref={loadMoreTriggerRef} className="h-1" aria-hidden="true" />
