@@ -21,6 +21,7 @@ import {
 import { InMemoryClientRegistry } from "./infrastructure/persistence/in-memory-registry.js";
 import { WorkstationMetadataRepository } from "./infrastructure/persistence/repositories/workstation-metadata-repository.js";
 import { SubscriptionRepository } from "./infrastructure/persistence/repositories/subscription-repository.js";
+import { SessionRepository } from "./infrastructure/persistence/repositories/session-repository.js";
 import { TunnelClient } from "./infrastructure/websocket/tunnel-client.js";
 import {
   MessageRouter,
@@ -78,6 +79,11 @@ import {
   createVoiceInputBlock,
   createVoiceOutputBlock,
 } from "./domain/value-objects/content-block.js";
+import {
+  createUserMessage,
+  createAssistantMessage,
+  createErrorMessage,
+} from "./domain/value-objects/chat-message.js";
 import type WebSocket from "ws";
 
 /**
@@ -402,6 +408,7 @@ async function bootstrap(): Promise<void> {
   // Create repositories
   const workstationMetadataRepository = new WorkstationMetadataRepository();
   const subscriptionRepository = new SubscriptionRepository();
+  const sessionRepository = new SessionRepository();
 
   // Create infrastructure components
   const clientRegistry = new InMemoryClientRegistry(logger);
@@ -428,7 +435,20 @@ async function bootstrap(): Promise<void> {
     agentSessionManager,
     workspacesRoot: env.WORKSPACES_ROOT,
     logger,
+    sessionRepository,
   });
+
+  // Restore persisted sessions from database (backlog agents, etc.)
+  try {
+    logger.info("About to call sessionManager.restoreSessions()");
+    await sessionManager.restoreSessions();
+    logger.info("sessionManager.restoreSessions() completed successfully");
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
+      "Failed to restore sessions from database"
+    );
+  }
 
   // Pre-create mock sessions for screenshot automation (after sessionManager is ready)
   if (env.MOCK_MODE) {
@@ -725,14 +745,21 @@ if (bufferedMessages.length > 0) {
       // Protocol v1.13: All syncs are lightweight — no message histories
       // Clients must use history.request for on-demand chat loading
 
-      // Get in-memory sessions (terminal sessions + active agent sessions)
+      // Get in-memory sessions (terminal sessions + active agent sessions + backlog agent sessions)
       const inMemorySessions = sessionManager.getSessionInfos();
 
       // Get persisted agent sessions from database (survives workstation restart)
       const persistedAgentSessions =
         chatHistoryService.getActiveAgentSessions();
       logger.debug(
-        { persistedAgentSessions, inMemoryCount: inMemorySessions.length },
+        {
+          inMemoryCount: inMemorySessions.length,
+          inMemorySessionTypes: inMemorySessions.map((s) => ({
+            id: s.session_id,
+            type: s.session_type,
+          })),
+          persistedAgentCount: persistedAgentSessions.length,
+        },
         "Sync: fetched sessions"
       );
 
@@ -1310,7 +1337,7 @@ if (bufferedMessages.length > 0) {
         id: string;
         device_id?: string;
         payload: {
-          session_type: "cursor" | "claude" | "opencode" | "terminal";
+          session_type: "cursor" | "claude" | "opencode" | "terminal" | "backlog-agent";
           agent_name?: string;
           workspace: string;
           project: string;
@@ -1443,24 +1470,31 @@ if (bufferedMessages.length > 0) {
             .getActiveAgentSessions()
             .some((s) => s.sessionId === sessionId);
 
-        if (agentSession || isPersistedAgent) {
-          // For agent sessions, just track subscription without sessionManager validation
+        // Check if this is a backlog-agent session
+        const backlogManagers = sessionManager.getBacklogManagers?.();
+        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+        if (agentSession || isPersistedAgent || isBacklogSession) {
+          // For agent and backlog-agent sessions, just track subscription without sessionManager validation
           client.subscribe(new SessionId(sessionId));
           logger.info(
             {
               deviceId: client.deviceId.value,
               sessionId,
+              sessionType: isBacklogSession ? "backlog-agent" : "agent",
               allSubscriptions: client.getSubscriptions(),
               clientStatus: client.status,
             },
-            "Client subscribed to agent session"
+            "Client subscribed to session"
           );
 
-          const isExecuting = agentSessionManager.isExecuting(sessionId);
+          const isExecuting = isBacklogSession
+            ? false // Backlog agents don't track execution the same way
+            : agentSessionManager.isExecuting(sessionId);
 
           const currentStreamingBlocks =
             agentMessageAccumulator.get(sessionId) ?? [];
-          
+
           // Get streaming_message_id if there's an active streaming response
           const streamingMessageId = currentStreamingBlocks.length > 0
             ? agentStreamingMessageIds.get(sessionId)
@@ -1485,11 +1519,12 @@ if (bufferedMessages.length > 0) {
             {
               deviceId: client.deviceId.value,
               sessionId,
+              sessionType: isBacklogSession ? "backlog-agent" : "agent",
               isExecuting,
               streamingBlocksCount: currentStreamingBlocks.length,
               streamingMessageId,
             },
-            "Agent session subscribed (v1.13 - use history.request for messages)"
+            "Session subscribed (use history.request for messages)"
           );
         } else {
           // For terminal sessions, use full subscriptionService with master logic
@@ -1530,7 +1565,6 @@ if (bufferedMessages.length > 0) {
     },
 
     "session.unsubscribe": (socket, message) => {
-      if (!subscriptionService) return Promise.resolve();
       const unsubscribeMessage = message as {
         session_id: string;
         device_id?: string;
@@ -1543,15 +1577,42 @@ if (bufferedMessages.length > 0) {
             )
           : undefined);
       if (client?.isAuthenticated) {
-        const result = subscriptionService.unsubscribe(
-          client.deviceId.value,
-          unsubscribeMessage.session_id
-        );
-        sendToDevice(
-          socket,
-          unsubscribeMessage.device_id,
-          JSON.stringify(result)
-        );
+        const sessionId = unsubscribeMessage.session_id;
+
+        // Check if this is a backlog-agent session
+        const backlogManagers = sessionManager.getBacklogManagers?.();
+        const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+        if (isBacklogSession) {
+          // For backlog-agent sessions, just unsubscribe the client
+          client.unsubscribe(new SessionId(sessionId));
+          logger.info(
+            {
+              deviceId: client.deviceId.value,
+              sessionId,
+            },
+            "Client unsubscribed from backlog-agent session"
+          );
+          sendToDevice(
+            socket,
+            unsubscribeMessage.device_id,
+            JSON.stringify({
+              type: "session.unsubscribed",
+              session_id: sessionId,
+            })
+          );
+        } else if (subscriptionService) {
+          // For terminal sessions, use subscriptionService
+          const result = subscriptionService.unsubscribe(
+            client.deviceId.value,
+            sessionId
+          );
+          sendToDevice(
+            socket,
+            unsubscribeMessage.device_id,
+            JSON.stringify(result)
+          );
+        }
       }
       return Promise.resolve();
     },
@@ -1567,6 +1628,7 @@ if (bufferedMessages.length > 0) {
           audio?: string;
           audio_format?: string;
           message_id?: string;
+          prompt?: string; // For backlog agent commands
         };
       };
 
@@ -1595,6 +1657,193 @@ if (bufferedMessages.length > 0) {
 
       // Clear any previous cancellation state - new command starts fresh
       cancelledDuringTranscription.delete(sessionId);
+
+      // Check if this is a backlog agent session
+      if (!sessionManager) {
+        logger.error({ sessionId }, "sessionManager not initialized");
+        return;
+      }
+
+      const backlogManagers = sessionManager.getBacklogManagers?.();
+      const isBacklogSession = backlogManagers?.has(sessionId) ?? false;
+
+      if (backlogManagers && isBacklogSession) {
+        const manager = backlogManagers.get(sessionId);
+        if (!manager) {
+          logger.error(
+            { sessionId },
+            "Backlog manager found in map but is undefined - this should not happen"
+          );
+          const errorMessage = {
+            type: "session.output",
+            session_id: sessionId,
+            payload: {
+              content_blocks: [
+                {
+                  id: "error",
+                  blockType: "error",
+                  content: "Internal error: backlog manager not properly initialized",
+                },
+              ],
+              content: "Internal error: backlog manager not properly initialized",
+              content_type: "agent",
+              is_complete: true,
+              timestamp: Date.now(),
+              message_id: messageId,
+            },
+          };
+          messageBroadcaster?.broadcastToSubscribers(
+            sessionId,
+            JSON.stringify(errorMessage)
+          );
+          return;
+        }
+
+        const prompt = execMessage.payload.content ?? execMessage.payload.text ?? execMessage.payload.prompt ?? "";
+
+        // Save user message to chat history
+        if (prompt) {
+          chatHistoryService.saveMessage(sessionId, createUserMessage(prompt), true);
+        }
+
+        try {
+          const blocks = await manager.executeCommand(prompt);
+
+          // Save assistant response blocks to chat history
+          if (blocks.length > 0) {
+            const assistantContent = blocks.map((b: any) => b.content || "").join("\n");
+            chatHistoryService.saveMessage(
+              sessionId,
+              createAssistantMessage(assistantContent),
+              true
+            );
+          }
+
+          // Broadcast output to session subscribers
+          if (messageBroadcaster) {
+            // Get or create streaming message ID for this response
+            const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
+
+            // Convert blocks from backend format (block_type) to protocol format (blockType) for web client
+            const protocolBlocks = blocks.map((block: any) => ({
+              id: block.id,
+              blockType: block.block_type,
+              content: block.content || "",
+              metadata: block.metadata,
+            }));
+
+            const contentText = protocolBlocks.map((b: any) => b.content).join("\n");
+
+            // Send two messages: first as streaming (is_complete: false), then as complete (is_complete: true)
+            // This matches the behavior of agent sessions and allows the web client to properly track the response lifecycle
+
+            // Message 1: Start streaming (tells client there's a response coming)
+            const streamingMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: contentText,
+                content_blocks: protocolBlocks,
+                timestamp: Date.now(),
+                is_complete: false,
+              },
+            };
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(streamingMessage)
+            );
+
+            // Message 2: Complete (tells client response is done)
+            const completionMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: contentText,
+                content_blocks: protocolBlocks,
+                timestamp: Date.now(),
+                is_complete: true,
+              },
+            };
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(completionMessage)
+            );
+
+            // Clear streaming message ID after response is complete
+            clearBacklogStreamingMessageId(sessionId);
+          }
+        } catch (error) {
+          const errorContent = error instanceof Error ? error.message : "Unknown error";
+          logger.error(
+            { error, sessionId, errorContent, stack: error instanceof Error ? error.stack : undefined },
+            "Failed to execute backlog command"
+          );
+          // Save error message to chat history
+          chatHistoryService.saveMessage(
+            sessionId,
+            createErrorMessage(errorContent),
+            true
+          );
+
+          if (messageBroadcaster) {
+            const streamingMessageId = getOrCreateBacklogStreamingMessageId(sessionId);
+
+            const errorBlock = {
+              id: "error",
+              blockType: "error",
+              content: errorContent,
+            };
+
+            // Message 1: Error starts streaming (is_complete: false)
+            const errorStreamingMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: errorContent,
+                content_blocks: [errorBlock],
+                timestamp: Date.now(),
+                is_complete: false,
+              },
+            };
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(errorStreamingMessage)
+            );
+
+            // Message 2: Error complete (is_complete: true)
+            const errorCompletionMessage = {
+              type: "session.output",
+              session_id: sessionId,
+              streaming_message_id: streamingMessageId,
+              payload: {
+                content_type: "agent",
+                content: errorContent,
+                content_blocks: [errorBlock],
+                timestamp: Date.now(),
+                is_complete: true,
+              },
+            };
+
+            messageBroadcaster.broadcastToSubscribers(
+              sessionId,
+              JSON.stringify(errorCompletionMessage)
+            );
+
+            // Clear streaming message ID after error response
+            clearBacklogStreamingMessageId(sessionId);
+          }
+        }
+        return;
+      }
 
       // Handle voice message with audio payload
       if (execMessage.payload.audio) {
@@ -2651,6 +2900,23 @@ if (bufferedMessages.length > 0) {
     }, STREAMING_STATE_GRACE_PERIOD_MS);
 
     agentCleanupTimeouts.set(sessionId, timeout);
+  };
+
+  // Streaming message ID tracking for backlog agent sessions
+  // Used to track response streaming and enable client-side deduplication
+  const backlogStreamingMessageIds = new Map<string, string>();
+
+  const getOrCreateBacklogStreamingMessageId = (sessionId: string): string => {
+    let messageId = backlogStreamingMessageIds.get(sessionId);
+    if (!messageId) {
+      messageId = randomUUID();
+      backlogStreamingMessageIds.set(sessionId, messageId);
+    }
+    return messageId;
+  };
+
+  const clearBacklogStreamingMessageId = (sessionId: string): void => {
+    backlogStreamingMessageIds.delete(sessionId);
   };
 
   agentSessionManager.on(

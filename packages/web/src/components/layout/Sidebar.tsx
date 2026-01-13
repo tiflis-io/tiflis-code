@@ -128,7 +128,10 @@ export function Sidebar() {
   };
 
   const agentSessions = sessions
-    .filter((s) => s.type !== 'terminal')
+    .filter((s) => s.type !== 'terminal' && s.type !== 'backlog-agent')
+    .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt));
+  const backlogSessions = sessions
+    .filter((s) => s.type === 'backlog-agent')
     .sort((a, b) => getTimestamp(a.createdAt) - getTimestamp(b.createdAt));
   const terminalSessions = sessions
     .filter((s) => s.type === 'terminal')
@@ -164,6 +167,8 @@ export function Sidebar() {
         return <CursorIcon className="w-4 h-4" />;
       case 'opencode':
         return <OpenCodeIcon className="w-4 h-4" />;
+      case 'backlog-agent':
+        return <AgentIcon className="w-4 h-4" />;
       default:
         return <AgentIcon className="w-4 h-4" />;
     }
@@ -182,6 +187,8 @@ export function Sidebar() {
         return 'Terminal';
       case 'supervisor':
         return 'Supervisor';
+      case 'backlog-agent':
+        return 'Backlog';
       default:
         return type.charAt(0).toUpperCase() + type.slice(1);
     }
@@ -279,6 +286,72 @@ export function Sidebar() {
           <SupervisorIcon className="w-4 h-4" aria-hidden="true" />
           {!sidebarCollapsed && <span className="ml-2">Supervisor</span>}
         </Button>
+
+        {/* Backlog Sessions */}
+        {backlogSessions.length > 0 && (
+          <section className="pt-4" aria-label="Backlog sessions">
+            {!sidebarCollapsed && (
+              <h2 className="px-2 py-1 text-xs font-medium text-muted-foreground uppercase">
+                Backlog Directions
+              </h2>
+            )}
+            <ul role="list" className="space-y-1">
+              {backlogSessions.map((session) => {
+                const subtitle = getSessionSubtitle(session);
+                const displayName = getSessionDisplayName(session);
+                return (
+                  <li key={session.id} className="group relative">
+                    <Button
+                      variant={isSessionActive(session.id) ? 'secondary' : 'ghost'}
+                      className={cn(
+                        'w-full justify-start h-auto py-2 pr-8',
+                        sidebarCollapsed && 'justify-center px-2 pr-2'
+                      )}
+                      onClick={() => handleSessionClick(session)}
+                      aria-current={isSessionActive(session.id) ? 'page' : undefined}
+                      aria-label={sidebarCollapsed ? `${displayName}${subtitle ? ` - ${subtitle}` : ''}` : undefined}
+                    >
+                      <div className="relative shrink-0">
+                        <span aria-hidden="true">{getSessionIcon(session)}</span>
+                        <span className="absolute -bottom-0.5 -right-0.5">
+                          <StatusIndicator status={session.status} />
+                        </span>
+                      </div>
+                      {!sidebarCollapsed && (
+                        <div className="ml-2 flex flex-col items-start min-w-0 flex-1">
+                          <span className="truncate text-sm font-medium">
+                            {displayName}
+                          </span>
+                          {subtitle && (
+                            <span className="truncate text-xs text-muted-foreground">
+                              {subtitle}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </Button>
+                    {!sidebarCollapsed && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteSession(session, e)}
+                        className={cn(
+                          'absolute right-1 top-1/2 -translate-y-1/2',
+                          'p-1.5 rounded-md',
+                          'opacity-0 group-hover:opacity-100 focus:opacity-100',
+                          'text-muted-foreground hover:text-destructive hover:bg-destructive/10',
+                          'transition-opacity'
+                        )}
+                        aria-label={`Delete ${displayName} session`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* Agent Sessions */}
         {agentSessions.length > 0 && (

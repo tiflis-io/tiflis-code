@@ -879,6 +879,8 @@ final class AppState: ObservableObject {
             type = .opencode
         case "terminal":
             type = .terminal
+        case "backlog-agent":
+            type = .backlogAgent
         default:
             return
         }
@@ -1036,6 +1038,8 @@ final class AppState: ObservableObject {
                 type = .terminal
             case "supervisor":
                 type = .supervisor
+            case "backlog-agent":
+                type = .backlogAgent
             default:
                 continue
             }
@@ -2003,6 +2007,8 @@ final class AppState: ObservableObject {
             sessionType = "opencode"
         case .terminal:
             sessionType = "terminal"
+        case .backlogAgent:
+            sessionType = "backlog-agent"
         case .supervisor:
             // Supervisor is created automatically, shouldn't call this
             print("❌ AppState: Cannot create supervisor session via createSession")

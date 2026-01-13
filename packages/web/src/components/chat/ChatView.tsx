@@ -24,7 +24,7 @@ interface ChatViewProps {
   emptyMessage?: string;
   showVoice?: boolean;
   emptyIcon?: ReactNode;
-  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal';
+  agentType?: 'supervisor' | 'claude' | 'cursor' | 'opencode' | 'terminal' | 'backlog-agent';
   // Pagination props
   hasMore?: boolean;
   isLoadingMore?: boolean;

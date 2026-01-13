@@ -21,6 +21,10 @@ export interface CreateSessionParams {
   terminalSize?: { cols: number; rows: number };
   /** Agent name for aliases (e.g., 'zai'). If not provided, uses sessionType as agent name. */
   agentName?: string;
+  /** Backlog-specific: which agent to use for code execution */
+  backlogAgent?: 'claude' | 'cursor' | 'opencode';
+  /** Backlog-specific: custom identifier for this backlog */
+  backlogId?: string;
 }
 
 /**
@@ -76,6 +80,11 @@ export interface SessionManager {
    * Gets the total count of active sessions.
    */
   count(): number;
+
+  /**
+   * Gets backlog managers for supervisor tools.
+   */
+  getBacklogManagers?(): Map<string, any>;
 }
 
 /**

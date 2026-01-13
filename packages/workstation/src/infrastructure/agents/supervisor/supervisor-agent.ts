@@ -4,35 +4,24 @@
  * @license FSL-1.1-NC
  *
  * LangGraph-based Supervisor Agent for managing workstation resources.
+ * Extends LangGraphAgent base class for unified streaming and state management.
  */
 
-import { EventEmitter } from 'events';
-import { ChatOpenAI } from '@langchain/openai';
-import { createReactAgent } from '@langchain/langgraph/prebuilt';
-import { HumanMessage, AIMessage, isAIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
-import AsyncLock from 'async-lock';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import type { SessionManager } from '../../../domain/ports/session-manager.js';
 import type { AgentSessionManager } from '../agent-session-manager.js';
 import type { WorkspaceDiscovery } from '../../../domain/ports/workspace-discovery.js';
 import type { MessageBroadcaster } from '../../../domain/ports/message-broadcaster.js';
 import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
-import type { ISupervisorAgent, SupervisorResult } from '../../../domain/ports/supervisor-agent-interface.js';
+import type { AgentStateManager } from '../../../domain/ports/agent-state-manager.js';
+import { LangGraphAgent } from '../base/lang-graph-agent.js';
+import { SupervisorStateManager } from './supervisor-state-manager.js';
 import { createWorkspaceTools } from './tools/workspace-tools.js';
 import { createWorktreeTools } from './tools/worktree-tools.js';
 import { createSessionTools } from './tools/session-tools.js';
 import { createFilesystemTools } from './tools/filesystem-tools.js';
-import { getEnv } from '../../../config/env.js';
-import {
-  createTextBlock,
-  createToolBlock,
-  createStatusBlock,
-  createErrorBlock,
-  accumulateBlocks,
-  mergeToolBlocks,
-  type ContentBlock,
-} from '../../../domain/value-objects/content-block.js';
+import { createBacklogTools } from './tools/backlog-tools.js';
 
 /**
  * Callback for terminating a session.
@@ -58,25 +47,11 @@ export interface SupervisorAgentConfig {
 }
 
 /**
- * Conversation history entry.
+ * Result from supervisor agent execution.
  */
-interface ConversationEntry {
-  role: 'user' | 'assistant';
-  content: string;
-}
-
-/**
- * Events emitted by SupervisorAgent during streaming execution.
- */
-export interface SupervisorAgentEvents {
-  /** Emitted when content blocks are received during streaming
-   * @param deviceId - The device ID that initiated the command
-   * @param blocks - Content blocks to send to client
-   * @param isComplete - Whether streaming is complete
-   * @param finalOutput - The complete response text (only present when isComplete=true)
-   * @param allBlocks - All accumulated blocks for persistence (only present when isComplete=true)
-   */
-  blocks: (deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string, allBlocks?: ContentBlock[]) => void;
+export interface SupervisorResult {
+  output: string;
+  sessionId?: string;
 }
 
 /**
@@ -89,560 +64,44 @@ export interface SupervisorAgentEvents {
  * - File system operations
  *
  * Note: Conversation history is global (shared across all devices connected to this workstation).
+ *
+ * Extends LangGraphAgent to inherit:
+ * - Unified streaming execution via executeWithStream()
+ * - Conversation history management
+ * - Cancellation support
+ * - Event emission to all clients
  */
-export class SupervisorAgent extends EventEmitter implements ISupervisorAgent {
-  private readonly logger: Logger;
-  private readonly agent: ReturnType<typeof createReactAgent>;
+export class SupervisorAgent extends LangGraphAgent {
   private readonly getMessageBroadcaster?: () => MessageBroadcaster | null;
   private readonly getChatHistoryService?: () => ChatHistoryService | null;
-  private conversationHistory: ConversationEntry[] = [];
-  private abortController: AbortController | null = null;
-  private isExecuting = false;
-  private isCancelled = false;
-  /** Tracks if we're processing a command (including STT, before LLM execution) */
-  private isProcessingCommand = false;
-  /** Timestamp when current execution started (for race condition protection) */
-  private executionStartedAt = 0;
-  private readonly clearContextLock = new AsyncLock();
-  private static readonly CLEAR_CONTEXT_TIMEOUT_MS = 10000; // 10 seconds
-  /** FIX #6: Broadcast acknowledgment tracking */
-  private broadcastAcknowledgments = new Map<string, {
-    deviceIds: Set<string>;
-    timestamp: number;
-    timeout: NodeJS.Timeout;
-  }>();
+  private readonly sessionManager: SessionManager;
+  private readonly agentSessionManager: AgentSessionManager;
+  private readonly workspaceDiscovery: WorkspaceDiscovery;
+  private readonly workspacesRoot: string;
+  private readonly getTerminateSession?: () => TerminateSessionCallback | null;
 
   constructor(config: SupervisorAgentConfig) {
-    super();
-    this.logger = config.logger.child({ component: 'SupervisorAgent' });
+    super(config.logger);
     this.getMessageBroadcaster = config.getMessageBroadcaster;
     this.getChatHistoryService = config.getChatHistoryService;
+    this.sessionManager = config.sessionManager;
+    this.agentSessionManager = config.agentSessionManager;
+    this.workspaceDiscovery = config.workspaceDiscovery;
+    this.workspacesRoot = config.workspacesRoot;
+    this.getTerminateSession = config.getTerminateSession;
 
-    // Create LLM
-    const env = getEnv();
-    const llm = this.createLLM(env);
-
-    // Create terminate session callback wrapper
-    const terminateSessionCallback = async (sessionId: string): Promise<boolean> => {
-      const terminate = config.getTerminateSession?.();
-      if (!terminate) {
-        this.logger.warn('Terminate session callback not available');
-        return false;
-      }
-      return terminate(sessionId);
-    };
-
-    // Create all tools
-    const tools: StructuredToolInterface[] = [
-      ...createWorkspaceTools(config.workspaceDiscovery),
-      ...createWorktreeTools(config.workspaceDiscovery, config.agentSessionManager),
-      ...createSessionTools(
-        config.sessionManager,
-        config.agentSessionManager,
-        config.workspaceDiscovery,
-        config.workspacesRoot,
-        config.getMessageBroadcaster,
-        config.getChatHistoryService,
-        () => {
-          this.clearContext().catch((error: unknown) => {
-            this.logger.error({ error }, 'Failed to clear supervisor context');
-          });
-        },
-        terminateSessionCallback
-      ),
-      ...createFilesystemTools(config.workspacesRoot),
-    ];
-
-    this.logger.info({ toolCount: tools.length }, 'Creating Supervisor Agent with tools');
-
-    // Create LangGraph ReAct agent
-    this.agent = createReactAgent({
-      llm,
-      tools,
-    });
+    // Initialize the LangGraph agent with tools
+    this.initializeAgent();
   }
 
-  /**
-   * Creates the LLM instance based on configuration.
-   */
-  private createLLM(env: ReturnType<typeof getEnv>): ChatOpenAI {
-    const provider = env.AGENT_PROVIDER;
-    const apiKey = env.AGENT_API_KEY;
-    const modelName = env.AGENT_MODEL_NAME;
-    const baseUrl = env.AGENT_BASE_URL;
-    const temperature = env.AGENT_TEMPERATURE;
-
-    if (!apiKey) {
-      throw new Error('AGENT_API_KEY is required for Supervisor Agent');
-    }
-
-    this.logger.info({ provider, model: modelName }, 'Initializing LLM');
-
-    // LangChain's ChatOpenAI works with OpenAI-compatible APIs
-    return new ChatOpenAI({
-      openAIApiKey: apiKey,
-      modelName,
-      temperature,
-      configuration: baseUrl
-        ? {
-            baseURL: baseUrl,
-          }
-        : undefined,
-    });
-  }
-
-  /**
-   * Executes a command through the supervisor agent.
-   * Note: deviceId is used for routing responses, not for history (history is global).
-   */
-  async execute(
-    command: string,
-    deviceId: string,
-    currentSessionId?: string
-  ): Promise<SupervisorResult> {
-    this.logger.info({ command, deviceId, currentSessionId }, 'Executing supervisor command');
-
-    try {
-      // Get global conversation history
-      const history = this.getConversationHistory();
-
-      // Build messages from history
-      const messages: BaseMessage[] = [
-        ...this.buildSystemMessage(),
-        ...this.buildHistoryMessages(history),
-        new HumanMessage(command),
-      ];
-
-      // Execute the agent
-      const result = await this.agent.invoke({
-        messages,
-      }) as { messages: BaseMessage[] };
-
-      // Extract the final response
-      const agentMessages = result.messages;
-      const lastMessage = agentMessages[agentMessages.length - 1];
-      const content = lastMessage?.content;
-      const output =
-        typeof content === 'string'
-          ? content
-          : JSON.stringify(content);
-
-      // Update global conversation history
-      this.addToHistory('user', command);
-      this.addToHistory('assistant', output);
-
-      this.logger.debug({ output: output.slice(0, 200) }, 'Supervisor command completed');
-
-      return {
-        output,
-        sessionId: currentSessionId,
-      };
-    } catch (error) {
-      this.logger.error({ error, command }, 'Supervisor command failed');
-      const errorMessage =
-        error instanceof Error ? error.message : 'An unexpected error occurred';
-      return {
-        output: `Error: ${errorMessage}`,
-      };
-    }
-  }
-
-  /**
-   * Executes a command with streaming output.
-   * Emits 'blocks' events as content is generated.
-   * Note: deviceId is used for routing responses, history is global.
-   */
-  async executeWithStream(
-    command: string,
-    deviceId: string
-  ): Promise<void> {
-    this.logger.info({ command, deviceId, wasCancelledBefore: this.isCancelled }, 'Executing supervisor command with streaming');
-
-    // Set up abort controller for cancellation
-    this.abortController = new AbortController();
-    this.isExecuting = true;
-    this.isCancelled = false;
-    // Track when execution started to prevent race conditions with late cancel requests
-    this.executionStartedAt = Date.now();
-
-    this.logger.debug({ isCancelled: this.isCancelled, isExecuting: this.isExecuting }, 'Flags reset for new execution');
-
-    try {
-      // Get global conversation history
-      const history = this.getConversationHistory();
-
-      // Build messages from history
-      const messages: BaseMessage[] = [
-        ...this.buildSystemMessage(),
-        ...this.buildHistoryMessages(history),
-        new HumanMessage(command),
-      ];
-
-      // Emit status block to show processing (only if still executing)
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isExecuting && !this.isCancelled) {
-        const statusBlock = createStatusBlock('Processing...');
-        this.logger.debug({ deviceId, blockType: 'status' }, 'Emitting status block');
-        this.emit('blocks', deviceId, [statusBlock], false);
-      }
-
-      this.logger.info({ deviceId }, 'Starting LangGraph agent stream');
-      // Stream the agent execution
-      const stream = await this.agent.stream(
-        { messages },
-        {
-          streamMode: 'values',
-          signal: this.abortController.signal,
-        }
-      );
-
-      let finalOutput = '';
-      const allBlocks: ContentBlock[] = [];
-
-      for await (const chunk of stream) {
-        // Check if cancelled or not executing - stop processing immediately
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (this.isCancelled || !this.isExecuting) {
-          this.logger.info({ deviceId, isCancelled: this.isCancelled, isExecuting: this.isExecuting }, 'Supervisor execution cancelled, stopping stream processing');
-          return;
-        }
-        // LangGraph stream chunks contain the full state
-        const chunkData = chunk as { messages?: BaseMessage[] };
-        const chunkMessages = chunkData.messages;
-        if (!chunkMessages || chunkMessages.length === 0) continue;
-
-        const lastMessage = chunkMessages[chunkMessages.length - 1];
-        if (!lastMessage) continue;
-
-        // Check if this is an AI message with content
-        if (isAIMessage(lastMessage)) {
-          const content = lastMessage.content;
-
-          if (typeof content === 'string' && content.length > 0) {
-            finalOutput = content;
-            // Emit text block for the current content (only if still executing)
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            if (this.isExecuting && !this.isCancelled) {
-              const textBlock = createTextBlock(content);
-              this.emit('blocks', deviceId, [textBlock], false);
-              // Use accumulateBlocks which handles text block replacement
-              accumulateBlocks(allBlocks, [textBlock]);
-            }
-          } else if (Array.isArray(content)) {
-            // Handle structured content (tool calls, etc.)
-            for (const item of content) {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-              if (typeof item === 'object' && this.isExecuting && !this.isCancelled) {
-                const block = this.parseContentItem(item as Record<string, unknown>);
-                if (block) {
-                  this.emit('blocks', deviceId, [block], false);
-                  // Use accumulateBlocks to merge tool blocks in-place
-                  accumulateBlocks(allBlocks, [block]);
-                }
-              }
-            }
-          }
-        }
-
-        // Check for tool messages (tool results)
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (lastMessage.getType() === 'tool' && this.isExecuting && !this.isCancelled) {
-          const toolContent = lastMessage.content;
-          const toolName = (lastMessage as unknown as { name?: string }).name ?? 'tool';
-          // Extract tool_call_id from ToolMessage for proper merging with tool_use block
-          const toolCallId = (lastMessage as unknown as { tool_call_id?: string }).tool_call_id;
-          const toolBlock = createToolBlock(
-            toolName,
-            'completed',
-            undefined,
-            typeof toolContent === 'string' ? toolContent : JSON.stringify(toolContent),
-            toolCallId
-          );
-          this.emit('blocks', deviceId, [toolBlock], false);
-          // Use accumulateBlocks to merge with existing tool_use block
-          accumulateBlocks(allBlocks, [toolBlock]);
-        }
-      }
-
-      // Only emit completion if still executing and not cancelled
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isExecuting && !this.isCancelled) {
-        // Update global conversation history
-        this.addToHistory('user', command);
-        this.addToHistory('assistant', finalOutput);
-
-        // Merge tool blocks before sending completion
-        const finalBlocks = mergeToolBlocks(allBlocks);
-
-        // Emit completion with final output and all blocks for persistence
-        const completionBlock = createStatusBlock('Complete');
-        this.emit('blocks', deviceId, [completionBlock], true, finalOutput, finalBlocks);
-
-        this.logger.debug({ output: finalOutput.slice(0, 200) }, 'Supervisor streaming completed');
-      } else {
-        this.logger.info({ deviceId, isCancelled: this.isCancelled, isExecuting: this.isExecuting }, 'Supervisor streaming ended due to cancellation');
-      }
-    } catch (error) {
-      // Check if this was a cancellation (either flag indicates cancelled)
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isCancelled || !this.isExecuting) {
-        this.logger.info({ deviceId }, 'Supervisor execution cancelled (caught in error handler)');
-        return;
-      }
-
-      this.logger.error({ error, command }, 'Supervisor streaming failed');
-      const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred';
-      const errorBlock = createErrorBlock(errorMessage);
-      this.emit('blocks', deviceId, [errorBlock], true);
-    } finally {
-      // Clean up execution state
-      // NOTE: Don't reset isCancelled here - it's reset at the START of next execution
-      // This allows wasCancelled() to return true for late-arriving blocks
-      this.isExecuting = false;
-      this.abortController = null;
-    }
-  }
-
-  /**
-   * Parses a content item from LangGraph into a ContentBlock.
-   */
-  private parseContentItem(item: Record<string, unknown>): ContentBlock | null {
-    const type = item.type as string | undefined;
-
-    if (type === 'text' && typeof item.text === 'string' && item.text.trim()) {
-      return createTextBlock(item.text);
-    }
-
-    if (type === 'tool_use') {
-      const name = typeof item.name === 'string' ? item.name : 'tool';
-      const input = item.input;
-      // Extract id from tool_use block for proper merging with tool result
-      const toolUseId = typeof item.id === 'string' ? item.id : undefined;
-      return createToolBlock(name, 'running', input, undefined, toolUseId);
-    }
-
-    return null;
-  }
-
-  /**
-   * Cancels the current execution if running.
-   * Returns true if cancellation was initiated.
-   */
-  cancel(): boolean {
-    // Check if we're processing a command (STT) or executing LLM
-    if (!this.isProcessingCommand && !this.isExecuting) {
-      this.logger.debug(
-        { isProcessingCommand: this.isProcessingCommand, isExecuting: this.isExecuting },
-        'No active execution to cancel'
-      );
-      return false;
-    }
-
-    // Protect against race conditions: ignore cancel if execution just started
-    // This prevents late-arriving cancel requests from cancelling a new execution
-    const timeSinceStart = Date.now() - this.executionStartedAt;
-    if (this.isExecuting && timeSinceStart < 500) {
-      this.logger.info(
-        { timeSinceStart, isProcessingCommand: this.isProcessingCommand },
-        'Ignoring cancel - execution just started (race condition protection)'
-      );
-      return false;
-    }
-
-    this.logger.info(
-      { isProcessingCommand: this.isProcessingCommand, isExecuting: this.isExecuting, timeSinceStart },
-      'Cancelling supervisor execution'
-    );
-
-    // CRITICAL: Set all flags immediately to stop all processing
-    this.isCancelled = true;
-    this.isExecuting = false;  // Mark as not executing to prevent any emits
-    this.isProcessingCommand = false;  // Mark as not processing
-
-    if (this.abortController) {
-      this.abortController.abort();
-    }
-    return true;
-  }
-
-  /**
-   * Check if execution was cancelled.
-   * Used by main.ts to filter out any late-arriving blocks.
-   */
-  wasCancelled(): boolean {
-    return this.isCancelled;
-  }
-
-  /**
-   * Starts command processing (before STT/LLM execution).
-   * Returns an AbortController that can be used to cancel STT and other operations.
-   */
-  startProcessing(): AbortController {
-    this.abortController = new AbortController();
-    this.isProcessingCommand = true;
-    this.isCancelled = false;
-    this.logger.debug('Started command processing');
-    return this.abortController;
-  }
-
-  /**
-   * Checks if command processing is active (STT or LLM execution).
-   */
-  isProcessing(): boolean {
-    return this.isProcessingCommand || this.isExecuting;
-  }
-
-  /**
-   * Ends command processing (called after completion or error, not after cancel).
-   */
-  endProcessing(): void {
-    this.isProcessingCommand = false;
-    // Note: Don't clear abortController here - it may still be used
-    this.logger.debug('Ended command processing');
-  }
-
-  /**
-   * Clears global conversation history (in-memory only).
-   * Also resets cancellation state to allow new commands.
-   * @deprecated Use clearContext() for full context clearing with persistence and broadcast.
-   */
-  clearHistory(): void {
-    this.conversationHistory = [];
-    // Reset cancellation state so new commands can execute
-    this.isCancelled = false;
-    this.logger.info('Global conversation history cleared');
-  }
-
-  /**
-   * Clears supervisor context completely with multi-device synchronization:
-   * - Acquires lock to prevent concurrent execution during clear
-   * - Cancels active execution streams
-   * - Clears in-memory conversation history
-   * - Clears persistent history in database
-   * - Broadcasts notification to all clients with ack tracking (FIX #6, #9)
-   */
-  async clearContext(): Promise<void> {
-    await this.clearContextLock.acquire('clear', async () => {
-      this.logger.info({ isExecuting: this.isExecuting }, 'Acquiring lock for context clear');
-
-      // If there's active execution, cancel it immediately
-      if (this.isExecuting || this.isProcessingCommand) {
-        this.logger.info('Active execution detected, cancelling before clear');
-        this.cancel();
-        // Give the stream a moment to stop processing
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-
-      // Clear in-memory history (protected by lock)
-      this.conversationHistory = [];
-      this.isCancelled = false;
-
-      // Clear persistent history and wait for completion
-      const chatHistoryService = this.getChatHistoryService?.();
-      if (chatHistoryService) {
-        try {
-          chatHistoryService.clearSupervisorHistory();
-          this.logger.debug('Persistent supervisor history cleared');
-        } catch (error) {
-          this.logger.error({ error }, 'Failed to clear persistent supervisor history');
-        }
-      }
-
-      // Notify all clients that context was cleared - with ack tracking (FIX #6)
-      const broadcaster = this.getMessageBroadcaster?.();
-      if (broadcaster) {
-        const broadcastId = `clear_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-        const clearNotification = JSON.stringify({
-          type: 'supervisor.context_cleared',
-          payload: { timestamp: Date.now(), broadcast_id: broadcastId },
-        });
-
-        try {
-          const deviceIds = new Set<string>(broadcaster.getAuthenticatedDeviceIds());
-
-          // Track acknowledgments from devices (FIX #6)
-          if (deviceIds.size > 0) {
-            this.broadcastAcknowledgments.set(broadcastId, {
-              deviceIds,
-              timestamp: Date.now(),
-              timeout: setTimeout(() => {
-                const ack = this.broadcastAcknowledgments.get(broadcastId);
-                if (ack && ack.deviceIds.size > 0) {
-                  this.logger.warn({
-                    broadcastId,
-                    missingDevices: Array.from(ack.deviceIds),
-                  }, 'Context clear broadcast - missing acks from devices');
-                }
-                this.broadcastAcknowledgments.delete(broadcastId);
-              }, 5000), // 5 second timeout
-            });
-          }
-
-          // Broadcast to all connected clients
-          broadcaster.broadcastToAll(clearNotification);
-          this.logger.info({
-            broadcastId,
-            deviceCount: deviceIds.size,
-          }, 'Broadcasted context cleared notification to all clients');
-        } catch (error) {
-          this.logger.error({ error }, 'Failed to broadcast context cleared');
-        }
-      } else {
-        this.logger.warn('MessageBroadcaster not available');
-      }
-
-      this.logger.info('Supervisor context cleared (lock released)');
-    }, { timeout: SupervisorAgent.CLEAR_CONTEXT_TIMEOUT_MS });
-  }
-
-  /**
-   * FIX #6: Records acknowledgment from a device for context clear broadcast.
-   */
-  recordClearAck(broadcastId: string, deviceId: string): void {
-    const ack = this.broadcastAcknowledgments.get(broadcastId);
-    if (ack) {
-      ack.deviceIds.delete(deviceId);
-      this.logger.debug({ broadcastId, deviceId, remaining: ack.deviceIds.size }, 'Received clear ack');
-
-      if (ack.deviceIds.size === 0) {
-        clearTimeout(ack.timeout);
-        this.broadcastAcknowledgments.delete(broadcastId);
-        this.logger.info({ broadcastId }, 'All devices acknowledged context clear');
-      }
-    }
-  }
-
-  /**
-   * Resets the cancellation state.
-   * Call this before starting a new command to ensure previous cancellation doesn't affect it.
-   */
-  resetCancellationState(): void {
-    this.isCancelled = false;
-  }
-
-  /**
-   * Restores global conversation history from persistent storage.
-   * Called on startup to sync in-memory cache with database.
-   */
-  restoreHistory(history: { role: 'user' | 'assistant'; content: string }[]): void {
-    if (history.length === 0) return;
-
-    // Only keep last 20 messages
-    this.conversationHistory = history.slice(-20);
-    this.logger.debug({ messageCount: this.conversationHistory.length }, 'Global conversation history restored');
-  }
-
-  /**
-   * Builds the system message for the agent.
-   */
-  private buildSystemMessage(): BaseMessage[] {
+  protected buildSystemPrompt(): string {
     // GLM-4.6 optimized prompt structure:
     // - Rule #1: Front-load critical instructions at the start
     // - Rule #2: Use strong directives (MUST, STRICTLY, NEVER)
     // - Rule #3: Explicit language control
     // - Rule #4: Clear persona/role definition
     // - Rule #5: Break tasks into explicit steps
-    const systemPrompt = `## MANDATORY RULES (STRICTLY ENFORCED)
+    return `## MANDATORY RULES (STRICTLY ENFORCED)
 
 You MUST always respond in English.
 
@@ -787,6 +246,58 @@ IMPORTANT: When \`list_worktrees\` shows a worktree named "main" with \`isMain: 
 
 ---
 
+## BACKLOG SESSIONS (Autonomous Development)
+
+Backlog sessions are special autonomous coding sessions that use the default system LLM model to execute a series of tasks.
+
+### Creating Backlog Sessions (CRITICAL PATH VALIDATION):
+
+IMPORTANT: You MUST validate the project path EXISTS before creating a backlog session!
+
+Step 1: Call \`list_worktrees\` for the project to see all available branches/worktrees
+Step 2: PARSE THE OUTPUT CAREFULLY:
+   - Output format: "Worktrees for \"workspace/project\":\n- worktree-name: branch-name (/path/to/directory)"
+   - Example: "- main: main (/Users/roman/tiflis-code-work/roman/eva)"
+   - This means the main branch is at /Users/roman/tiflis-code-work/roman/eva (NO --main suffix!)
+Step 3: Determine the correct worktree parameter:
+   - If worktree is "main" or "master" (the default/primary branch):
+     * Check the path shown: /Users/roman/tiflis-code-work/roman/eva
+     * The path has NO worktree suffix (no --main, no --master)
+     * DO NOT PASS WORKTREE PARAMETER - omit it entirely
+   - If worktree is a feature branch (e.g., "feature-auth"):
+     * The path would be: /Users/roman/tiflis-code-work/roman/eva--feature-auth
+     * PASS worktree="feature-auth" parameter
+Step 4: Call \`create_backlog_session\` with workspace, project, and worktree (only if non-main)
+Step 5: Confirm the session was created successfully
+
+### Path Construction Rules (CRITICAL):
+- Worktree parameter controls the directory name pattern:
+  * Omit worktree → uses: /workspaces/{workspace}/{project}
+  * Pass worktree="feature-x" → uses: /workspaces/{workspace}/{project}--feature-x
+- NEVER pass worktree="main" or worktree="master" - just omit the parameter instead
+- ALWAYS check list_worktrees output to see actual paths
+- Only pass worktree when the branch name appears in the path AFTER the project name with -- separator
+
+### Example Flows:
+
+User: "Create a backlog for eva on the main branch"
+Step 1: Call list_worktrees(roman, eva)
+Step 2: Output shows: "- main: main (/Users/roman/tiflis-code-work/roman/eva)"
+   → Path is /roman/eva (no --main suffix)
+   → This is the main branch, omit worktree parameter
+Step 3: Call create_backlog_session(workspace="roman", project="eva")  [NO worktree parameter!]
+Step 4: ✅ Created at /Users/roman/tiflis-code-work/roman/eva
+
+User: "Create a backlog for tiflis-code on the feature-auth branch"
+Step 1: Call list_worktrees(tiflis, tiflis-code)
+Step 2: Output shows: "- feature-auth: feature/auth (/Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-auth)"
+   → Path has --feature-auth suffix
+   → This is a feature branch, pass worktree parameter
+Step 3: Call create_backlog_session(workspace="tiflis", project="tiflis-code", worktree="feature-auth")
+Step 4: ✅ Created at /Users/roman/tiflis-code-work/tiflis/tiflis-code--feature-auth
+
+---
+
 ## WORKTREE MANAGEMENT
 
 Worktrees allow working on multiple branches simultaneously in separate directories.
@@ -814,37 +325,87 @@ Creating worktrees with \`create_worktree\`:
 - NEVER use tables - they display poorly on mobile devices
 - ALWAYS use bullet lists or numbered lists instead of tables
 - Keep list items short and scannable for mobile reading
-- ALWAYS prioritize safety - check before deleting/merging`
-
-    // Return as HumanMessage since some models don't support SystemMessage well
-    return [new HumanMessage(`[System Instructions]\n${systemPrompt}\n[End Instructions]`)];
+- ALWAYS prioritize safety - check before deleting/merging`;
   }
 
   /**
-   * Builds messages from conversation history.
+   * Implements abstract method: create tools for Supervisor.
    */
-  private buildHistoryMessages(history: ConversationEntry[]): BaseMessage[] {
-    return history.map((entry) =>
-      entry.role === 'user' ? new HumanMessage(entry.content) : new AIMessage(entry.content)
-    );
+  protected createTools(): StructuredToolInterface[] {
+    // Create terminate session callback wrapper
+    const terminateSessionCallback = async (sessionId: string): Promise<boolean> => {
+      const terminate = this.getTerminateSession?.();
+      if (!terminate) {
+        this.logger.warn('Terminate session callback not available');
+        return false;
+      }
+      return terminate(sessionId);
+    };
+
+    // Create all supervisor-specific tools
+    return [
+      ...createWorkspaceTools(this.workspaceDiscovery),
+      ...createWorktreeTools(this.workspaceDiscovery, this.agentSessionManager),
+      ...createSessionTools(
+        this.sessionManager,
+        this.agentSessionManager,
+        this.workspaceDiscovery,
+        this.workspacesRoot,
+        this.getMessageBroadcaster,
+        this.getChatHistoryService,
+        () => this.clearContext(),
+        terminateSessionCallback
+      ),
+      ...createFilesystemTools(this.workspacesRoot),
+      ...Object.values(createBacklogTools(
+        this.sessionManager,
+        this.agentSessionManager,
+        this.sessionManager.getBacklogManagers?.() ?? new Map(),
+        this.workspacesRoot,
+        this.getMessageBroadcaster,
+        this.logger
+      )),
+    ];
   }
 
   /**
-   * Gets global conversation history.
+   * Implements abstract method: create state manager for Supervisor.
    */
-  private getConversationHistory(): ConversationEntry[] {
-    return this.conversationHistory;
-  }
-
-  /**
-   * Adds an entry to global conversation history.
-   */
-  private addToHistory(role: 'user' | 'assistant', content: string): void {
-    this.conversationHistory.push({ role, content });
-
-    // Keep only last 20 messages to avoid context overflow
-    if (this.conversationHistory.length > 20) {
-      this.conversationHistory.splice(0, this.conversationHistory.length - 20);
+  protected createStateManager(): AgentStateManager {
+    const chatHistoryService = this.getChatHistoryService?.();
+    if (!chatHistoryService) {
+      throw new Error('ChatHistoryService is required for SupervisorAgent');
     }
+    return new SupervisorStateManager(chatHistoryService);
+  }
+
+  /**
+   * Clears supervisor context completely:
+   * - In-memory conversation history
+   * - Persistent history in database
+   * - Notifies all connected clients
+   */
+  clearContext(): void {
+    // Clear in-memory history
+    this.conversationHistory = [];
+    this.isCancelled = false;
+
+    // Clear persistent history
+    const chatHistoryService = this.getChatHistoryService?.();
+    if (chatHistoryService) {
+      chatHistoryService.clearSupervisorHistory();
+    }
+
+    // Notify all clients that context was cleared
+    const broadcaster = this.getMessageBroadcaster?.();
+    if (broadcaster) {
+      const clearNotification = JSON.stringify({
+        type: 'supervisor.context_cleared',
+        payload: { timestamp: Date.now() },
+      });
+      broadcaster.broadcastToAll(clearNotification);
+    }
+
+    this.logger.info('Supervisor context cleared (in-memory, persistent, and clients notified)');
   }
 }

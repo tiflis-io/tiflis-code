@@ -54,6 +54,7 @@ fun SidebarScreen(
 
     // Group sessions by type and sort by creation time (ascending - oldest first)
     val agentSessions = sessions.filter { it.type.isAgent }.sortedBy { it.createdAt }
+    val backlogSessions = sessions.filter { it.type == SessionType.BACKLOG_AGENT }.sortedBy { it.createdAt }
     val terminalSessions = sessions.filter { it.type == SessionType.TERMINAL }.sortedBy { it.createdAt }
 
     // Dialog states
@@ -107,6 +108,26 @@ fun SidebarScreen(
                     isSelected = currentRoute == Screen.Supervisor.route,
                     onClick = { onSessionSelected("supervisor", SessionType.SUPERVISOR) }
                 )
+            }
+
+            // Backlog Sessions
+            if (backlogSessions.isNotEmpty()) {
+                item(key = "backlogs-header") {
+                    SectionHeader(title = "Backlog Directions")
+                }
+
+                items(
+                    items = backlogSessions,
+                    key = { it.id }
+                ) { session ->
+                    SwipeableSessionItem(
+                        session = session,
+                        workspacesRoot = workspacesRoot,
+                        isSelected = currentRoute == Screen.agentRoute(session.id),
+                        onClick = { onSessionSelected(session.id, session.type) },
+                        onDelete = { sessionToTerminate = session }
+                    )
+                }
             }
 
             // Agent Sessions

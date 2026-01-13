@@ -5,6 +5,8 @@
  */
 
 import { EventEmitter } from 'events';
+import { existsSync, readFileSync } from 'fs';
+import { join } from 'path';
 import { nanoid } from 'nanoid';
 import type { Logger } from 'pino';
 import type {
@@ -25,12 +27,17 @@ import type { WorkspacePath } from '../../domain/value-objects/workspace-path.js
 import type { TerminalSession } from '../../domain/entities/terminal-session.js';
 import { SESSION_CONFIG } from '../../config/constants.js';
 import type { AgentSessionManager } from '../agents/agent-session-manager.js';
+import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session.js';
+import { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
+import { SessionRepository } from './repositories/session-repository.js';
 
 export interface InMemorySessionManagerConfig {
   ptyManager: TerminalManager;
   agentSessionManager: AgentSessionManager;
   workspacesRoot: string;
   logger: Logger;
+  backlogManagers?: Map<string, BacklogAgentManager>;
+  sessionRepository?: SessionRepository;
 }
 
 /**
@@ -54,15 +61,154 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   private readonly agentSessionManager: AgentSessionManager;
   private readonly logger: Logger;
   private supervisorSession: SupervisorSession | null = null;
+  private readonly backlogManagers: Map<string, BacklogAgentManager>;
+  private readonly sessionRepository: SessionRepository | undefined;
 
   constructor(config: InMemorySessionManagerConfig) {
     super();
     this.ptyManager = config.ptyManager;
     this.agentSessionManager = config.agentSessionManager;
     this.logger = config.logger.child({ component: 'session-manager' });
+    this.backlogManagers = config.backlogManagers || new Map();
+    this.sessionRepository = config.sessionRepository;
 
     // Sync agent session events
     this.setupAgentSessionSync();
+  }
+
+  /**
+   * Restores persisted sessions from the database on startup.
+   */
+  async restoreSessions(): Promise<void> {
+    this.logger.info('restoreSessions() called');
+
+    if (!this.sessionRepository) {
+      this.logger.warn('No session repository - skipping session restoration');
+      return;
+    }
+
+    let persistedSessions: any[] = [];
+    try {
+      persistedSessions = this.sessionRepository.getActive();
+      this.logger.info(
+        { count: persistedSessions.length, sessions: persistedSessions.map((s) => ({ id: s.id, type: s.type })) },
+        'Restoring persisted sessions from database'
+      );
+
+      if (persistedSessions.length === 0) {
+        this.logger.info('No persisted sessions found in database');
+        return;
+      }
+    } catch (dbError) {
+      this.logger.error(
+        { error: dbError instanceof Error ? dbError.message : String(dbError) },
+        'Error fetching sessions from database'
+      );
+      return;
+    }
+
+    let backlogRestoreCount = 0;
+    for (const persistedSession of persistedSessions) {
+      try {
+        if (persistedSession.type === 'backlog-agent') {
+          this.logger.info(
+            { sessionId: persistedSession.id, project: persistedSession.project, workingDir: persistedSession.workingDir },
+            'Starting restoration of backlog-agent session'
+          );
+
+          // Load backlog.json to get the actual agent type
+          const backlogPath = join(persistedSession.workingDir, 'backlog.json');
+          let agentName = 'claude'; // default agent
+
+          if (existsSync(backlogPath)) {
+            try {
+              const backlogContent = readFileSync(backlogPath, 'utf-8');
+              const backlogData = JSON.parse(backlogContent);
+              if (backlogData.agent && ['claude', 'cursor', 'opencode'].includes(backlogData.agent)) {
+                agentName = backlogData.agent;
+              }
+              this.logger.debug(
+                { sessionId: persistedSession.id, agentName },
+                'Loaded agent type from backlog.json'
+              );
+            } catch (parseError) {
+              this.logger.warn(
+                { sessionId: persistedSession.id, error: parseError },
+                'Failed to parse backlog.json, using default agent'
+              );
+            }
+          }
+
+          // Restore backlog session with correct agent name
+          const backlogSession = new BacklogAgentSession({
+            id: new SessionId(persistedSession.id),
+            type: 'backlog-agent' as any,
+            workspacePath: persistedSession.workspace
+              ? {
+                  workspace: persistedSession.workspace,
+                  project: persistedSession.project || '',
+                  worktree: persistedSession.worktree,
+                }
+              : undefined,
+            workingDir: persistedSession.workingDir,
+            agentName,
+            backlogId: `${persistedSession.project}-${Date.now()}`,
+          });
+
+          this.sessions.set(persistedSession.id, backlogSession);
+
+          // Create backlog manager for this session (will load backlog.json if it exists)
+          try {
+            const manager = BacklogAgentManager.createAndLoadFromFile(
+              backlogSession,
+              persistedSession.workingDir,
+              this.agentSessionManager,
+              this.logger
+            );
+            this.backlogManagers.set(persistedSession.id, manager);
+            backlogRestoreCount++;
+
+            this.logger.info(
+              {
+                sessionId: persistedSession.id,
+                project: persistedSession.project,
+                backlogManagersCount: this.backlogManagers.size,
+                isInMap: this.backlogManagers.has(persistedSession.id),
+              },
+              'Successfully restored backlog-agent session from database'
+            );
+          } catch (managerError) {
+            this.logger.error(
+              { sessionId: persistedSession.id, error: managerError instanceof Error ? managerError.message : String(managerError), stack: managerError instanceof Error ? managerError.stack : undefined },
+              'Failed to create backlog manager during restoration'
+            );
+            // Don't add to backlogManagers if creation failed
+            throw managerError;
+          }
+        } else if (persistedSession.type === 'supervisor') {
+          // Supervisor is singleton - don't restore multiple copies
+          this.logger.debug({ sessionId: persistedSession.id }, 'Skipping supervisor session restoration (singleton)');
+        } else if (persistedSession.type === 'terminal') {
+          // Terminal sessions can't be easily restored - they require PTY allocation
+          this.logger.debug({ sessionId: persistedSession.id }, 'Skipping terminal session restoration (requires PTY)');
+        }
+        // Agent sessions are managed by AgentSessionManager and will be restored there
+      } catch (error) {
+        this.logger.error(
+          { sessionId: persistedSession.id, error: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack : undefined },
+          'Error restoring session from database'
+        );
+      }
+    }
+
+    this.logger.info(
+      {
+        backlogManagersRestored: backlogRestoreCount,
+        totalBacklogManagers: this.backlogManagers.size,
+        backlogManagerIds: Array.from(this.backlogManagers.keys()),
+      },
+      'Session restoration complete'
+    );
   }
 
   /**
@@ -108,7 +254,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    * Creates a new session.
    */
   async createSession(params: CreateSessionParams): Promise<Session> {
-    const { sessionType, workingDir, terminalSize, agentName } = params;
+    const { sessionType, workingDir, terminalSize, agentName, backlogAgent, backlogId } = params;
 
     if (sessionType === 'supervisor') {
       return this.getOrCreateSupervisor(workingDir);
@@ -121,6 +267,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
       const session = await this.ptyManager.create(workingDir, cols, rows);
       this.sessions.set(session.id.value, session);
 
+      // Persist terminal session to database
+      if (this.sessionRepository) {
+        this.sessionRepository.create({
+          id: session.id.value,
+          type: 'terminal',
+          workspace: params.workspacePath?.workspace,
+          project: params.workspacePath?.project,
+          worktree: params.workspacePath?.worktree,
+          workingDir,
+        });
+      }
+
       this.logger.info(
         { sessionId: session.id.value, sessionType, workingDir },
         'Terminal session created'
@@ -130,6 +288,10 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
       this.emit('terminalSessionCreated', session);
 
       return session;
+    }
+
+    if (sessionType === 'backlog-agent') {
+      return this.createBacklogSession(workingDir, backlogAgent || 'claude', backlogId, params.workspacePath);
     }
 
     // Agent sessions (cursor, claude, opencode)
@@ -179,6 +341,18 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
     this.sessions.set(sessionId.value, session);
 
+    // Persist agent session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: agentName || agentType,
+        workspace: workspacePath?.workspace,
+        project: workspacePath?.project,
+        worktree: workspacePath?.worktree,
+        workingDir,
+      });
+    }
+
     this.logger.info(
       { sessionId: sessionId.value, agentType, agentName: resolvedAgentName, workingDir, workspacePath },
       'Agent session created'
@@ -204,6 +378,15 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     });
 
     this.sessions.set(sessionId.value, this.supervisorSession);
+
+    // Persist supervisor session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: 'supervisor',
+        workingDir,
+      });
+    }
 
     this.logger.info(
       { sessionId: sessionId.value },
@@ -336,5 +519,78 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
    */
   getAgentSessionManager(): AgentSessionManager {
     return this.agentSessionManager;
+  }
+
+  /**
+   * Creates a backlog agent session.
+   */
+  private async createBacklogSession(
+    workingDir: string,
+    backlogAgent: 'claude' | 'cursor' | 'opencode',
+    backlogId?: string,
+    workspacePath?: WorkspacePath
+  ): Promise<BacklogAgentSession> {
+    const sessionId = new SessionId(`backlog-${nanoid(8)}`);
+    const finalBacklogId = backlogId || `backlog-${nanoid(8)}`;
+
+    const session = new BacklogAgentSession({
+      id: sessionId,
+      type: 'backlog-agent' as any,
+      workspacePath,
+      workingDir,
+      agentName: backlogAgent,
+      backlogId: finalBacklogId,
+    });
+
+    this.sessions.set(sessionId.value, session);
+
+    // Create and register BacklogAgentManager for this session
+    const manager = BacklogAgentManager.createEmpty(
+      session,
+      workingDir,
+      this.agentSessionManager,
+      this.logger
+    );
+    this.backlogManagers.set(sessionId.value, manager);
+
+    this.logger.debug(
+      {
+        sessionId: sessionId.value,
+        backlogManagersCount: this.backlogManagers.size,
+      },
+      'BacklogAgentManager registered'
+    );
+
+    // Persist backlog session to database
+    if (this.sessionRepository) {
+      this.sessionRepository.create({
+        id: sessionId.value,
+        type: 'backlog-agent',
+        workspace: workspacePath?.workspace,
+        project: workspacePath?.project,
+        worktree: workspacePath?.worktree,
+        workingDir,
+      });
+    }
+
+    this.logger.info(
+      {
+        sessionId: sessionId.value,
+        backlogId: finalBacklogId,
+        backlogAgent,
+        workingDir,
+        workspacePath,
+      },
+      'Backlog agent session created'
+    );
+
+    return session;
+  }
+
+  /**
+   * Gets the backlog managers registry.
+   */
+  getBacklogManagers(): Map<string, BacklogAgentManager> {
+    return this.backlogManagers;
   }
 }

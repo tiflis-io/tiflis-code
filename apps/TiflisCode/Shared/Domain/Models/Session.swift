@@ -37,7 +37,8 @@ struct Session: Identifiable, Equatable, Hashable {
         case claude
         case opencode
         case terminal
-        
+        case backlogAgent = "backlog-agent"
+
         var displayName: String {
             switch self {
             case .supervisor:
@@ -50,6 +51,8 @@ struct Session: Identifiable, Equatable, Hashable {
                 return "OpenCode"
             case .terminal:
                 return "Terminal"
+            case .backlogAgent:
+                return "Backlog"
             }
         }
         
@@ -66,6 +69,8 @@ struct Session: Identifiable, Equatable, Hashable {
                 return "chevron.left.forwardslash.chevron.right"
             case .terminal:
                 return "apple.terminal.fill"
+            case .backlogAgent:
+                return "checkmark.circle.fill"
             }
         }
         
@@ -81,6 +86,8 @@ struct Session: Identifiable, Equatable, Hashable {
             case .opencode:
                 return "OpenCodeLogo"
             case .terminal:
+                return nil // Use SF Symbol
+            case .backlogAgent:
                 return nil // Use SF Symbol
             }
         }
@@ -145,7 +152,9 @@ struct Session: Identifiable, Equatable, Hashable {
     /// For agent sessions with aliases, shows: "Claude Code (zai)"
     /// For regular sessions, shows the type's display name
     var displayName: String {
-        if let alias = agentName {
+        // BacklogAgent sessions don't show agent name in parentheses since the agent
+        // is selected internally during harness execution, not by the user
+        if type != .backlogAgent, let alias = agentName {
             return "\(type.displayName) (\(alias))"
         }
         return type.displayName
