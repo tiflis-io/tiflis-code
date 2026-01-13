@@ -47,11 +47,18 @@ export function ChatPage() {
 
   const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
 
-  // Subscribe to agent session when opening it
+  // Clear subscription tracking when disconnected to force resubscription on reconnect
+  useEffect(() => {
+    if (connectionState === 'disconnected' || connectionState === 'error') {
+      subscribedSessionsRef.current.clear();
+    }
+  }, [connectionState]);
+
+  // Subscribe to agent session when opening it or after reconnection
   useEffect(() => {
     if (!sessionId || isSupervisor || !isConnected) return;
 
-    // Skip if already subscribed to this session
+    // Skip if already subscribed to this session in this connection
     if (subscribedSessionsRef.current.has(sessionId)) return;
 
     // Find session to check if it's a terminal (terminals are handled separately)

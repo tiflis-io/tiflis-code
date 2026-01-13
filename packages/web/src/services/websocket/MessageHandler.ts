@@ -246,6 +246,36 @@ function handleAuthSuccess(msg: AuthSuccessMessage): void {
     protocolVersion: msg.payload.protocol_version ?? '',
     workspacesRoot: msg.payload.workspaces_root ?? '',
   });
+
+  // Resubscribe to all restored subscriptions after reconnect
+  // Server persists subscriptions across reconnections and returns the list
+  const restoredSubscriptions = msg.payload.restored_subscriptions ?? [];
+  if (restoredSubscriptions.length > 0) {
+    logger.log('Resubscribing to restored sessions:', restoredSubscriptions);
+    
+    for (const sessionId of restoredSubscriptions) {
+      // Send subscribe message for each restored session
+      WebSocketService.send({
+        type: 'session.subscribe',
+        session_id: sessionId,
+      });
+      
+      // For terminal sessions, also request replay to restore terminal content
+      const sessions = appStore.sessions;
+      const session = sessions.find((s) => s.id === sessionId);
+      if (session?.type === 'terminal') {
+        logger.log('Requesting terminal replay for restored session:', sessionId);
+        WebSocketService.send({
+          type: 'session.replay',
+          session_id: sessionId,
+          payload: {
+            since_sequence: 0,
+            limit: 500,
+          },
+        });
+      }
+    }
+  }
 }
 
 function handleSyncState(msg: SyncStateMessage): void {

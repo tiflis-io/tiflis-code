@@ -88,6 +88,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
 
   const { sendTerminalInput, resizeTerminal, subscribeToSession, requestTerminalReplay } = useWebSocket();
   const { resolvedTheme } = useTheme();
+  const connectionState = useAppStore((state) => state.connectionState);
+  const isConnected = connectionState === 'verified' || connectionState === 'authenticated';
+  const wasConnectedRef = useRef(false);
+  const hasSubscribedRef = useRef(false);
 
   // Memoize the theme to avoid recalculating on every render
   const terminalTheme = useMemo(
@@ -153,24 +157,43 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       }
     });
 
-    // Subscribe to session for terminal output
-    subscribeToSession(sessionId);
-
-    // Request terminal history replay after a short delay to ensure subscription is processed
-    const replayTimeout = setTimeout(() => {
-      requestTerminalReplay(sessionId, 0, 500);
-    }, 100);
-
     return () => {
-      clearTimeout(replayTimeout);
       terminal.dispose();
       terminalRef.current = null;
       fitAddonRef.current = null;
+      hasSubscribedRef.current = false;
     };
     // Note: terminalTheme is intentionally excluded - we don't want to reinitialize
     // the terminal on theme changes. Theme updates are handled by a separate effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, sendTerminalInput, subscribeToSession, requestTerminalReplay]);
+  }, [sessionId, sendTerminalInput]);
+
+  // Subscribe to terminal session on connect and after reconnection
+  useEffect(() => {
+    if (!isInitialized || !isConnected) return;
+
+    const needsSubscription = !hasSubscribedRef.current || 
+      (wasConnectedRef.current === false && isConnected);
+
+    if (needsSubscription) {
+      hasSubscribedRef.current = true;
+      subscribeToSession(sessionId);
+      
+      setTimeout(() => {
+        requestTerminalReplay(sessionId, 0, 500);
+      }, 100);
+    }
+
+    wasConnectedRef.current = isConnected;
+  }, [isInitialized, isConnected, sessionId, subscribeToSession, requestTerminalReplay]);
+
+  // Reset subscription tracking on disconnect
+  useEffect(() => {
+    if (connectionState === 'disconnected' || connectionState === 'error') {
+      hasSubscribedRef.current = false;
+      wasConnectedRef.current = false;
+    }
+  }, [connectionState]);
 
   // Queue terminal data for batched writing
   // Uses requestAnimationFrame to batch multiple writes into a single render
