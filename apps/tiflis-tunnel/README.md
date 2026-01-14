@@ -32,7 +32,7 @@ docker run -d \
   -e TLS_ACME_EMAIL=admin@example.com \
   -e AUTH_API_KEY=your-32-char-secret-key-here \
   -v tunnel-certs:/var/lib/tunnel/certs \
-  tiflis/tunnel-server:latest
+  ghcr.io/tiflis-io/tunnel-server:latest
 ```
 
 ### Client Deployment
@@ -43,9 +43,10 @@ docker run -d \
   -e SERVER_ADDRESS=tunnel.example.com:443 \
   -e AUTH_API_KEY=your-32-char-secret-key-here \
   -e WORKSTATION_ID=my-workstation \
-  -e WORKSTATION_LOCAL_ADDRESS=http://localhost:3002 \
+  -e WORKSTATION_LOCAL_ADDRESS=http://host.docker.internal:3002 \
+  --add-host=host.docker.internal:host-gateway \
   -v tunnel-session:/var/lib/tunnel \
-  tiflis/tunnel-client:latest
+  ghcr.io/tiflis-io/tunnel-client:latest
 ```
 
 Your workstation is now accessible at:
@@ -163,11 +164,22 @@ export WORKSTATION_LOCAL_ADDRESS=http://localhost:3002
 cargo run --bin tunnel-client
 ```
 
-### Docker Build
+### Pre-built Binaries
+
+Download pre-built binaries from [GitHub Releases](https://github.com/tiflis-io/tiflis-code/releases).
+
+**macOS Note:** Downloaded binaries are quarantined by Gatekeeper. Remove the quarantine attribute before running:
 
 ```bash
-docker build --build-arg BINARY_NAME=tunnel-server -t tiflis/tunnel-server .
-docker build --build-arg BINARY_NAME=tunnel-client -t tiflis/tunnel-client .
+xattr -d com.apple.quarantine tunnel-server
+xattr -d com.apple.quarantine tunnel-client
+```
+
+### Docker Build (Local)
+
+```bash
+docker build --build-arg BINARY_NAME=tunnel-server -t ghcr.io/tiflis-io/tunnel-server .
+docker build --build-arg BINARY_NAME=tunnel-client -t ghcr.io/tiflis-io/tunnel-client .
 ```
 
 ## Protocol

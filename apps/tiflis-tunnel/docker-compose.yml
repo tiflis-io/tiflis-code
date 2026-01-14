@@ -3,12 +3,7 @@
 
 services:
   tunnel-server:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY_NAME: tunnel-server
-    image: tiflis/tunnel-server:latest
+    image: ghcr.io/tiflis-io/tunnel-server:${VERSION:-latest}
     ports:
       - "80:80"
       - "443:443/tcp"
@@ -24,24 +19,21 @@ services:
     restart: unless-stopped
 
   tunnel-client:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      args:
-        BINARY_NAME: tunnel-client
-    image: tiflis/tunnel-client:latest
+    image: ghcr.io/tiflis-io/tunnel-client:${VERSION:-latest}
     environment:
       SERVER_ADDRESS: ${SERVER_ADDRESS}
       AUTH_API_KEY: ${AUTH_API_KEY}
       WORKSTATION_ID: ${WORKSTATION_ID}
-      WORKSTATION_LOCAL_ADDRESS: ${WORKSTATION_LOCAL_ADDRESS:-http://localhost:3002}
+      WORKSTATION_LOCAL_ADDRESS: ${WORKSTATION_LOCAL_ADDRESS:-http://host.docker.internal:3002}
       RECONNECT_ENABLED: ${RECONNECT_ENABLED:-true}
       RUST_LOG: ${RUST_LOG:-tunnel_client=info}
     volumes:
       - session:/var/lib/tunnel
     restart: unless-stopped
-    # profiles:
-    #   - client
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - client
 
 volumes:
   certs:
