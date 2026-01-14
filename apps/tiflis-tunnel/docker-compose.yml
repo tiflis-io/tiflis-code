@@ -34,7 +34,7 @@ services:
       SERVER_ADDRESS: ${SERVER_ADDRESS}
       AUTH_API_KEY: ${AUTH_API_KEY}
       WORKSTATION_ID: ${WORKSTATION_ID}
-      WORKSTATION_LOCAL_ADDRESS: ${WORKSTATION_LOCAL_ADDRESS:-http://host.docker.internal:3002}
+      WORKSTATION_LOCAL_ADDRESS: ${WORKSTATION_LOCAL_ADDRESS:-http://host.docker.internal:3001}
       RECONNECT_ENABLED: ${RECONNECT_ENABLED:-true}
       RUST_LOG: ${RUST_LOG:-tunnel_client=info}
     volumes:
@@ -42,8 +42,6 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    profiles:
-      - client
 
 volumes:
   certs:
