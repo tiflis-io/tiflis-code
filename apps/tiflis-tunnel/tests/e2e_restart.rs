@@ -61,7 +61,7 @@ async fn test_multiple_client_restarts() {
 
         let response = reqwest::get(env.proxy_url("health"))
             .await
-            .expect(&format!("Failed to make request on iteration {}", i));
+            .unwrap_or_else(|_| panic!("Failed to make request on iteration {}", i));
         assert_eq!(response.status(), 200);
 
         env.stop_client();
@@ -77,7 +77,7 @@ async fn test_multiple_server_restarts() {
     for i in 0..3 {
         let response = reqwest::get(env.proxy_url("health"))
             .await
-            .expect(&format!("Failed to make request before restart {}", i));
+            .unwrap_or_else(|_| panic!("Failed to make request before restart {}", i));
         assert_eq!(response.status(), 200);
 
         env.restart_server().await;
