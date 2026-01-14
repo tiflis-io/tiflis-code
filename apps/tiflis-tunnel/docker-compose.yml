@@ -3,6 +3,11 @@
 
 services:
   tunnel-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY_NAME: tunnel-server
     image: ghcr.io/tiflis-io/tunnel-server:${VERSION:-latest}
     ports:
       - "80:80"
@@ -19,6 +24,11 @@ services:
     restart: unless-stopped
 
   tunnel-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY_NAME: tunnel-client
     image: ghcr.io/tiflis-io/tunnel-client:${VERSION:-latest}
     environment:
       SERVER_ADDRESS: ${SERVER_ADDRESS}
