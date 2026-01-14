@@ -246,86 +246,243 @@ Since workstation handles auth directly (not tunnel), the API becomes simpler.
 - `WorkstationRegistry` → not needed (we ARE the workstation)
 - `workstationOnline` checks → always true (we're running)
 
-## JWT Authentication
+## Unified JWT Authentication (WebSocket + HTTP)
 
-Replace raw `auth_key` in every request with JWT tokens signed using the workstation auth key.
+Complete auth redesign: JWT tokens for both WebSocket and HTTP APIs. Single auth flow, stateless verification.
 
-### Flow
+### Current Problems
+
+1. **WebSocket**: Sends `auth_key` in plaintext via `auth` message after connect
+2. **HTTP Polling**: Sends `auth_key` in every request body
+3. **Inconsistent**: Two different auth flows for same workstation
+4. **Insecure**: Raw secret transmitted repeatedly
+
+### New Design: Token-Based Auth
 
 ```
-1. Client calls POST /api/v1/http/connect with { auth_key, device_id }
-2. Workstation validates auth_key, generates JWT signed with auth_key (symmetric HS256)
-3. Returns { token: "eyJ...", expires_in: 86400 }
-4. Client includes token in subsequent requests: Authorization: Bearer <token>
-5. Workstation verifies JWT signature using auth_key (no DB lookup needed)
+┌─────────────────────────────────────────────────────────────────┐
+│                     AUTHENTICATION FLOW                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Client obtains token (one-time, with auth_key)              │
+│     POST /api/v1/auth/token                                     │
+│     { auth_key, device_id } → { token, expires_in }             │
+│                                                                 │
+│  2. Client uses token for all subsequent connections            │
+│                                                                 │
+│     WebSocket: /ws?token=<jwt>                                  │
+│     HTTP:      Authorization: Bearer <jwt>                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### JWT Payload
+### JWT Structure
 
 ```typescript
+// Header
+{ "alg": "HS256", "typ": "JWT" }
+
+// Payload
 interface JwtPayload {
-  device_id: string;      // Device identifier
-  iat: number;            // Issued at (Unix timestamp)
-  exp: number;            // Expiration (Unix timestamp)
+  sub: string;           // device_id (subject)
+  iat: number;           // Issued at
+  exp: number;           // Expiration (24h default)
+  jti?: string;          // Optional: unique token ID for revocation
 }
+
+// Signature
+HMACSHA256(base64(header) + "." + base64(payload), WORKSTATION_AUTH_KEY)
 ```
 
-### Updated Endpoints
+### API Endpoints
+
+#### Authentication
 
 ```
-POST /api/v1/http/connect
+POST /api/v1/auth/token
   Request:  { auth_key: string, device_id: string }
-  Response: { token: string, expires_in: number }
+  Response: { 
+    token: string,           // JWT
+    expires_in: number,      // Seconds until expiration
+    workstation_name: string,
+    workstation_version: string,
+    protocol_version: string
+  }
+  Errors:   401 Invalid auth key
+```
 
+#### WebSocket (authenticated via query param)
+
+```
+GET /ws?token=<jwt>
+  
+  On connect: Server verifies JWT, extracts device_id
+  No "auth" message needed - connection is pre-authenticated
+  
+  On invalid/expired token: 
+    Server sends { type: "error", payload: { code: "TOKEN_EXPIRED" } }
+    Server closes connection with 4001 code
+```
+
+#### HTTP Polling (authenticated via header)
+
+```
 POST /api/v1/http/command
-  Headers:  Authorization: Bearer <token>
+  Headers:  Authorization: Bearer <jwt>
   Request:  { message: object }
+  Response: { success: true }
+  Errors:   401 Invalid/expired token
 
 GET /api/v1/http/messages?since=<seq>&ack=<seq>
-  Headers:  Authorization: Bearer <token>
+  Headers:  Authorization: Bearer <jwt>
+  Response: { messages: [...], current_sequence: number }
+  Errors:   401 Invalid/expired token
 
 GET /api/v1/http/state
-  Headers:  Authorization: Bearer <token>
+  Headers:  Authorization: Bearer <jwt>
+  Response: { queue_size: number, current_sequence: number }
+  Errors:   401 Invalid/expired token
 
 POST /api/v1/http/disconnect
-  Headers:  Authorization: Bearer <token>
+  Headers:  Authorization: Bearer <jwt>
+  Response: { success: true }
 ```
 
-### Benefits
+### Token Lifecycle
 
-1. **Stateless** - No session lookup, just verify JWT signature
-2. **Secure** - Auth key never sent after initial connect
-3. **Efficient** - No auth_key validation on every request
-4. **Standard** - Uses standard Authorization header
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
+│  Fresh   │────►│  Valid   │────►│ Expiring │────►│ Expired  │
+│          │     │          │     │ (< 1hr)  │     │          │
+└──────────┘     └──────────┘     └──────────┘     └──────────┘
+                      │                │                │
+                      │                │                │
+                 Use normally    Auto-refresh      Re-auth
+                                 (optional)        required
+```
 
-### Implementation
+**Client Responsibilities:**
+1. Store token securely (Keychain on iOS, EncryptedSharedPreferences on Android)
+2. Include token in all requests
+3. Handle 401 errors by re-authenticating
+4. Optionally refresh token before expiration
+
+**Server Responsibilities:**
+1. Verify JWT signature on every request
+2. Check expiration
+3. Extract device_id from token (no DB lookup)
+
+### Removed Messages
 
 ```typescript
-// Generate token on connect
-import jwt from 'jsonwebtoken';
+// REMOVE from WebSocket protocol:
+- { type: "auth", payload: { auth_key, device_id } }
+- { type: "auth.success", payload: { ... } }
+- { type: "auth.error", payload: { ... } }
 
-function generateToken(deviceId: string, authKey: string): string {
-  return jwt.sign(
-    { device_id: deviceId },
-    authKey,
-    { algorithm: 'HS256', expiresIn: '24h' }
-  );
+// Auth info now returned from /api/v1/auth/token
+// WebSocket connect is pre-authenticated via ?token=
+```
+
+### Security Benefits
+
+1. **Auth key transmitted once** - Only during initial token request
+2. **Stateless verification** - JWT signature check, no DB lookup
+3. **Standard mechanism** - Well-understood JWT + Bearer token pattern  
+4. **Revocable** - Can implement token blacklist if needed (jti claim)
+5. **Auditable** - Token contains device_id, timestamps
+6. **Cross-transport** - Same token works for WS and HTTP
+
+### Implementation Notes
+
+```typescript
+// Middleware for HTTP routes
+async function authMiddleware(request, reply) {
+  const auth = request.headers.authorization;
+  if (!auth?.startsWith('Bearer ')) {
+    return reply.status(401).send({ error: 'missing_token' });
+  }
+  
+  const token = auth.slice(7);
+  try {
+    const payload = jwt.verify(token, WORKSTATION_AUTH_KEY, { 
+      algorithms: ['HS256'] 
+    });
+    request.deviceId = payload.sub;
+  } catch (err) {
+    const code = err.name === 'TokenExpiredError' ? 'token_expired' : 'invalid_token';
+    return reply.status(401).send({ error: code });
+  }
 }
 
-// Verify token on subsequent requests
-function verifyToken(token: string, authKey: string): JwtPayload {
-  return jwt.verify(token, authKey, { algorithms: ['HS256'] }) as JwtPayload;
+// WebSocket upgrade handler
+function handleUpgrade(request, socket, head) {
+  const url = new URL(request.url, 'http://localhost');
+  const token = url.searchParams.get('token');
+  
+  if (!token) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  
+  try {
+    const payload = jwt.verify(token, WORKSTATION_AUTH_KEY);
+    // Proceed with WebSocket upgrade, attach deviceId to connection
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      ws.deviceId = payload.sub;
+      wss.emit('connection', ws, request);
+    });
+  } catch (err) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+  }
 }
 ```
 
-### WebSocket Auth (Future)
+### Mobile Client Changes
 
-Same JWT can be used for WebSocket connections:
-```
-wss://tunnel.example.com/t/{workstation_id}/ws?token=<jwt>
+**iOS (Swift):**
+```swift
+// Before
+func connect() {
+  ws.connect(url: tunnelUrl)
+  ws.send(AuthMessage(auth_key: authKey, device_id: deviceId))
+}
+
+// After  
+func connect() async throws {
+  // 1. Get token (if not cached or expired)
+  if token == nil || token.isExpired {
+    token = try await api.getToken(authKey: authKey, deviceId: deviceId)
+    keychain.save(token)
+  }
+  
+  // 2. Connect with token
+  ws.connect(url: "\(workstationUrl)/ws?token=\(token.jwt)")
+  // No auth message needed - already authenticated
+}
 ```
 
-This eliminates the separate `auth` message after WebSocket connect.
+**Android (Kotlin):**
+```kotlin
+// Before
+fun connect() {
+  ws.connect(tunnelUrl)
+  ws.send(AuthMessage(authKey, deviceId))
+}
+
+// After
+suspend fun connect() {
+  // 1. Get token (if not cached or expired)
+  val token = tokenManager.getValidToken() 
+    ?: api.getToken(authKey, deviceId).also { tokenManager.save(it) }
+  
+  // 2. Connect with token
+  ws.connect("$workstationUrl/ws?token=${token.jwt}")
+  // No auth message needed
+}
+```
 
 ### Updated Endpoints (in Workstation)
 
