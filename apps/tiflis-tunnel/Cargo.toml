@@ -20,17 +20,17 @@ authors = ["Roman Barinov <rbarinov@gmail.com>"]
 tokio = { version = "1.42", features = ["full"] }
 tokio-tungstenite = "0.24"
 
-# QUIC
-quinn = "0.11"
-rustls = "0.23"
+# QUIC - using ring crypto backend for cross-compilation compatibility
+quinn = { version = "0.11", default-features = false, features = ["ring", "runtime-tokio", "rustls"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
 
 # HTTP server
 axum = { version = "0.7", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
-# ACME/Let's Encrypt
-rustls-acme = "0.12"
+# ACME/Let's Encrypt - using ring crypto backend
+rustls-acme = { version = "0.12", default-features = false, features = ["ring"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
@@ -41,8 +41,8 @@ base64 = "0.22"
 toml = "0.8"
 clap = { version = "4.5", features = ["derive", "env"] }
 
-# HTTP client
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+# HTTP client - using rustls-tls with ring backend
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots"] }
 
 # Error handling
 thiserror = "2.0"
