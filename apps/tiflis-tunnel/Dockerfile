@@ -7,7 +7,7 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 ARG BINARY_NAME
 
-RUN apk add --no-cache musl-dev openssl-dev openssl-libs-static pkgconfig
+RUN apk add --no-cache musl-dev
 
 RUN case "$TARGETPLATFORM" in \
       "linux/amd64") echo "x86_64-unknown-linux-musl" > /tmp/target ;; \
