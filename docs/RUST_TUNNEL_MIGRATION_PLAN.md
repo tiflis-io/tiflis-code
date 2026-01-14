@@ -239,21 +239,93 @@ The HTTP polling API (`/api/v1/watch/*` → `/api/v1/http/*`) currently lives in
 
 ### Simplifications in Workstation
 
-Since workstation handles auth directly (not tunnel), the watch API becomes simpler:
-
-```typescript
-// Before (in tunnel): validate auth against workstation registry
-const workstation = this.workstationRegistry.get(tunnelId);
-if (!workstation.validateAuthKey(authKey)) { throw new InvalidAuthKeyError(); }
-
-// After (in workstation): use existing auth service
-const isValid = this.authService.validateAuthKey(authKey, deviceId);
-```
+Since workstation handles auth directly (not tunnel), the API becomes simpler.
 
 **Remove tunnel-specific concepts:**
 - `TunnelId` value object → not needed (workstation is local)
 - `WorkstationRegistry` → not needed (we ARE the workstation)
 - `workstationOnline` checks → always true (we're running)
+
+## JWT Authentication
+
+Replace raw `auth_key` in every request with JWT tokens signed using the workstation auth key.
+
+### Flow
+
+```
+1. Client calls POST /api/v1/http/connect with { auth_key, device_id }
+2. Workstation validates auth_key, generates JWT signed with auth_key (symmetric HS256)
+3. Returns { token: "eyJ...", expires_in: 86400 }
+4. Client includes token in subsequent requests: Authorization: Bearer <token>
+5. Workstation verifies JWT signature using auth_key (no DB lookup needed)
+```
+
+### JWT Payload
+
+```typescript
+interface JwtPayload {
+  device_id: string;      // Device identifier
+  iat: number;            // Issued at (Unix timestamp)
+  exp: number;            // Expiration (Unix timestamp)
+}
+```
+
+### Updated Endpoints
+
+```
+POST /api/v1/http/connect
+  Request:  { auth_key: string, device_id: string }
+  Response: { token: string, expires_in: number }
+
+POST /api/v1/http/command
+  Headers:  Authorization: Bearer <token>
+  Request:  { message: object }
+
+GET /api/v1/http/messages?since=<seq>&ack=<seq>
+  Headers:  Authorization: Bearer <token>
+
+GET /api/v1/http/state
+  Headers:  Authorization: Bearer <token>
+
+POST /api/v1/http/disconnect
+  Headers:  Authorization: Bearer <token>
+```
+
+### Benefits
+
+1. **Stateless** - No session lookup, just verify JWT signature
+2. **Secure** - Auth key never sent after initial connect
+3. **Efficient** - No auth_key validation on every request
+4. **Standard** - Uses standard Authorization header
+
+### Implementation
+
+```typescript
+// Generate token on connect
+import jwt from 'jsonwebtoken';
+
+function generateToken(deviceId: string, authKey: string): string {
+  return jwt.sign(
+    { device_id: deviceId },
+    authKey,
+    { algorithm: 'HS256', expiresIn: '24h' }
+  );
+}
+
+// Verify token on subsequent requests
+function verifyToken(token: string, authKey: string): JwtPayload {
+  return jwt.verify(token, authKey, { algorithms: ['HS256'] }) as JwtPayload;
+}
+```
+
+### WebSocket Auth (Future)
+
+Same JWT can be used for WebSocket connections:
+```
+wss://tunnel.example.com/t/{workstation_id}/ws?token=<jwt>
+```
+
+This eliminates the separate `auth` message after WebSocket connect.
 
 ### Updated Endpoints (in Workstation)
 
