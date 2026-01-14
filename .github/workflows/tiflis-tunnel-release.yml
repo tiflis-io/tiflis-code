@@ -43,7 +43,7 @@ jobs:
             archive_name: aarch64-linux
 
           - target: x86_64-apple-darwin
-            os: macos-13
+            os: macos-15-intel
             archive: tar.gz
             archive_name: x86_64-darwin
 
