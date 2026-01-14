@@ -1,0 +1,19 @@
+[server]
+domain = "tunnel.example.com"
+http_port = 80
+https_port = 443
+
+[tls]
+enabled = true
+acme_email = "admin@example.com"
+certs_dir = "/var/lib/tunnel/certs"
+
+[auth]
+api_key = "change-this-to-minimum-32-character-secret-key"
+
+[reliability]
+grace_period = 30
+request_timeout = 60
+
+[limits]
+max_workstations = 100

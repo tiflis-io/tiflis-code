@@ -1,0 +1,48 @@
+# Copyright (c) 2026 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+
+services:
+  tunnel-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY_NAME: tunnel-server
+    image: tiflis/tunnel-server:latest
+    ports:
+      - "80:80"
+      - "443:443/tcp"
+      - "443:443/udp"
+    environment:
+      SERVER_DOMAIN: ${SERVER_DOMAIN:-tunnel.example.com}
+      TLS_ENABLED: ${TLS_ENABLED:-true}
+      TLS_ACME_EMAIL: ${TLS_ACME_EMAIL}
+      AUTH_API_KEY: ${AUTH_API_KEY}
+      RUST_LOG: ${RUST_LOG:-tunnel_server=info}
+    volumes:
+      - certs:/var/lib/tunnel/certs
+    restart: unless-stopped
+
+  tunnel-client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        BINARY_NAME: tunnel-client
+    image: tiflis/tunnel-client:latest
+    environment:
+      SERVER_ADDRESS: ${SERVER_ADDRESS}
+      AUTH_API_KEY: ${AUTH_API_KEY}
+      WORKSTATION_ID: ${WORKSTATION_ID}
+      WORKSTATION_LOCAL_ADDRESS: ${WORKSTATION_LOCAL_ADDRESS:-http://localhost:3002}
+      RECONNECT_ENABLED: ${RECONNECT_ENABLED:-true}
+      RUST_LOG: ${RUST_LOG:-tunnel_client=info}
+    volumes:
+      - session:/var/lib/tunnel
+    restart: unless-stopped
+    # profiles:
+    #   - client
+
+volumes:
+  certs:
+  session:

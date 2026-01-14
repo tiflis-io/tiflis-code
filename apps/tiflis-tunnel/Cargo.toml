@@ -1,0 +1,59 @@
+# Copyright (c) 2026 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+
+[workspace]
+resolver = "2"
+members = [
+    "crates/tunnel-core",
+    "crates/tunnel-server",
+    "crates/tunnel-client", "tests",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "FSL-1.1-NC"
+authors = ["Roman Barinov <rbarinov@gmail.com>"]
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1.42", features = ["full"] }
+tokio-tungstenite = "0.24"
+
+# QUIC
+quinn = "0.11"
+rustls = "0.23"
+
+# HTTP server
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.5"
+tower-http = { version = "0.6", features = ["cors", "trace"] }
+
+# ACME/Let's Encrypt
+rustls-acme = "0.12"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+base64 = "0.22"
+
+# Configuration
+toml = "0.8"
+clap = { version = "4.5", features = ["derive", "env"] }
+
+# HTTP client
+reqwest = { version = "0.12", features = ["json"] }
+
+# Error handling
+thiserror = "2.0"
+anyhow = "1.0"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Utilities
+uuid = { version = "1.11", features = ["v4", "serde"] }
+bytes = "1.9"
+futures = "0.3"
+rand = "0.8"

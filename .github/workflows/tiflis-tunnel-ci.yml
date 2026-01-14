@@ -1,0 +1,84 @@
+# Copyright (c) 2025 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+
+name: Tiflis Tunnel CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/tiflis-tunnel/**"
+      - ".github/workflows/tiflis-tunnel-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/tiflis-tunnel/**"
+      - ".github/workflows/tiflis-tunnel-ci.yml"
+
+defaults:
+  run:
+    working-directory: apps/tiflis-tunnel
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-Dwarnings"
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/tiflis-tunnel -> target
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run clippy
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/tiflis-tunnel -> target
+
+      - name: Run tests
+        run: cargo test --all --verbose
+
+  build:
+    name: Build Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-action@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/tiflis-tunnel -> target
+
+      - name: Build release
+        run: cargo build --release --all

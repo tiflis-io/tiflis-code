@@ -1,0 +1,6 @@
+/target/
+Cargo.lock
+*.ticket
+config.toml
+client.toml
+.env

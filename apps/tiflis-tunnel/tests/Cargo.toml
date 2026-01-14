@@ -1,0 +1,52 @@
+# Copyright (c) 2026 Roman Barinov <rbarinov@gmail.com>
+# Licensed under the FSL-1.1-NC.
+
+[package]
+name = "e2e-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+tunnel-core = { path = "../crates/tunnel-core" }
+tunnel-server = { path = "../crates/tunnel-server" }
+tunnel-client = { path = "../crates/tunnel-client" }
+
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+reqwest = { workspace = true }
+axum = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }
+rustls = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lib]
+name = "common"
+path = "common/mod.rs"
+
+[[test]]
+name = "e2e_basic"
+path = "e2e_basic.rs"
+
+[[test]]
+name = "e2e_registration"
+path = "e2e_registration.rs"
+
+[[test]]
+name = "e2e_http_proxy"
+path = "e2e_http_proxy.rs"
+
+[[test]]
+name = "e2e_websocket"
+path = "e2e_websocket.rs"
+
+[[test]]
+name = "e2e_reliability"
+path = "e2e_reliability.rs"
+
+[[test]]
+name = "e2e_restart"
+path = "e2e_restart.rs"

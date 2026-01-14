@@ -1,0 +1,10 @@
+[dev-dependencies]
+tunnel-core = { path = "crates/tunnel-core" }
+tunnel-server = { path = "crates/tunnel-server" }
+tunnel-client = { path = "crates/tunnel-client" }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+reqwest = { workspace = true }
+axum = { workspace = true }
+futures = { workspace = true }
+rand = { workspace = true }

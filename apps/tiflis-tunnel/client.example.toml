@@ -1,0 +1,16 @@
+[server]
+address = "tunnel.example.com:443"
+
+[auth]
+api_key = "change-this-to-minimum-32-character-secret-key"
+
+[workstation]
+id = "my-workstation"
+local_address = "http://localhost:3002"
+
+[reconnect]
+enabled = true
+max_delay = 30
+
+[session]
+ticket_path = "./session.ticket"
