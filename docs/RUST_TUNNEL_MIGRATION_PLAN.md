@@ -534,31 +534,431 @@ POST /api/v1/http/disconnect  → Unregister device, clear queue
 6. Update watchOS app to use new endpoint paths
 7. Test with watchOS app
 
-## Open Questions
+## Workstation Adaptation Checklist
 
-1. **Web client** - Where does the web client get served from?
-   - Option A: Bundled with tunnel-server (current) - Rust tunnel serves static files
-   - Option B: Bundled with workstation - workstation serves at `/`
-   - Option C: Separate static hosting (CDN)
-   - **Recommendation:** Option B - bundle with workstation for simplicity
+### Phase 1: Remove Tunnel Client Code
 
-2. **Auth flow** - How does mobile get `workstation_id`?
-   - Currently via QR code / magic link with `tunnel_id`
-   - Need to include `workstation_id` in the link instead
-   - Format: `tiflis://connect?server=tunnel.example.com&workstation=my-ws&key=xxx`
+```
+packages/workstation/src/
+├── infrastructure/
+│   └── websocket/
+│       ├── tunnel-client.ts          # DELETE
+│       └── tunnel-connection.ts      # DELETE (if exists)
+├── config/
+│   └── env.ts                        # REMOVE: TUNNEL_URL, TUNNEL_API_KEY
+└── app.ts                            # REMOVE: tunnel initialization
+```
+
+**Database changes:**
+- Remove `tunnel_id` column/table if persisted
+- Keep `device_id` tracking (still needed)
+
+### Phase 2: Implement JWT Authentication
+
+**New files:**
+```
+packages/workstation/src/
+├── infrastructure/
+│   └── auth/
+│       ├── jwt-service.ts            # JWT verification
+│       └── auth-middleware.ts        # Fastify middleware
+├── domain/
+│   └── value-objects/
+│       └── device-id.ts              # Device ID value object
+```
+
+**jwt-service.ts:**
+```typescript
+import jwt from 'jsonwebtoken';
+
+export interface TokenPayload {
+  sub: string;  // device_id
+  iat: number;
+  exp: number;
+}
+
+export class JwtService {
+  constructor(private readonly secret: string) {}
+
+  verify(token: string): TokenPayload {
+    return jwt.verify(token, this.secret, {
+      algorithms: ['HS256']
+    }) as TokenPayload;
+  }
+}
+```
+
+**auth-middleware.ts:**
+```typescript
+import { FastifyRequest, FastifyReply } from 'fastify';
+
+export function createAuthMiddleware(jwtService: JwtService) {
+  return async (request: FastifyRequest, reply: FastifyReply) => {
+    const auth = request.headers.authorization;
+    if (!auth?.startsWith('Bearer ')) {
+      return reply.status(401).send({ error: 'missing_token' });
+    }
+    try {
+      const payload = jwtService.verify(auth.slice(7));
+      request.deviceId = payload.sub;
+    } catch (err) {
+      return reply.status(401).send({ error: 'invalid_token' });
+    }
+  };
+}
+```
+
+### Phase 3: Update WebSocket Handler
+
+**Before:**
+```typescript
+// Wait for auth message after connect
+ws.on('message', (data) => {
+  const msg = JSON.parse(data);
+  if (msg.type === 'auth') {
+    validateAuthKey(msg.payload.auth_key);
+    // ...
+  }
+});
+```
+
+**After:**
+```typescript
+// Auth happens during upgrade, before connection
+fastify.get('/ws', { websocket: true }, (connection, request) => {
+  // request.deviceId already set by upgrade handler
+  const deviceId = request.deviceId;
+  
+  // No auth message needed - already authenticated
+  connection.socket.on('message', (data) => {
+    // Handle business messages only
+  });
+});
+
+// Upgrade handler
+fastify.server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, 'http://localhost');
+  const token = url.searchParams.get('token');
+  
+  if (!token) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  
+  try {
+    const payload = jwtService.verify(token);
+    request.deviceId = payload.sub;
+    // Let Fastify handle the upgrade
+  } catch {
+    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+    socket.destroy();
+  }
+});
+```
+
+### Phase 4: Migrate HTTP Polling API
+
+**New files:**
+```
+packages/workstation/src/
+├── domain/
+│   ├── entities/
+│   │   └── http-polling-client.ts    # Message queue per device
+│   └── ports/
+│       └── http-polling-registry.ts  # Client registry interface
+├── application/
+│   └── http-polling-service.ts       # Use case
+└── infrastructure/
+    └── http/
+        └── http-polling-route.ts     # Fastify routes
+```
+
+**Routes:**
+```typescript
+// All routes use JWT auth middleware
+fastify.register(async (app) => {
+  app.addHook('preHandler', authMiddleware);
+
+  app.post('/api/v1/http/command', commandHandler);
+  app.get('/api/v1/http/messages', messagesHandler);
+  app.get('/api/v1/http/state', stateHandler);
+  app.post('/api/v1/http/disconnect', disconnectHandler);
+});
+```
+
+### Phase 5: Update Message Broadcasting
+
+**Current:** Broadcast to WebSocket clients only
+**New:** Broadcast to WebSocket + HTTP polling clients
+
+```typescript
+class MessageBroadcaster {
+  constructor(
+    private readonly wsClients: Map<string, WebSocket>,
+    private readonly httpPollingRegistry: HttpPollingRegistry
+  ) {}
+
+  broadcast(deviceIds: string[], message: object) {
+    const json = JSON.stringify(message);
+    
+    for (const deviceId of deviceIds) {
+      // Try WebSocket first
+      const ws = this.wsClients.get(deviceId);
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(json);
+        continue;
+      }
+      
+      // Fall back to HTTP polling queue
+      this.httpPollingRegistry.queueMessage(deviceId, json);
+    }
+  }
+}
+```
+
+### Phase 6: Environment Variables Update
+
+**Remove:**
+```bash
+TUNNEL_URL=...
+TUNNEL_API_KEY=...
+```
+
+**Keep/Add:**
+```bash
+# Server config
+PORT=3001
+HOST=127.0.0.1              # Local only! Tunnel client connects here
+
+# Auth
+WORKSTATION_AUTH_KEY=...    # Shared secret for JWT verification (from QR)
+
+# Existing
+WORKSPACES_ROOT=...
+AGENT_PROVIDER=...
+# ... rest unchanged
+```
+
+## Protocol Documentation Updates
+
+### PROTOCOL.md Changes
+
+**Remove sections:**
+- 2.1 Workstation Registration (`workstation.register`)
+- 2.2 Mobile Client Connection (`connect` / `connected`)
+- 2.3 Message Forwarding (tunnel-specific)
+- 2.4 Connection Events (`workstation_offline` / `workstation_online`)
+- 2.5 Tunnel Heartbeat
+
+**Update sections:**
+- 1.1 Architecture diagram (new flow)
+- 3.1 Authentication (JWT-based)
+- Add HTTP Polling API section
+
+**New Section 2: Tunnel**
+```markdown
+## 2. Tunnel
+
+The Rust tunnel (`tiflis-tunnel`) is a transparent QUIC proxy.
+
+### 2.1 Architecture
+
+```
+Mobile ──HTTPS/WSS──► Tunnel Server ──QUIC──► Tunnel Client ──HTTP/WS──► Workstation
+         (internet)   (cloud/VPS)             (local)        (localhost:3001)
+```
+
+### 2.2 Endpoints
+
+Mobile clients connect to:
+- WebSocket: `wss://tunnel.example.com/t/{workstation_id}/ws?token=<jwt>`
+- HTTP: `https://tunnel.example.com/t/{workstation_id}/api/v1/http/*`
+
+### 2.3 Transparency
+
+The tunnel forwards all traffic unchanged. Workstation sees direct client connections.
+No tunnel-specific protocol messages.
+```
+
+**New Section 3.1: JWT Authentication**
+```markdown
+## 3.1 Authentication
+
+All connections require a JWT token signed with the shared secret.
+
+### Token Format
+
+```
+Header:  { "alg": "HS256", "typ": "JWT" }
+Payload: { "sub": "<device_id>", "iat": <timestamp>, "exp": <timestamp> }
+```
+
+### WebSocket
+
+```
+GET /ws?token=<jwt>
+```
+
+Server verifies JWT before completing WebSocket upgrade.
+No `auth` message needed after connection.
+
+### HTTP
+
+```
+Authorization: Bearer <jwt>
+```
+
+All HTTP endpoints require this header.
+
+### Token Generation
+
+Clients generate tokens locally using the shared secret from QR code/magic link.
+No server round-trip required.
+```
+
+### AGENTS.md Changes
+
+**Update component table:**
+```markdown
+| Component     | Name                                 | Platform       | Stack                        |
+| ------------- | ------------------------------------ | -------------- | ---------------------------- |
+| Tunnel Server | `tiflis-tunnel` (tunnel-server)      | Remote Server  | Rust, QUIC                   |
+| Tunnel Client | `tiflis-tunnel` (tunnel-client)      | User's Machine | Rust, QUIC                   |
+| Workstation   | `@tiflis-io/tiflis-code-workstation` | User's Machine | TypeScript, Node.js          |
+```
+
+**Remove from table:**
+```markdown
+| Tunnel Server | `@tiflis-io/tiflis-code-tunnel`      | Remote Server  | TypeScript, Node.js          |
+```
+
+## Mobile Client Updates
+
+### iOS (TiflisCode)
+
+**Files to update:**
+```
+apps/TiflisCode/
+├── Services/
+│   ├── WebSocketService.swift      # JWT auth, new URL format
+│   ├── AuthManager.swift           # NEW: JWT generation
+│   └── HTTPPollingService.swift    # New endpoints
+├── Models/
+│   └── ConnectionConfig.swift      # New QR format
+└── Views/
+    └── ConnectionSetupView.swift   # Parse new QR format
+```
+
+**Key changes:**
+1. Add `AuthManager` for JWT generation (CryptoKit HMAC-SHA256)
+2. Update WebSocket URL: `/ws?token=<jwt>`
+3. Remove `auth` message sending
+4. Remove `connect`/`connected` handling
+5. Update HTTP polling endpoints to `/api/v1/http/*`
+6. Parse new QR code format with `secret`
+
+### Android (TiflisCodeAndroid)
+
+**Files to update:**
+```
+apps/TiflisCodeAndroid/app/src/main/java/com/tiflis/code/
+├── data/
+│   ├── network/
+│   │   ├── WebSocketService.kt     # JWT auth, new URL format
+│   │   └── HttpPollingService.kt   # New endpoints
+│   └── auth/
+│       └── JwtGenerator.kt         # NEW: JWT generation
+├── domain/
+│   └── model/
+│       └── ConnectionConfig.kt     # New QR format
+└── ui/
+    └── setup/
+        └── QrScannerViewModel.kt   # Parse new QR format
+```
+
+### Web Client
+
+**Files to update:**
+```
+packages/web/src/
+├── lib/
+│   ├── websocket.ts               # JWT auth, new URL format
+│   ├── auth.ts                    # NEW: JWT generation
+│   └── api.ts                     # HTTP polling if needed
+└── hooks/
+    └── useConnection.ts           # Updated auth flow
+```
+
+## Testing Checklist
+
+### Unit Tests
+- [ ] JWT verification (valid, expired, invalid signature)
+- [ ] HTTP polling message queue (add, poll, acknowledge, TTL)
+- [ ] Auth middleware (missing token, invalid token, valid token)
+
+### Integration Tests
+- [ ] WebSocket connect with valid JWT
+- [ ] WebSocket reject invalid JWT
+- [ ] HTTP polling full flow (command → queue → poll)
+- [ ] Broadcast to mixed WS + HTTP clients
+
+### E2E Tests
+- [ ] iOS app connect via Rust tunnel
+- [ ] Android app connect via Rust tunnel
+- [ ] watchOS app HTTP polling via Rust tunnel
+- [ ] Web client connect via Rust tunnel
+- [ ] Multi-device sync (WS + HTTP mixed)
+
+## Rollout Plan
+
+### Stage 1: Development (Local)
+1. Implement workstation changes
+2. Test with local tunnel (no Rust tunnel yet)
+3. Update one mobile platform (iOS)
+
+### Stage 2: Alpha (Single User)
+1. Deploy Rust tunnel to test server
+2. Test full flow with all mobile platforms
+3. Fix issues
+
+### Stage 3: Beta (Internal)
+1. Deploy to production tunnel server
+2. Migrate internal workstations
+3. Monitor for issues
+
+### Stage 4: GA (Public)
+1. Update documentation
+2. Publish new mobile app versions
+3. Deprecate TypeScript tunnel
+4. Delete `packages/tunnel`
 
 ## Timeline
 
 | Task | Duration |
 |------|----------|
-| Remove tunnel code from workstation | 2-3 hours |
-| Migrate watchOS HTTP polling to workstation | 3-4 hours |
-| Update mobile clients (iOS, Android, Web) | 2-3 hours |
-| Bundle web client with workstation (optional) | 1-2 hours |
-| Update PROTOCOL.md | 1 hour |
+| **Workstation** | |
+| Remove tunnel client code | 1 hour |
+| Implement JWT auth service | 2 hours |
+| Update WebSocket handler | 2 hours |
+| Migrate HTTP polling API | 3 hours |
+| Update message broadcaster | 1 hour |
+| Tests | 2 hours |
+| **Mobile** | |
+| iOS: JWT + new endpoints | 3 hours |
+| Android: JWT + new endpoints | 3 hours |
+| watchOS: new HTTP endpoints | 1 hour |
+| Web: JWT + new endpoints | 2 hours |
+| **Documentation** | |
+| Update PROTOCOL.md | 2 hours |
+| Update AGENTS.md | 30 min |
+| Update README files | 1 hour |
+| **Cleanup** | |
 | Delete packages/tunnel | 30 min |
-| Test end-to-end | 2-3 hours |
-| **Total** | ~1.5-2 days |
+| Update CI/CD | 1 hour |
+| **Testing** | |
+| E2E testing all platforms | 4 hours |
+| **Total** | ~2-3 days |
 
 ## Benefits
 
@@ -567,3 +967,5 @@ POST /api/v1/http/disconnect  → Unregister device, clear queue
 3. **Easier debugging** - Can test workstation locally without tunnel
 4. **QUIC benefits** - 0-RTT reconnection, multiplexing (handled by tunnel, transparent to workstation)
 5. **Less code** - Remove ~500 lines of tunnel client code from workstation
+6. **Secure auth** - Secret never transmitted, client-signed JWTs
+7. **Unified auth** - Same mechanism for WebSocket and HTTP
