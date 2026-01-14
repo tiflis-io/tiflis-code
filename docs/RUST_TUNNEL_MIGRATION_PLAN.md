@@ -208,20 +208,20 @@ services:
 
 We could run a managed tunnel service - users just run tunnel-client pointing to our servers.
 
-## watchOS HTTP Polling Migration
+## HTTP Polling API Migration
 
-The watchOS HTTP polling API (`/api/v1/watch/*`) currently lives in the TypeScript tunnel package. Since Rust tunnel is a transparent proxy, this must move to workstation.
+The HTTP polling API (`/api/v1/watch/*` → `/api/v1/http/*`) currently lives in the TypeScript tunnel package. Since Rust tunnel is a transparent proxy, this must move to workstation.
 
 ### What to Migrate
 
 **From `packages/tunnel/` to `packages/workstation/`:**
 
-1. **Routes** - `src/infrastructure/http/watch-api-route.ts`
-   - `POST /api/v1/watch/connect`
-   - `POST /api/v1/watch/command`  
-   - `GET /api/v1/watch/messages`
-   - `GET /api/v1/watch/state`
-   - `POST /api/v1/watch/disconnect`
+1. **Routes** - `src/infrastructure/http/watch-api-route.ts` → `http-polling-route.ts`
+   - `POST /api/v1/http/connect`
+   - `POST /api/v1/http/command`  
+   - `GET /api/v1/http/messages`
+   - `GET /api/v1/http/state`
+   - `POST /api/v1/http/disconnect`
 
 2. **Domain Entity** - `src/domain/entities/http-client.ts`
    - `HttpClient` class with message queue
@@ -258,21 +258,22 @@ const isValid = this.authService.validateAuthKey(authKey, deviceId);
 ### Updated Endpoints (in Workstation)
 
 ```
-POST /api/v1/watch/connect     → Register watchOS device, return auth status
-POST /api/v1/watch/command     → Forward command to message router (same as WebSocket)
-GET  /api/v1/watch/messages    → Poll queued messages for device
-GET  /api/v1/watch/state       → Get device connection state
-POST /api/v1/watch/disconnect  → Unregister device, clear queue
+POST /api/v1/http/connect     → Register HTTP polling client, return auth status
+POST /api/v1/http/command     → Forward command to message router (same as WebSocket)
+GET  /api/v1/http/messages    → Poll queued messages for device
+GET  /api/v1/http/state       → Get device connection state
+POST /api/v1/http/disconnect  → Unregister device, clear queue
 ```
 
 ### Migration Steps
 
 1. Copy `HttpClient` entity to workstation (simplify - remove TunnelId)
 2. Copy `HttpClientRegistry` to workstation
-3. Create `WatchApiService` use case (simplified from HttpClientOperationsUseCase)
-4. Register routes in workstation Fastify app
-5. Hook into message broadcaster to queue messages for watch clients
-6. Test with watchOS app
+3. Create `HttpPollingService` use case (simplified from HttpClientOperationsUseCase)
+4. Register routes at `/api/v1/http/*` in workstation Fastify app
+5. Hook into message broadcaster to queue messages for HTTP polling clients
+6. Update watchOS app to use new endpoint paths
+7. Test with watchOS app
 
 ## Open Questions
 
