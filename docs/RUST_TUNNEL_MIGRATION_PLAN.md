@@ -248,35 +248,57 @@ Since workstation handles auth directly (not tunnel), the API becomes simpler.
 
 ## Unified JWT Authentication (WebSocket + HTTP)
 
-Complete auth redesign: JWT tokens for both WebSocket and HTTP APIs. Single auth flow, stateless verification.
+Complete auth redesign: Client-signed JWT tokens using shared secret from QR/magic link.
 
 ### Current Problems
 
 1. **WebSocket**: Sends `auth_key` in plaintext via `auth` message after connect
 2. **HTTP Polling**: Sends `auth_key` in every request body
 3. **Inconsistent**: Two different auth flows for same workstation
-4. **Insecure**: Raw secret transmitted repeatedly
+4. **Insecure**: Raw secret transmitted repeatedly over the wire
 
-### New Design: Token-Based Auth
+### New Design: Client-Signed JWT
+
+**Key insight:** The client already has the shared secret (from QR code/magic link). It can sign its own JWTs - no server round-trip needed for token issuance.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     AUTHENTICATION FLOW                         │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  1. Client obtains token (one-time, with auth_key)              │
-│     POST /api/v1/auth/token                                     │
-│     { auth_key, device_id } → { token, expires_in }             │
+│  1. User scans QR code / clicks magic link                      │
+│     Contains: { server, workstation_id, secret }                │
 │                                                                 │
-│  2. Client uses token for all subsequent connections            │
+│  2. Client stores secret in secure storage (Keychain)           │
 │                                                                 │
+│  3. Client signs JWT locally using secret (HS256)               │
+│     No server request needed!                                   │
+│                                                                 │
+│  4. Client connects with self-signed JWT                        │
 │     WebSocket: /ws?token=<jwt>                                  │
 │     HTTP:      Authorization: Bearer <jwt>                      │
+│                                                                 │
+│  5. Server verifies JWT signature using same secret             │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### JWT Structure
+### Magic Link / QR Code Format
+
+```
+tiflis://connect?data=<base64_json>
+
+// Decoded JSON:
+{
+  "server": "tunnel.example.com",      // Tunnel server address
+  "workstation_id": "my-macbook",      // Workstation identifier  
+  "secret": "base64_encoded_32_bytes"  // Shared signing key (256-bit)
+}
+```
+
+**Security:** The `secret` is the ONLY authentication credential. Treat it like a password.
+
+### JWT Structure (Client-Generated)
 
 ```typescript
 // Header
@@ -284,203 +306,211 @@ Complete auth redesign: JWT tokens for both WebSocket and HTTP APIs. Single auth
 
 // Payload
 interface JwtPayload {
-  sub: string;           // device_id (subject)
-  iat: number;           // Issued at
-  exp: number;           // Expiration (24h default)
-  jti?: string;          // Optional: unique token ID for revocation
+  sub: string;           // device_id (subject) - client generates UUID
+  iat: number;           // Issued at (Unix timestamp)
+  exp: number;           // Expiration (e.g., iat + 24 hours)
 }
 
-// Signature
-HMACSHA256(base64(header) + "." + base64(payload), WORKSTATION_AUTH_KEY)
+// Signature (client computes this)
+HMACSHA256(base64(header) + "." + base64(payload), secret)
 ```
 
 ### API Endpoints
 
-#### Authentication
+**No token issuance endpoint needed!**
 
-```
-POST /api/v1/auth/token
-  Request:  { auth_key: string, device_id: string }
-  Response: { 
-    token: string,           // JWT
-    expires_in: number,      // Seconds until expiration
-    workstation_name: string,
-    workstation_version: string,
-    protocol_version: string
-  }
-  Errors:   401 Invalid auth key
-```
-
-#### WebSocket (authenticated via query param)
+#### WebSocket
 
 ```
 GET /ws?token=<jwt>
   
-  On connect: Server verifies JWT, extracts device_id
-  No "auth" message needed - connection is pre-authenticated
+  Server verifies JWT signature using WORKSTATION_AUTH_KEY (same as secret)
+  Extracts device_id from sub claim
   
   On invalid/expired token: 
-    Server sends { type: "error", payload: { code: "TOKEN_EXPIRED" } }
-    Server closes connection with 4001 code
+    Close connection with 4001 code
 ```
 
-#### HTTP Polling (authenticated via header)
+#### HTTP Polling
 
 ```
 POST /api/v1/http/command
   Headers:  Authorization: Bearer <jwt>
   Request:  { message: object }
-  Response: { success: true }
-  Errors:   401 Invalid/expired token
 
 GET /api/v1/http/messages?since=<seq>&ack=<seq>
   Headers:  Authorization: Bearer <jwt>
-  Response: { messages: [...], current_sequence: number }
-  Errors:   401 Invalid/expired token
 
 GET /api/v1/http/state
   Headers:  Authorization: Bearer <jwt>
-  Response: { queue_size: number, current_sequence: number }
-  Errors:   401 Invalid/expired token
 
 POST /api/v1/http/disconnect
   Headers:  Authorization: Bearer <jwt>
-  Response: { success: true }
 ```
 
-### Token Lifecycle
+All endpoints return 401 if JWT is invalid or expired.
+
+### Token Lifecycle (Client-Managed)
 
 ```
-┌──────────┐     ┌──────────┐     ┌──────────┐     ┌──────────┐
-│  Fresh   │────►│  Valid   │────►│ Expiring │────►│ Expired  │
-│          │     │          │     │ (< 1hr)  │     │          │
-└──────────┘     └──────────┘     └──────────┘     └──────────┘
-                      │                │                │
-                      │                │                │
-                 Use normally    Auto-refresh      Re-auth
-                                 (optional)        required
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ Generate JWT │────►│  Use Token   │────►│   Expired?   │
+│  (on client) │     │              │     │  Re-generate │
+└──────────────┘     └──────────────┘     └──────┬───────┘
+                                                 │
+                                                 ▼
+                                          ┌──────────────┐
+                                          │ Generate new │
+                                          │ JWT locally  │
+                                          └──────────────┘
 ```
 
-**Client Responsibilities:**
-1. Store token securely (Keychain on iOS, EncryptedSharedPreferences on Android)
-2. Include token in all requests
-3. Handle 401 errors by re-authenticating
-4. Optionally refresh token before expiration
+**Client responsibilities:**
+1. Store secret securely (Keychain / EncryptedSharedPreferences)
+2. Generate JWT with reasonable expiration (1-24 hours)
+3. Regenerate JWT when expired (no server call!)
+4. Generate unique device_id (UUID) on first launch, persist it
 
-**Server Responsibilities:**
-1. Verify JWT signature on every request
-2. Check expiration
-3. Extract device_id from token (no DB lookup)
+**Server responsibilities:**
+1. Verify JWT signature using `WORKSTATION_AUTH_KEY`
+2. Check `exp` claim
+3. Extract `sub` (device_id) for session tracking
 
-### Removed Messages
+### Removed from Protocol
 
 ```typescript
-// REMOVE from WebSocket protocol:
+// REMOVE these WebSocket messages:
 - { type: "auth", payload: { auth_key, device_id } }
 - { type: "auth.success", payload: { ... } }
 - { type: "auth.error", payload: { ... } }
 
-// Auth info now returned from /api/v1/auth/token
-// WebSocket connect is pre-authenticated via ?token=
+// REMOVE this endpoint:
+- POST /api/v1/auth/token  (not needed!)
+
+// Auth is now implicit via JWT in connection URL / header
 ```
 
 ### Security Benefits
 
-1. **Auth key transmitted once** - Only during initial token request
-2. **Stateless verification** - JWT signature check, no DB lookup
-3. **Standard mechanism** - Well-understood JWT + Bearer token pattern  
-4. **Revocable** - Can implement token blacklist if needed (jti claim)
-5. **Auditable** - Token contains device_id, timestamps
-6. **Cross-transport** - Same token works for WS and HTTP
+1. **Secret never transmitted** - Only used locally for signing
+2. **Zero server round-trips** - Client generates tokens instantly
+3. **Stateless** - Server just verifies signature
+4. **Offline capable** - Client can generate tokens without network
+5. **Standard mechanism** - HS256 JWT, well-understood
 
-### Implementation Notes
+### Implementation
 
+**Server (TypeScript):**
 ```typescript
-// Middleware for HTTP routes
+import jwt from 'jsonwebtoken';
+
+// Single verification function for both WS and HTTP
+function verifyToken(token: string): { deviceId: string } {
+  const payload = jwt.verify(token, process.env.WORKSTATION_AUTH_KEY, {
+    algorithms: ['HS256']
+  }) as { sub: string };
+  return { deviceId: payload.sub };
+}
+
+// HTTP middleware
 async function authMiddleware(request, reply) {
   const auth = request.headers.authorization;
   if (!auth?.startsWith('Bearer ')) {
     return reply.status(401).send({ error: 'missing_token' });
   }
-  
-  const token = auth.slice(7);
   try {
-    const payload = jwt.verify(token, WORKSTATION_AUTH_KEY, { 
-      algorithms: ['HS256'] 
-    });
-    request.deviceId = payload.sub;
-  } catch (err) {
-    const code = err.name === 'TokenExpiredError' ? 'token_expired' : 'invalid_token';
-    return reply.status(401).send({ error: code });
+    const { deviceId } = verifyToken(auth.slice(7));
+    request.deviceId = deviceId;
+  } catch {
+    return reply.status(401).send({ error: 'invalid_token' });
   }
 }
 
-// WebSocket upgrade handler
+// WebSocket upgrade
 function handleUpgrade(request, socket, head) {
-  const url = new URL(request.url, 'http://localhost');
-  const token = url.searchParams.get('token');
-  
+  const token = new URL(request.url, 'http://localhost').searchParams.get('token');
   if (!token) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
     socket.destroy();
     return;
   }
-  
   try {
-    const payload = jwt.verify(token, WORKSTATION_AUTH_KEY);
-    // Proceed with WebSocket upgrade, attach deviceId to connection
+    const { deviceId } = verifyToken(token);
     wss.handleUpgrade(request, socket, head, (ws) => {
-      ws.deviceId = payload.sub;
+      ws.deviceId = deviceId;
       wss.emit('connection', ws, request);
     });
-  } catch (err) {
-    socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+  } catch {
     socket.destroy();
   }
 }
 ```
 
-### Mobile Client Changes
-
-**iOS (Swift):**
+**iOS Client (Swift):**
 ```swift
-// Before
-func connect() {
-  ws.connect(url: tunnelUrl)
-  ws.send(AuthMessage(auth_key: authKey, device_id: deviceId))
-}
+import Foundation
+import CryptoKit
 
-// After  
-func connect() async throws {
-  // 1. Get token (if not cached or expired)
-  if token == nil || token.isExpired {
-    token = try await api.getToken(authKey: authKey, deviceId: deviceId)
-    keychain.save(token)
+class AuthManager {
+  private let secret: Data  // From QR code, stored in Keychain
+  private let deviceId: String  // Generated UUID, persisted
+  
+  func generateToken(expiresIn: TimeInterval = 86400) -> String {
+    let header = #"{"alg":"HS256","typ":"JWT"}"#
+    let now = Date()
+    let payload = """
+      {"sub":"\(deviceId)","iat":\(Int(now.timeIntervalSince1970)),"exp":\(Int(now.timeIntervalSince1970 + expiresIn))}
+      """
+    
+    let headerB64 = Data(header.utf8).base64URLEncoded()
+    let payloadB64 = Data(payload.utf8).base64URLEncoded()
+    let message = "\(headerB64).\(payloadB64)"
+    
+    let key = SymmetricKey(data: secret)
+    let signature = HMAC<SHA256>.authenticationCode(for: Data(message.utf8), using: key)
+    let signatureB64 = Data(signature).base64URLEncoded()
+    
+    return "\(message).\(signatureB64)"
   }
   
-  // 2. Connect with token
-  ws.connect(url: "\(workstationUrl)/ws?token=\(token.jwt)")
-  // No auth message needed - already authenticated
+  func connect() {
+    let token = generateToken()
+    let url = URL(string: "wss://\(server)/t/\(workstationId)/ws?token=\(token)")!
+    webSocket.connect(to: url)
+    // No auth message needed!
+  }
 }
 ```
 
-**Android (Kotlin):**
+**Android Client (Kotlin):**
 ```kotlin
-// Before
-fun connect() {
-  ws.connect(tunnelUrl)
-  ws.send(AuthMessage(authKey, deviceId))
-}
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 
-// After
-suspend fun connect() {
-  // 1. Get token (if not cached or expired)
-  val token = tokenManager.getValidToken() 
-    ?: api.getToken(authKey, deviceId).also { tokenManager.save(it) }
+class AuthManager(
+  private val secret: ByteArray,  // From QR code
+  private val deviceId: String    // Generated UUID
+) {
+  fun generateToken(expiresInSeconds: Long = 86400): String {
+    val header = """{"alg":"HS256","typ":"JWT"}"""
+    val now = System.currentTimeMillis() / 1000
+    val payload = """{"sub":"$deviceId","iat":$now,"exp":${now + expiresInSeconds}}"""
+    
+    val headerB64 = header.toByteArray().base64UrlEncode()
+    val payloadB64 = payload.toByteArray().base64UrlEncode()
+    val message = "$headerB64.$payloadB64"
+    
+    val mac = Mac.getInstance("HmacSHA256")
+    mac.init(SecretKeySpec(secret, "HmacSHA256"))
+    val signatureB64 = mac.doFinal(message.toByteArray()).base64UrlEncode()
+    
+    return "$message.$signatureB64"
+  }
   
-  // 2. Connect with token
-  ws.connect("$workstationUrl/ws?token=${token.jwt}")
-  // No auth message needed
+  fun connect() {
+    val token = generateToken()
+    webSocket.connect("wss://$server/t/$workstationId/ws?token=$token")
+    // No auth message needed!
+  }
 }
 ```
 
