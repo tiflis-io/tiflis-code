@@ -208,30 +208,97 @@ services:
 
 We could run a managed tunnel service - users just run tunnel-client pointing to our servers.
 
+## watchOS HTTP Polling Migration
+
+The watchOS HTTP polling API (`/api/v1/watch/*`) currently lives in the TypeScript tunnel package. Since Rust tunnel is a transparent proxy, this must move to workstation.
+
+### What to Migrate
+
+**From `packages/tunnel/` to `packages/workstation/`:**
+
+1. **Routes** - `src/infrastructure/http/watch-api-route.ts`
+   - `POST /api/v1/watch/connect`
+   - `POST /api/v1/watch/command`  
+   - `GET /api/v1/watch/messages`
+   - `GET /api/v1/watch/state`
+   - `POST /api/v1/watch/disconnect`
+
+2. **Domain Entity** - `src/domain/entities/http-client.ts`
+   - `HttpClient` class with message queue
+   - Queue management (100 msg max, 5min TTL)
+   - Sequence numbers for gap detection
+
+3. **Use Case** - `src/application/http-client-operations.ts`
+   - `HttpClientOperationsUseCase` class
+   - Connect, send command, poll messages, get state, disconnect
+   - Message queuing for broadcast
+
+4. **Registry** - `src/domain/ports/http-client-registry.ts`
+   - `HttpClientRegistry` interface
+   - In-memory implementation
+
+### Simplifications in Workstation
+
+Since workstation handles auth directly (not tunnel), the watch API becomes simpler:
+
+```typescript
+// Before (in tunnel): validate auth against workstation registry
+const workstation = this.workstationRegistry.get(tunnelId);
+if (!workstation.validateAuthKey(authKey)) { throw new InvalidAuthKeyError(); }
+
+// After (in workstation): use existing auth service
+const isValid = this.authService.validateAuthKey(authKey, deviceId);
+```
+
+**Remove tunnel-specific concepts:**
+- `TunnelId` value object → not needed (workstation is local)
+- `WorkstationRegistry` → not needed (we ARE the workstation)
+- `workstationOnline` checks → always true (we're running)
+
+### Updated Endpoints (in Workstation)
+
+```
+POST /api/v1/watch/connect     → Register watchOS device, return auth status
+POST /api/v1/watch/command     → Forward command to message router (same as WebSocket)
+GET  /api/v1/watch/messages    → Poll queued messages for device
+GET  /api/v1/watch/state       → Get device connection state
+POST /api/v1/watch/disconnect  → Unregister device, clear queue
+```
+
+### Migration Steps
+
+1. Copy `HttpClient` entity to workstation (simplify - remove TunnelId)
+2. Copy `HttpClientRegistry` to workstation
+3. Create `WatchApiService` use case (simplified from HttpClientOperationsUseCase)
+4. Register routes in workstation Fastify app
+5. Hook into message broadcaster to queue messages for watch clients
+6. Test with watchOS app
+
 ## Open Questions
 
-1. **watchOS HTTP polling** - Does Rust tunnel support `/api/v1/watch/*` endpoints?
-   - If not, need to add HTTP endpoint proxying (not just WebSocket)
+1. **Web client** - Where does the web client get served from?
+   - Option A: Bundled with tunnel-server (current) - Rust tunnel serves static files
+   - Option B: Bundled with workstation - workstation serves at `/`
+   - Option C: Separate static hosting (CDN)
+   - **Recommendation:** Option B - bundle with workstation for simplicity
 
-2. **Web client** - Where does the web client get served from?
-   - Option A: Bundled with tunnel-server (current)
-   - Option B: Bundled with workstation (new)
-   - Option C: Separate static hosting
-
-3. **Auth flow** - How does mobile get `workstation_id`?
+2. **Auth flow** - How does mobile get `workstation_id`?
    - Currently via QR code / magic link with `tunnel_id`
    - Need to include `workstation_id` in the link instead
+   - Format: `tiflis://connect?server=tunnel.example.com&workstation=my-ws&key=xxx`
 
 ## Timeline
 
 | Task | Duration |
 |------|----------|
 | Remove tunnel code from workstation | 2-3 hours |
+| Migrate watchOS HTTP polling to workstation | 3-4 hours |
 | Update mobile clients (iOS, Android, Web) | 2-3 hours |
+| Bundle web client with workstation (optional) | 1-2 hours |
 | Update PROTOCOL.md | 1 hour |
 | Delete packages/tunnel | 30 min |
 | Test end-to-end | 2-3 hours |
-| **Total** | ~1 day |
+| **Total** | ~1.5-2 days |
 
 ## Benefits
 
