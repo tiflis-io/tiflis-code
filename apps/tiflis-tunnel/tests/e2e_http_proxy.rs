@@ -113,7 +113,7 @@ async fn test_http_error_status_codes() {
     env.start_client().await;
 
     let client = reqwest::Client::new();
-    
+
     let response_404 = client
         .get(env.proxy_url("nonexistent"))
         .send()
@@ -139,10 +139,7 @@ async fn test_http_request_timeout_with_client() {
         .build()
         .unwrap();
 
-    let result = client
-        .get(env.proxy_url("slow"))
-        .send()
-        .await;
+    let result = client.get(env.proxy_url("slow")).send().await;
 
     assert!(result.is_err() || result.unwrap().status() == 504);
 }

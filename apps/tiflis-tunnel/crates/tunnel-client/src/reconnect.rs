@@ -24,11 +24,7 @@ impl ReconnectStrategy {
     pub async fn wait_before_retry(&mut self) {
         self.attempt += 1;
         let delay = self.calculate_delay();
-        tracing::info!(
-            "Reconnect attempt {} - waiting {:?}",
-            self.attempt,
-            delay
-        );
+        tracing::info!("Reconnect attempt {} - waiting {:?}", self.attempt, delay);
         sleep(delay).await;
     }
 

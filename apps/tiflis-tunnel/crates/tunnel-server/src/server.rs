@@ -140,7 +140,10 @@ impl TunnelServer {
 
     async fn setup_tls_with_acme(&self) -> anyhow::Result<rustls::ServerConfig> {
         info!("Note: Let's Encrypt ACME support requires additional implementation");
-        info!("For production, manually provide certificates in {}", self.config.tls.certs_dir.display());
+        info!(
+            "For production, manually provide certificates in {}",
+            self.config.tls.certs_dir.display()
+        );
         info!("Falling back to self-signed certificate for testing");
         self.setup_no_tls()
     }
@@ -171,7 +174,11 @@ impl TunnelServer {
                     return Ok(());
                 }
 
-                if let Err(e) = self.registry.register(reg.workstation_id.clone(), connection.clone()).await {
+                if let Err(e) = self
+                    .registry
+                    .register(reg.workstation_id.clone(), connection.clone())
+                    .await
+                {
                     let error_msg = Message::Error(ErrorMessage {
                         code: "REGISTRATION_FAILED".to_string(),
                         message: e,
@@ -182,7 +189,11 @@ impl TunnelServer {
 
                 let url = format!(
                     "{}://{}/t/{}",
-                    if self.config.tls.enabled { "https" } else { "http" },
+                    if self.config.tls.enabled {
+                        "https"
+                    } else {
+                        "http"
+                    },
                     self.config.server.domain,
                     reg.workstation_id
                 );
@@ -193,7 +204,8 @@ impl TunnelServer {
                 info!("Workstation {} registered", reg.workstation_id);
 
                 let workstation_id = reg.workstation_id.clone();
-                self.handle_workstation_messages(connection, &workstation_id).await;
+                self.handle_workstation_messages(connection, &workstation_id)
+                    .await;
 
                 self.registry.unregister(&workstation_id).await;
                 info!("Workstation {} disconnected", workstation_id);
@@ -208,7 +220,11 @@ impl TunnelServer {
                     return Ok(());
                 }
 
-                if let Err(e) = self.registry.reconnect(&reconnect.workstation_id, connection.clone()).await {
+                if let Err(e) = self
+                    .registry
+                    .reconnect(&reconnect.workstation_id, connection.clone())
+                    .await
+                {
                     let error_msg = Message::Error(ErrorMessage {
                         code: "RECONNECT_FAILED".to_string(),
                         message: e,
@@ -219,7 +235,11 @@ impl TunnelServer {
 
                 let url = format!(
                     "{}://{}/t/{}",
-                    if self.config.tls.enabled { "https" } else { "http" },
+                    if self.config.tls.enabled {
+                        "https"
+                    } else {
+                        "http"
+                    },
                     self.config.server.domain,
                     reconnect.workstation_id
                 );
@@ -229,7 +249,8 @@ impl TunnelServer {
 
                 info!("Workstation {} reconnected", reconnect.workstation_id);
 
-                self.handle_workstation_messages(connection, &reconnect.workstation_id).await;
+                self.handle_workstation_messages(connection, &reconnect.workstation_id)
+                    .await;
             }
             _ => {
                 let error_msg = Message::Error(ErrorMessage {
@@ -243,20 +264,30 @@ impl TunnelServer {
         Ok(())
     }
 
-    async fn handle_workstation_messages(&self, connection: quinn::Connection, workstation_id: &str) {
+    async fn handle_workstation_messages(
+        &self,
+        connection: quinn::Connection,
+        workstation_id: &str,
+    ) {
         while let Ok((mut send, mut recv)) = connection.accept_bi().await {
             let pending = self.pending.clone();
             tokio::spawn(async move {
                 if let Ok(msg) = quic::recv_message(&mut recv).await {
                     match msg {
                         Message::HttpResponse(resp) => {
-                            pending.complete(resp.stream_id, Message::HttpResponse(resp)).await;
+                            pending
+                                .complete(resp.stream_id, Message::HttpResponse(resp))
+                                .await;
                         }
                         Message::WsData(data) => {
-                            pending.complete(data.stream_id, Message::WsData(data)).await;
+                            pending
+                                .complete(data.stream_id, Message::WsData(data))
+                                .await;
                         }
                         Message::WsClose(close) => {
-                            pending.complete(close.stream_id, Message::WsClose(close)).await;
+                            pending
+                                .complete(close.stream_id, Message::WsClose(close))
+                                .await;
                         }
                         Message::Ping(ping) => {
                             let pong = Message::Pong(tunnel_core::PongMessage {

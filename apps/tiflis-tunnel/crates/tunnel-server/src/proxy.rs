@@ -13,8 +13,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tunnel_core::{
-    codec, HttpRequestMessage, Message, WsCloseMessage, WsDataMessage,
-    WsOpenMessage,
+    codec, HttpRequestMessage, Message, WsCloseMessage, WsDataMessage, WsOpenMessage,
 };
 use uuid::Uuid;
 
@@ -77,15 +76,23 @@ pub async fn handle_http_proxy(
         Err(_) => return Err(StatusCode::BAD_GATEWAY),
     };
 
-    if tunnel_core::quic::send_message(&mut send, &request_msg).await.is_err() {
+    if tunnel_core::quic::send_message(&mut send, &request_msg)
+        .await
+        .is_err()
+    {
         return Err(StatusCode::BAD_GATEWAY);
     }
-    
+
     if send.finish().is_err() {
         return Err(StatusCode::BAD_GATEWAY);
     }
 
-    let response_msg = match timeout(state.request_timeout, tunnel_core::quic::recv_message(&mut recv)).await {
+    let response_msg = match timeout(
+        state.request_timeout,
+        tunnel_core::quic::recv_message(&mut recv),
+    )
+    .await
+    {
         Ok(Ok(Message::HttpResponse(resp))) => resp,
         Ok(Ok(_)) => {
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
@@ -179,7 +186,10 @@ async fn handle_websocket_connection(
         headers,
     });
 
-    if tunnel_core::quic::send_message(&mut quic_send, &open_msg).await.is_err() {
+    if tunnel_core::quic::send_message(&mut quic_send, &open_msg)
+        .await
+        .is_err()
+    {
         return;
     }
 
@@ -192,7 +202,10 @@ async fn handle_websocket_connection(
                         data: codec::encode_body(text.as_bytes()),
                         is_binary: false,
                     });
-                    if tunnel_core::quic::send_message(&mut quic_send, &data_msg).await.is_err() {
+                    if tunnel_core::quic::send_message(&mut quic_send, &data_msg)
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }
@@ -202,7 +215,10 @@ async fn handle_websocket_connection(
                         data: codec::encode_body(&data),
                         is_binary: true,
                     });
-                    if tunnel_core::quic::send_message(&mut quic_send, &data_msg).await.is_err() {
+                    if tunnel_core::quic::send_message(&mut quic_send, &data_msg)
+                        .await
+                        .is_err()
+                    {
                         break;
                     }
                 }

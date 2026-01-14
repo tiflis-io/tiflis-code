@@ -94,7 +94,10 @@ impl TunnelClient {
                     .as_secs(),
             });
 
-            if quic::send_bidirectional_message(&connection, &ping).await.is_err() {
+            if quic::send_bidirectional_message(&connection, &ping)
+                .await
+                .is_err()
+            {
                 error!("Failed to send ping");
                 break;
             }
@@ -108,23 +111,25 @@ impl TunnelClient {
                     let proxy = self.proxy.clone();
                     tokio::spawn(async move {
                         match quic::recv_message(&mut recv).await {
-                            Ok(msg) => {
-                                match msg {
-                                    Message::HttpRequest(req) => {
-                                        if let Some(response) = proxy.handle_message(Message::HttpRequest(req)).await {
-                                            if let Err(e) = quic::send_message(&mut send, &response).await {
-                                                error!("Failed to send response: {}", e);
-                                            } else {
-                                                let _ = send.finish();
-                                            }
+                            Ok(msg) => match msg {
+                                Message::HttpRequest(req) => {
+                                    if let Some(response) =
+                                        proxy.handle_message(Message::HttpRequest(req)).await
+                                    {
+                                        if let Err(e) =
+                                            quic::send_message(&mut send, &response).await
+                                        {
+                                            error!("Failed to send response: {}", e);
+                                        } else {
+                                            let _ = send.finish();
                                         }
                                     }
-                                    Message::WsOpen(open_msg) => {
-                                        proxy.handle_websocket_open(open_msg, send, recv).await;
-                                    }
-                                    _ => {}
                                 }
-                            }
+                                Message::WsOpen(open_msg) => {
+                                    proxy.handle_websocket_open(open_msg, send, recv).await;
+                                }
+                                _ => {}
+                            },
                             Err(e) => {
                                 error!("Failed to receive message: {}", e);
                             }

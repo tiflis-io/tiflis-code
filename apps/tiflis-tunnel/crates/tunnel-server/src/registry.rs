@@ -33,11 +33,7 @@ impl WorkstationRegistry {
         }
     }
 
-    pub async fn register(
-        &self,
-        id: String,
-        connection: quinn::Connection,
-    ) -> Result<(), String> {
+    pub async fn register(&self, id: String, connection: quinn::Connection) -> Result<(), String> {
         let mut workstations = self.workstations.write().await;
 
         if workstations.contains_key(&id) {
@@ -71,11 +67,7 @@ impl WorkstationRegistry {
         }
     }
 
-    pub async fn reconnect(
-        &self,
-        id: &str,
-        connection: quinn::Connection,
-    ) -> Result<(), String> {
+    pub async fn reconnect(&self, id: &str, connection: quinn::Connection) -> Result<(), String> {
         let mut workstations = self.workstations.write().await;
 
         match workstations.get_mut(id) {

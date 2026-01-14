@@ -3,7 +3,7 @@
 
 use crate::config::Config;
 use std::sync::Arc;
-use tunnel_core::{quic, ErrorMessage, Message, RegisterMessage, ReconnectMessage, Result};
+use tunnel_core::{quic, ErrorMessage, Message, ReconnectMessage, RegisterMessage, Result};
 
 pub struct Connection {
     config: Config,
@@ -24,20 +24,26 @@ impl Connection {
 
         let addr = tokio::net::lookup_host(&self.config.server.address)
             .await
-            .map_err(|e| tunnel_core::Error::Other(format!("failed to resolve server address: {}", e)))?
+            .map_err(|e| {
+                tunnel_core::Error::Other(format!("failed to resolve server address: {}", e))
+            })?
             .find(|addr| addr.is_ipv4())
-            .ok_or_else(|| tunnel_core::Error::Other("no IPv4 addresses found for server".to_string()))?;
+            .ok_or_else(|| {
+                tunnel_core::Error::Other("no IPv4 addresses found for server".to_string())
+            })?;
 
-        let connection = endpoint.connect(addr, "tunnel")
+        let connection = endpoint
+            .connect(addr, "tunnel")
             .map_err(|e| tunnel_core::Error::Connection(format!("connection failed: {}", e)))?
             .await
             .map_err(|e| tunnel_core::Error::Connection(format!("connection failed: {}", e)))?;
 
         let is_reconnect = self.session_ticket.is_some();
 
-        let (mut send, mut recv) = connection.open_bi().await.map_err(|e| {
-            tunnel_core::Error::Connection(format!("failed to open stream: {}", e))
-        })?;
+        let (mut send, mut recv) = connection
+            .open_bi()
+            .await
+            .map_err(|e| tunnel_core::Error::Connection(format!("failed to open stream: {}", e)))?;
 
         let message = if is_reconnect {
             Message::Reconnect(ReconnectMessage {
@@ -60,9 +66,9 @@ impl Connection {
                 self.save_session_ticket(&connection);
                 Ok((connection, reg.url))
             }
-            Message::Error(ErrorMessage { message, .. }) => {
-                Err(tunnel_core::Error::Other(format!("server error: {}", message)))
-            }
+            Message::Error(ErrorMessage { message, .. }) => Err(tunnel_core::Error::Other(
+                format!("server error: {}", message),
+            )),
             _ => Err(tunnel_core::Error::Other("unexpected response".to_string())),
         }
     }
@@ -85,9 +91,8 @@ impl Connection {
         transport_config.max_concurrent_bidi_streams(1000u32.into());
         client_config.transport_config(Arc::new(transport_config));
 
-        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap()).map_err(|e| {
-            tunnel_core::Error::Other(format!("failed to create endpoint: {}", e))
-        })?;
+        let mut endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap())
+            .map_err(|e| tunnel_core::Error::Other(format!("failed to create endpoint: {}", e)))?;
 
         endpoint.set_default_client_config(client_config);
 

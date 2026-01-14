@@ -8,20 +8,20 @@ use common::TestEnvironment;
 #[tokio::test]
 async fn test_server_starts() {
     let env = TestEnvironment::new().await;
-    
+
     let health_url = format!("http://localhost:{}/health", env.server_http_port);
     let response = reqwest::get(&health_url).await.expect("Failed to connect");
-    
+
     assert_eq!(response.status(), 200);
 }
 
 #[tokio::test]
 async fn test_mock_server_works() {
     let env = TestEnvironment::new().await;
-    
+
     let mock_url = format!("http://localhost:{}/health", env.mock_server_port);
     let response = reqwest::get(&mock_url).await.expect("Failed to connect");
-    
+
     assert_eq!(response.status(), 200);
     let body = response.text().await.unwrap();
     assert_eq!(body, "OK");
@@ -33,8 +33,9 @@ async fn test_full_http_workflow() {
     env.start_client().await;
 
     let client = reqwest::Client::new();
-    
-    let get_response = client.get(env.proxy_url("health"))
+
+    let get_response = client
+        .get(env.proxy_url("health"))
         .send()
         .await
         .expect("GET request failed");
@@ -49,7 +50,8 @@ async fn test_full_http_workflow() {
     assert_eq!(post_response.status(), 200);
     assert!(post_response.text().await.unwrap().contains("test data"));
 
-    let api_response = client.get(env.proxy_url("api/test"))
+    let api_response = client
+        .get(env.proxy_url("api/test"))
         .send()
         .await
         .expect("API request failed");
@@ -58,9 +60,9 @@ async fn test_full_http_workflow() {
 
 #[tokio::test]
 async fn test_mixed_http_and_websocket_traffic() {
-    use tokio_tungstenite::{connect_async, tungstenite::Message};
     use futures::{SinkExt, StreamExt};
-    
+    use tokio_tungstenite::{connect_async, tungstenite::Message};
+
     let mut env = TestEnvironment::new().await;
     env.start_client().await;
 
@@ -78,13 +80,15 @@ async fn test_mixed_http_and_websocket_traffic() {
     let ws_handle = {
         let ws_url = env.proxy_url("ws").replace("http://", "ws://");
         tokio::spawn(async move {
-            let (ws_stream, _) = connect_async(&ws_url)
-                .await
-                .expect("Failed to connect");
+            let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
             let (mut write, mut read) = ws_stream.split();
 
             for i in 0..10 {
-                if write.send(Message::Text(format!("WS message {}", i))).await.is_err() {
+                if write
+                    .send(Message::Text(format!("WS message {}", i)))
+                    .await
+                    .is_err()
+                {
                     break;
                 }
                 let _ = read.next().await;

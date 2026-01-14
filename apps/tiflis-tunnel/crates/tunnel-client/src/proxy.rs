@@ -23,7 +23,10 @@ impl LocalProxy {
         request: HttpRequestMessage,
     ) -> Result<HttpResponseMessage, String> {
         let url = format!("{}{}", self.base_url, request.path);
-        let method = request.method.parse().map_err(|e| format!("invalid method: {}", e))?;
+        let method = request
+            .method
+            .parse()
+            .map_err(|e| format!("invalid method: {}", e))?;
 
         let mut req_builder = self.client.request(method, &url);
 
@@ -76,7 +79,10 @@ impl LocalProxy {
         mut quic_send: quinn::SendStream,
         mut quic_recv: quinn::RecvStream,
     ) {
-        let ws_url = self.base_url.replace("http://", "ws://").replace("https://", "wss://");
+        let ws_url = self
+            .base_url
+            .replace("http://", "ws://")
+            .replace("https://", "wss://");
         let url = format!("{}{}", ws_url, open_msg.path);
 
         match tokio_tungstenite::connect_async(&url).await {
@@ -96,7 +102,10 @@ impl LocalProxy {
                                     data: codec::encode_body(text.as_bytes()),
                                     is_binary: false,
                                 });
-                                if tunnel_core::quic::send_message(&mut quic_send, &data_msg).await.is_err() {
+                                if tunnel_core::quic::send_message(&mut quic_send, &data_msg)
+                                    .await
+                                    .is_err()
+                                {
                                     break;
                                 }
                             }
@@ -106,7 +115,10 @@ impl LocalProxy {
                                     data: codec::encode_body(&data),
                                     is_binary: true,
                                 });
-                                if tunnel_core::quic::send_message(&mut quic_send, &data_msg).await.is_err() {
+                                if tunnel_core::quic::send_message(&mut quic_send, &data_msg)
+                                    .await
+                                    .is_err()
+                                {
                                     break;
                                 }
                             }
@@ -116,7 +128,8 @@ impl LocalProxy {
                                     code: frame.as_ref().map(|f| f.code.into()),
                                     reason: frame.as_ref().map(|f| f.reason.to_string()),
                                 });
-                                let _ = tunnel_core::quic::send_message(&mut quic_send, &close_msg).await;
+                                let _ = tunnel_core::quic::send_message(&mut quic_send, &close_msg)
+                                    .await;
                                 let _ = quic_send.finish();
                                 break;
                             }
@@ -163,15 +176,13 @@ impl LocalProxy {
 
     pub async fn handle_message(&self, msg: Message) -> Option<Message> {
         match msg {
-            Message::HttpRequest(req) => {
-                match self.forward_http_request(req).await {
-                    Ok(resp) => Some(Message::HttpResponse(resp)),
-                    Err(e) => {
-                        tracing::error!("Failed to forward request: {}", e);
-                        None
-                    }
+            Message::HttpRequest(req) => match self.forward_http_request(req).await {
+                Ok(resp) => Some(Message::HttpResponse(resp)),
+                Err(e) => {
+                    tracing::error!("Failed to forward request: {}", e);
+                    None
                 }
-            }
+            },
             _ => None,
         }
     }

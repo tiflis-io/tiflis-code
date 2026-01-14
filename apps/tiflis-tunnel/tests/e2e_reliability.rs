@@ -79,13 +79,13 @@ async fn test_client_reconnection_with_grace_period() {
     assert_eq!(response1.status(), 200);
 
     env.stop_client();
-    
+
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    
+
     env.start_client().await;
-    
+
     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-    
+
     let response2 = reqwest::get(&env.proxy_url("health"))
         .await
         .expect("Failed to make request");
@@ -118,18 +118,16 @@ async fn test_in_flight_requests_during_disconnect() {
     env.start_client().await;
 
     let url = env.proxy_url("slow");
-    
-    let request_handle = tokio::spawn(async move {
-        reqwest::get(&url).await
-    });
+
+    let request_handle = tokio::spawn(async move { reqwest::get(&url).await });
 
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
-    
+
     env.stop_client();
 
     let result = request_handle.await.unwrap();
     assert!(result.is_ok() || result.is_err());
-    
+
     if let Ok(response) = result {
         assert!(response.status() == 200 || response.status() == 502 || response.status() == 504);
     }
@@ -148,7 +146,7 @@ async fn test_0rtt_reconnection_with_session_tickets() {
     let start = std::time::Instant::now();
     env.stop_client();
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    
+
     env.start_client().await;
     tokio::time::sleep(std::time::Duration::from_secs(1)).await;
 
@@ -156,7 +154,7 @@ async fn test_0rtt_reconnection_with_session_tickets() {
         .await
         .expect("Failed to make request");
     assert_eq!(response2.status(), 200);
-    
+
     let reconnect_duration = start.elapsed();
     println!("Reconnection took: {:?}", reconnect_duration);
 }

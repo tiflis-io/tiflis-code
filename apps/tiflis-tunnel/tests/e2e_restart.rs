@@ -48,14 +48,14 @@ async fn test_client_recovers_after_server_restart() {
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
-    
+
     assert!(success, "Client should reconnect after server restart");
 }
 
 #[tokio::test]
 async fn test_multiple_client_restarts() {
     let mut env = TestEnvironment::new().await;
-    
+
     for i in 0..3 {
         env.start_client().await;
 
@@ -93,8 +93,12 @@ async fn test_multiple_server_restarts() {
             }
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
-        
-        assert!(success, "Client should reconnect after server restart {}", i);
+
+        assert!(
+            success,
+            "Client should reconnect after server restart {}",
+            i
+        );
     }
 }
 
@@ -114,7 +118,7 @@ async fn test_request_during_client_restart() {
         .timeout(std::time::Duration::from_secs(2))
         .build()
         .unwrap();
-    
+
     let result = client.get(env.proxy_url("health")).send().await;
     assert!(result.is_err() || result.unwrap().status() != 200);
 
@@ -149,7 +153,7 @@ async fn test_server_full_restart_cycle() {
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
-    
+
     assert!(success, "Client should reconnect after server restart");
 }
 
@@ -199,7 +203,7 @@ async fn test_concurrent_requests_during_client_restart() {
     env.restart_client().await;
 
     let (r1, r2, r3) = tokio::join!(handle1, handle2, handle3);
-    
+
     let success_count = [r1, r2, r3]
         .into_iter()
         .filter(|r| {
@@ -209,14 +213,14 @@ async fn test_concurrent_requests_during_client_restart() {
                 .is_some_and(|resp| resp.status() == 200)
         })
         .count();
-    
+
     println!("Successful requests during restart: {}/3", success_count);
 }
 
 #[tokio::test]
 async fn test_rapid_client_restart_cycle() {
     let mut env = TestEnvironment::new().await;
-    
+
     for _ in 0..5 {
         env.start_client().await;
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
@@ -225,7 +229,7 @@ async fn test_rapid_client_restart_cycle() {
     }
 
     env.start_client().await;
-    
+
     let response = reqwest::get(env.proxy_url("health"))
         .await
         .expect("Failed to make request after rapid restart cycle");
@@ -236,7 +240,7 @@ async fn test_rapid_client_restart_cycle() {
 async fn test_server_restart_preserves_different_workstation() {
     let mut env1 = TestEnvironment::new().await;
     let mut env2 = TestEnvironment::new().await;
-    
+
     env1.start_client().await;
     env2.start_client().await;
 
@@ -263,8 +267,11 @@ async fn test_server_restart_preserves_different_workstation() {
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
-    
-    assert!(env1_reconnected, "env1 client should reconnect after its server restart");
+
+    assert!(
+        env1_reconnected,
+        "env1 client should reconnect after its server restart"
+    );
 
     let response2_after = reqwest::get(env2.proxy_url("health"))
         .await

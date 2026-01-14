@@ -4,8 +4,8 @@
 mod common;
 
 use common::TestEnvironment;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
 use futures::{SinkExt, StreamExt};
+use tokio_tungstenite::{connect_async, tungstenite::Message};
 
 #[tokio::test]
 async fn test_websocket_connection() {
@@ -14,9 +14,7 @@ async fn test_websocket_connection() {
 
     let ws_url = env.proxy_url("ws").replace("http://", "ws://");
 
-    let (ws_stream, _) = connect_async(&ws_url)
-        .await
-        .expect("Failed to connect");
+    let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -41,9 +39,7 @@ async fn test_websocket_binary_data() {
 
     let ws_url = env.proxy_url("ws").replace("http://", "ws://");
 
-    let (ws_stream, _) = connect_async(&ws_url)
-        .await
-        .expect("Failed to connect");
+    let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -69,9 +65,7 @@ async fn test_websocket_multiple_messages() {
 
     let ws_url = env.proxy_url("ws").replace("http://", "ws://");
 
-    let (ws_stream, _) = connect_async(&ws_url)
-        .await
-        .expect("Failed to connect");
+    let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -94,9 +88,7 @@ async fn test_websocket_close_from_client() {
 
     let ws_url = env.proxy_url("ws").replace("http://", "ws://");
 
-    let (ws_stream, _) = connect_async(&ws_url)
-        .await
-        .expect("Failed to connect");
+    let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
     let (mut write, mut read) = ws_stream.split();
 
@@ -122,9 +114,7 @@ async fn test_websocket_concurrent_connections() {
     for i in 0..5 {
         let ws_url = env.proxy_url("ws").replace("http://", "ws://");
         let handle = tokio::spawn(async move {
-            let (ws_stream, _) = connect_async(&ws_url)
-                .await
-                .expect("Failed to connect");
+            let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
             let (mut write, mut read) = ws_stream.split();
 
@@ -152,9 +142,7 @@ async fn test_websocket_large_message() {
 
     let ws_url = env.proxy_url("ws").replace("http://", "ws://");
 
-    let (ws_stream, _) = connect_async(&ws_url)
-        .await
-        .expect("Failed to connect");
+    let (ws_stream, _) = connect_async(&ws_url).await.expect("Failed to connect");
 
     let (mut write, mut read) = ws_stream.split();
 

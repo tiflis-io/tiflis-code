@@ -87,12 +87,12 @@ async fn test_base64_encoding() {
     let encoded = codec::encode_body(data);
     let decoded = codec::decode_body(&encoded).unwrap();
     assert_eq!(decoded, data);
-    
+
     let empty_data = b"";
     let encoded_empty = codec::encode_body(empty_data);
     let decoded_empty = codec::decode_body(&encoded_empty).unwrap();
     assert_eq!(decoded_empty, empty_data);
-    
+
     let binary_data = vec![0u8, 1, 2, 255, 254, 253];
     let encoded_binary = codec::encode_body(&binary_data);
     let decoded_binary = codec::decode_body(&encoded_binary).unwrap();

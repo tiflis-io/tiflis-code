@@ -53,7 +53,7 @@ impl TestEnvironment {
         max_workstations: Option<usize>,
     ) -> Self {
         let _ = rustls::crypto::ring::default_provider().install_default();
-        
+
         let api_key = "test-api-key-minimum-32-characters-long".to_string();
         let workstation_id = workstation_id.to_string();
 
@@ -94,12 +94,8 @@ impl TestEnvironment {
         let workstation_id = self.workstation_id.clone();
         let local_address = format!("http://localhost:{}", self.mock_server_port);
 
-        let client_handle = spawn_tunnel_client(
-            server_address,
-            api_key,
-            workstation_id,
-            local_address,
-        );
+        let client_handle =
+            spawn_tunnel_client(server_address, api_key, workstation_id, local_address);
 
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;
 
@@ -157,9 +153,7 @@ impl TestEnvironment {
 }
 
 async fn get_free_port() -> u16 {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
-        .await
-        .unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     listener.local_addr().unwrap().port()
 }
 
@@ -179,8 +173,11 @@ fn spawn_tunnel_server(
             .with_max_level(tracing::Level::INFO)
             .try_init();
 
-        println!("Starting tunnel server on HTTP:{} QUIC:{}", http_port, quic_port);
-        
+        println!(
+            "Starting tunnel server on HTTP:{} QUIC:{}",
+            http_port, quic_port
+        );
+
         let mut config = Config::default();
         config.server.domain = "localhost".to_string();
         config.server.http_port = http_port;
@@ -218,7 +215,7 @@ fn spawn_tunnel_client(
         println!("Starting tunnel client for workstation: {}", workstation_id);
         println!("Server address: {}", server_address);
         println!("Local address: {}", local_address);
-        
+
         let mut config = Config::default();
         config.server.address = server_address;
         config.auth.api_key = api_key;
@@ -228,7 +225,10 @@ fn spawn_tunnel_client(
         config.reconnect.max_delay = 5;
 
         let mut client = TunnelClient::new(config);
-        println!("Tunnel client created for {}, starting run loop...", workstation_id);
+        println!(
+            "Tunnel client created for {}, starting run loop...",
+            workstation_id
+        );
         let _ = client.run().await;
     })
 }
@@ -247,7 +247,12 @@ fn spawn_mock_server(port: u16) -> JoinHandle<()> {
             )
             .route(
                 "/error",
-                get(|| async { (axum::http::StatusCode::INTERNAL_SERVER_ERROR, "Server Error") }),
+                get(|| async {
+                    (
+                        axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        "Server Error",
+                    )
+                }),
             )
             .route(
                 "/slow",
@@ -258,9 +263,9 @@ fn spawn_mock_server(port: u16) -> JoinHandle<()> {
             )
             .route(
                 "/api/*path",
-                any(|Path(path): Path<String>| async move {
-                    format!("API response for: {}", path)
-                }),
+                any(
+                    |Path(path): Path<String>| async move { format!("API response for: {}", path) },
+                ),
             )
             .route(
                 "/ws",

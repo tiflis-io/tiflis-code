@@ -18,7 +18,9 @@ pub fn encode_message(msg: &Message) -> Result<Vec<u8>> {
 
 pub fn decode_message(data: &[u8]) -> Result<(Message, usize)> {
     if data.len() < 4 {
-        return Err(Error::Other("insufficient data for length prefix".to_string()));
+        return Err(Error::Other(
+            "insufficient data for length prefix".to_string(),
+        ));
     }
 
     let len = u32::from_be_bytes([data[0], data[1], data[2], data[3]]) as usize;
