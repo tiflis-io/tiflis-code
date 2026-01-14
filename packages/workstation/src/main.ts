@@ -436,6 +436,7 @@ async function bootstrap(): Promise<void> {
     workspacesRoot: env.WORKSPACES_ROOT,
     logger,
     sessionRepository,
+    chatHistoryService,
   });
 
   // Restore persisted sessions from database (backlog agents, etc.)

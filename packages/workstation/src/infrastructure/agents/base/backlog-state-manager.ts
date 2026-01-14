@@ -22,25 +22,25 @@ export class BacklogStateManager implements AgentStateManager {
     return join(this.workingDir, 'conversation-history.json');
   }
 
-  loadHistory(): Promise<ConversationEntry[]> {
+  loadHistory(): ConversationEntry[] {
     const historyPath = this.getHistoryPath();
 
     if (!existsSync(historyPath)) {
-      return Promise.resolve([]);
+      return [];
     }
 
     try {
       const content = readFileSync(historyPath, 'utf-8');
       const data = JSON.parse(content) as ConversationEntry[];
       this.logger.debug({ messageCount: data.length }, 'Loaded conversation history from file');
-      return Promise.resolve(data);
+      return data;
     } catch (error) {
       this.logger.error({ error }, 'Failed to load conversation history from file');
-      return Promise.resolve([]);
+      return [];
     }
   }
 
-  saveHistory(history: ConversationEntry[]): Promise<void> {
+  saveHistory(history: ConversationEntry[]): void {
     const historyPath = this.getHistoryPath();
 
     try {
@@ -49,10 +49,9 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to save conversation history to file');
     }
-    return Promise.resolve();
   }
 
-  clearHistory(): Promise<void> {
+  clearHistory(): void {
     const historyPath = this.getHistoryPath();
 
     try {
@@ -63,34 +62,33 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to clear conversation history');
     }
-    return Promise.resolve();
   }
 
-  loadAdditionalState<T>(key: string): Promise<T | null> {
+  loadAdditionalState(key: string): unknown {
     if (key !== 'backlog') {
-      return Promise.resolve(null);
+      return null;
     }
 
     const backlogPath = join(this.workingDir, 'backlog.json');
 
     if (!existsSync(backlogPath)) {
-      return Promise.resolve(null);
+      return null;
     }
 
     try {
       const content = readFileSync(backlogPath, 'utf-8');
-      const data = JSON.parse(content) as T;
+      const data: unknown = JSON.parse(content);
       this.logger.debug('Loaded backlog state from file');
-      return Promise.resolve(data);
+      return data;
     } catch (error) {
       this.logger.error({ error }, 'Failed to load backlog state from file');
-      return Promise.resolve(null);
+      return null;
     }
   }
 
-  saveAdditionalState(key: string, state: unknown): Promise<void> {
+  saveAdditionalState(key: string, state: unknown): void {
     if (key !== 'backlog') {
-      return Promise.resolve();
+      return;
     }
 
     const backlogPath = join(this.workingDir, 'backlog.json');
@@ -101,10 +99,9 @@ export class BacklogStateManager implements AgentStateManager {
     } catch (error) {
       this.logger.error({ error }, 'Failed to save backlog state to file');
     }
-    return Promise.resolve();
   }
 
-  close(): Promise<void> {
-    return Promise.resolve();
+  close(): void {
+    return;
   }
 }

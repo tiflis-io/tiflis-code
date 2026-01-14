@@ -31,6 +31,7 @@ import { BacklogAgentSession } from '../../domain/entities/backlog-agent-session
 import { BacklogAgentManager } from '../agents/backlog-agent-manager.js';
 import type { SessionRepository } from './repositories/session-repository.js';
 import type { SessionRow } from './database/schema.js';
+import type { ChatHistoryService } from '../../application/services/chat-history-service.js';
 
 export interface InMemorySessionManagerConfig {
   ptyManager: TerminalManager;
@@ -39,6 +40,7 @@ export interface InMemorySessionManagerConfig {
   logger: Logger;
   backlogManagers?: Map<string, BacklogAgentManager>;
   sessionRepository?: SessionRepository;
+  chatHistoryService?: ChatHistoryService;
 }
 
 /**
@@ -64,6 +66,7 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
   private supervisorSession: SupervisorSession | null = null;
   private readonly backlogManagers: Map<string, BacklogAgentManager>;
   private readonly sessionRepository: SessionRepository | undefined;
+  private readonly chatHistoryService: ChatHistoryService | undefined;
 
   constructor(config: InMemorySessionManagerConfig) {
     super();
@@ -72,8 +75,8 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
     this.logger = config.logger.child({ component: 'session-manager' });
     this.backlogManagers = config.backlogManagers ?? new Map<string, BacklogAgentManager>();
     this.sessionRepository = config.sessionRepository;
+    this.chatHistoryService = config.chatHistoryService;
 
-    // Sync agent session events
     this.setupAgentSessionSync();
   }
 
@@ -157,13 +160,13 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
           this.sessions.set(persistedSession.id, backlogSession);
 
-          // Create backlog manager for this session (will load backlog.json if it exists)
           try {
             const manager = BacklogAgentManager.createAndLoadFromFile(
               backlogSession,
               persistedSession.workingDir,
               this.agentSessionManager,
-              this.logger
+              this.logger,
+              this.chatHistoryService
             );
             this.backlogManagers.set(persistedSession.id, manager);
             backlogRestoreCount++;
@@ -546,12 +549,12 @@ export class InMemorySessionManager extends EventEmitter implements SessionManag
 
     this.sessions.set(sessionId.value, session);
 
-    // Create and register BacklogAgentManager for this session
     const manager = BacklogAgentManager.createEmpty(
       session,
       workingDir,
       this.agentSessionManager,
-      this.logger
+      this.logger,
+      this.chatHistoryService
     );
     this.backlogManagers.set(sessionId.value, manager);
 

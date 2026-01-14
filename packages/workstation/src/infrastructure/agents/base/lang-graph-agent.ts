@@ -24,6 +24,10 @@ import {
 } from '../../../domain/value-objects/content-block.js';
 import type { AgentStateManager, ConversationEntry } from '../../../domain/ports/agent-state-manager.js';
 import { getEnv } from '../../../config/env.js';
+import {
+  CANCEL_RACE_CONDITION_PROTECTION_MS,
+  MAX_CONVERSATION_HISTORY_LENGTH,
+} from '../constants.js';
 
 /**
  * Events emitted by LangGraphAgent during streaming execution.
@@ -176,10 +180,10 @@ export abstract class LangGraphAgent extends EventEmitter {
 
     this.logger.debug({ isCancelled: this.isCancelled, isExecuting: this.isExecuting }, 'Flags reset for new execution');
 
+    const stateManager = this.createStateManager();
+
     try {
-      // Get conversation history from state manager
-      const stateManager = this.createStateManager();
-      const history = await stateManager.loadHistory();
+      const history = stateManager.loadHistory();
       this.conversationHistory = history;
 
       // Build messages from history
@@ -189,9 +193,7 @@ export abstract class LangGraphAgent extends EventEmitter {
         new HumanMessage(command),
       ];
 
-      // Emit status block to show processing (only if still executing)
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isExecuting && !this.isCancelled) {
+      if (this.shouldContinueExecution()) {
         const statusBlock = createStatusBlock('Processing...');
         this.logger.debug({ deviceId, blockType: 'status' }, 'Emitting status block');
         this.emit('blocks', deviceId, [statusBlock], false);
@@ -214,9 +216,7 @@ export abstract class LangGraphAgent extends EventEmitter {
       const allBlocks: ContentBlock[] = [];
 
       for await (const chunk of stream) {
-        // Check if cancelled or not executing - stop processing immediately
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (this.isCancelled || !this.isExecuting) {
+        if (!this.shouldContinueExecution()) {
           this.logger.info(
             { deviceId, isCancelled: this.isCancelled, isExecuting: this.isExecuting },
             `${this.constructor.name} execution cancelled, stopping stream processing`
@@ -237,19 +237,15 @@ export abstract class LangGraphAgent extends EventEmitter {
 
           if (typeof content === 'string' && content.length > 0) {
             finalOutput = content;
-            // Emit text block for the current content (only if still executing)
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            if (this.isExecuting && !this.isCancelled) {
+            if (this.shouldContinueExecution()) {
               const textBlock = createTextBlock(content);
               this.emit('blocks', deviceId, [textBlock], false);
               // Use accumulateBlocks which handles text block replacement
               accumulateBlocks(allBlocks, [textBlock]);
             }
           } else if (Array.isArray(content)) {
-            // Handle structured content (tool calls, etc.)
             for (const item of content) {
-              // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-              if (typeof item === 'object' && this.isExecuting && !this.isCancelled) {
+              if (typeof item === 'object' && this.shouldContinueExecution()) {
                 const block = this.parseContentItem(item as Record<string, unknown>);
                 if (block) {
                   this.emit('blocks', deviceId, [block], false);
@@ -261,9 +257,7 @@ export abstract class LangGraphAgent extends EventEmitter {
           }
         }
 
-        // Check for tool messages (tool results)
-        // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-        if (lastMessage.getType() === 'tool' && this.isExecuting && !this.isCancelled) {
+        if (lastMessage.getType() === 'tool' && this.shouldContinueExecution()) {
           const toolContent = lastMessage.content;
           const toolName = (lastMessage as unknown as { name?: string }).name ?? 'tool';
           // Extract tool_call_id from ToolMessage for proper merging with tool_use block
@@ -281,19 +275,14 @@ export abstract class LangGraphAgent extends EventEmitter {
         }
       }
 
-      // Only emit completion if still executing and not cancelled
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isExecuting && !this.isCancelled) {
+      if (this.shouldContinueExecution()) {
         // Update conversation history
         this.addToHistory('user', command);
         this.addToHistory('assistant', finalOutput);
 
-        // Merge tool blocks before sending completion
         const finalBlocks = mergeToolBlocks(allBlocks);
 
-        // Persist state
-        const stateManager = this.createStateManager();
-        await stateManager.saveHistory(this.conversationHistory);
+        stateManager.saveHistory(this.conversationHistory);
 
         // Call agent-specific post-execution logic
         await this.onExecutionComplete(finalBlocks, finalOutput);
@@ -310,9 +299,7 @@ export abstract class LangGraphAgent extends EventEmitter {
         );
       }
     } catch (error) {
-      // Check if this was a cancellation (either flag indicates cancelled)
-      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-      if (this.isCancelled || !this.isExecuting) {
+      if (!this.shouldContinueExecution()) {
         this.logger.info({ deviceId }, `${this.constructor.name} execution cancelled (caught in error handler)`);
         return;
       }
@@ -365,10 +352,8 @@ export abstract class LangGraphAgent extends EventEmitter {
       return false;
     }
 
-    // Protect against race conditions: ignore cancel if execution just started
-    // This prevents late-arriving cancel requests from cancelling a new execution
     const timeSinceStart = Date.now() - this.executionStartedAt;
-    if (this.isExecuting && timeSinceStart < 500) {
+    if (this.isExecuting && timeSinceStart < CANCEL_RACE_CONDITION_PROTECTION_MS) {
       this.logger.info(
         { timeSinceStart, isProcessingCommand: this.isProcessingCommand },
         'Ignoring cancel - execution just started (race condition protection)'
@@ -401,6 +386,15 @@ export abstract class LangGraphAgent extends EventEmitter {
   }
 
   /**
+   * Checks if execution should continue.
+   * Used to gate async operations that may complete after cancellation.
+   * TypeScript cannot track that these flags change during async iteration.
+   */
+  protected shouldContinueExecution(): boolean {
+    return this.isExecuting && !this.isCancelled;
+  }
+
+  /**
    * Starts command processing (before STT/LLM execution).
    * Returns an AbortController that can be used to cancel STT and other operations.
    */
@@ -428,11 +422,12 @@ export abstract class LangGraphAgent extends EventEmitter {
     this.logger.debug('Ended command processing');
   }
 
-  /**
-   * Gets conversation history.
-   */
   getConversationHistory(): ConversationEntry[] {
     return this.conversationHistory;
+  }
+
+  getHistory(): ConversationEntry[] {
+    return [...this.conversationHistory];
   }
 
   /**
@@ -450,8 +445,7 @@ export abstract class LangGraphAgent extends EventEmitter {
   restoreHistory(history: ConversationEntry[]): void {
     if (history.length === 0) return;
 
-    // Keep only last 20 messages
-    this.conversationHistory = history.slice(-20);
+    this.conversationHistory = history.slice(-MAX_CONVERSATION_HISTORY_LENGTH);
     this.logger.debug({ messageCount: this.conversationHistory.length }, 'Conversation history restored');
   }
 
@@ -479,9 +473,8 @@ export abstract class LangGraphAgent extends EventEmitter {
   protected addToHistory(role: 'user' | 'assistant', content: string): void {
     this.conversationHistory.push({ role, content });
 
-    // Keep only last 20 messages to avoid context overflow
-    if (this.conversationHistory.length > 20) {
-      this.conversationHistory.splice(0, this.conversationHistory.length - 20);
+    if (this.conversationHistory.length > MAX_CONVERSATION_HISTORY_LENGTH) {
+      this.conversationHistory.splice(0, this.conversationHistory.length - MAX_CONVERSATION_HISTORY_LENGTH);
     }
   }
 }

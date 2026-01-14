@@ -16,6 +16,8 @@ import { BacklogAgent } from './backlog-agent.js';
 import type { AgentSessionManager } from './agent-session-manager.js';
 import type { ContentBlock } from '../../domain/value-objects/content-block.js';
 import { getAvailableAgents } from '../../config/constants.js';
+import { findAgentMatch } from './utils/agent-matcher.js';
+import type { ChatHistoryService } from '../../application/services/chat-history-service.js';
 
 /**
  * Manages a BacklogAgent session including LLM interaction and Harness orchestration.
@@ -24,11 +26,10 @@ export class BacklogAgentManager extends EventEmitter {
   private session: BacklogAgentSession;
   private backlog: Backlog;
   private harness: BacklogHarness | null = null;
-  private conversationHistory: { role: 'user' | 'assistant'; content: string }[] = [];
   private workingDir: string;
   private agentSessionManager: AgentSessionManager;
   private logger: Logger;
-  private llmAgent: BacklogAgent;
+  private llmAgent: BacklogAgent | null;
   private selectedAgent: string | null = null;
   private agentSelectionInProgress = false;
 
@@ -37,7 +38,8 @@ export class BacklogAgentManager extends EventEmitter {
     backlog: Backlog,
     workingDir: string,
     agentSessionManager: AgentSessionManager,
-    logger: Logger
+    logger: Logger,
+    chatHistoryService?: ChatHistoryService
   ) {
     super();
     this.session = session;
@@ -46,8 +48,6 @@ export class BacklogAgentManager extends EventEmitter {
     this.agentSessionManager = agentSessionManager;
     this.logger = logger;
 
-    // Initialize LLM-based agent with tools context
-    // Now uses streaming mode from LangGraphAgent base class
     this.llmAgent = new BacklogAgent(
       {
         getStatus: () => this.getStatusBlocks(),
@@ -62,7 +62,9 @@ export class BacklogAgentManager extends EventEmitter {
         parseAgentSelection: (userResponse: string) => this.parseAgentSelectionData(userResponse),
       },
       workingDir,
-      logger
+      session.id.value,
+      logger,
+      chatHistoryService
     );
   }
 
@@ -78,6 +80,15 @@ export class BacklogAgentManager extends EventEmitter {
    */
   getBacklog(): Backlog {
     return this.backlog;
+  }
+
+  destroy(): void {
+    if (this.harness) {
+      this.harness.stop();
+      this.harness = null;
+    }
+    this.llmAgent = null;
+    this.removeAllListeners();
   }
 
   /**
@@ -108,36 +119,32 @@ export class BacklogAgentManager extends EventEmitter {
    * - Handles agent selection if in progress
    */
   async executeCommand(userMessage: string): Promise<ContentBlock[]> {
-    this.conversationHistory.push({ role: 'user', content: userMessage });
+    if (!this.llmAgent) {
+      return [{ id: 'error', block_type: 'error', content: 'Agent destroyed' }];
+    }
 
-    // If agent selection is in progress, handle it first
     if (this.agentSelectionInProgress && !this.selectedAgent) {
       const selectionBlocks = this.handleAgentSelection(userMessage);
-      const responseText = selectionBlocks.map((b) => b.content).join('\n');
-      this.conversationHistory.push({ role: 'assistant', content: responseText });
       this.saveBacklog();
       return selectionBlocks;
     }
 
     const streamedBlocks: ContentBlock[] = [];
+    const agent = this.llmAgent;
 
-    // Listen to streaming blocks
-    const blockHandler = (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, finalOutput?: string) => {
+    const blockHandler = (_deviceId: string, blocks: ContentBlock[], isComplete: boolean, _finalOutput?: string) => {
       streamedBlocks.push(...blocks);
-      if (isComplete && finalOutput) {
-        this.conversationHistory.push({ role: 'assistant', content: finalOutput });
+      if (isComplete) {
         this.saveBacklog();
       }
     };
 
-    this.llmAgent.on('blocks', blockHandler);
+    agent.on('blocks', blockHandler);
 
     try {
-      // Execute with streaming (blocks are emitted, not returned directly)
-      // Using deviceId 'backlog-manager' for internal streaming
-      await this.llmAgent.executeWithStream(userMessage, 'backlog-manager');
+      await agent.executeWithStream(userMessage, 'backlog-manager');
     } finally {
-      this.llmAgent.removeListener('blocks', blockHandler);
+      agent.removeListener('blocks', blockHandler);
     }
 
     return streamedBlocks;
@@ -265,7 +272,7 @@ Please respond with the agent name you'd like to use (e.g., "claude", "cursor", 
     const availableAgents = getAvailableAgents();
 
     const agentNames = Array.from(availableAgents.keys());
-    const selectedAgent = this.findBestAgentMatch(userMessage, agentNames);
+    const selectedAgent = findAgentMatch(userMessage, agentNames);
 
     if (!selectedAgent) {
       const agentList = agentNames
@@ -303,111 +310,6 @@ Now starting the harness...`;
     const harnessBlocks = this.createAndStartHarness();
 
     return [...confirmationBlocks, ...harnessBlocks];
-  }
-
-  /**
-   * Find best agent match from user response using improved fuzzy matching.
-   * Handles variations like "claude code", "use cursor", "my zai alias", etc.
-   */
-  private findBestAgentMatch(userMessage: string, agentNames: string[]): string | null {
-    const lowerMessage = userMessage.toLowerCase();
-
-    // First pass: exact match
-    for (const agentName of agentNames) {
-      if (lowerMessage === agentName.toLowerCase()) {
-        return agentName;
-      }
-    }
-
-    // Second pass: direct substring match (highest priority)
-    for (const agentName of agentNames) {
-      const lowerAgent = agentName.toLowerCase();
-      if (lowerMessage.includes(lowerAgent)) {
-        return agentName;
-      }
-    }
-
-    // Third pass: fuzzy matching with common variations
-    // Handle patterns like "claude code", "cursor agent", etc.
-    const commonPatterns: Record<string, string[]> = {
-      claude: ['claude', 'claude code', 'claudecode', 'claude-code', 'claude agent'],
-      cursor: ['cursor', 'cursor agent', 'cursoragent', 'cursor-agent'],
-      opencode: ['opencode', 'open code', 'opencode agent', 'open-code'],
-    };
-
-    for (const [baseName, patterns] of Object.entries(commonPatterns)) {
-      const agentName = agentNames.find(n => n.toLowerCase() === baseName);
-      if (agentName) {
-        for (const pattern of patterns) {
-          if (lowerMessage.includes(pattern.toLowerCase())) {
-            return agentName;
-          }
-        }
-      }
-    }
-
-    // Fourth pass: Levenshtein-like distance matching for aliases
-    // Find closest match if user typed something similar
-    let bestMatch: { name: string; score: number } | null = null;
-    const threshold = 0.6; // 60% similarity threshold
-
-    for (const agentName of agentNames) {
-      const similarity = this.calculateStringSimilarity(lowerMessage, agentName.toLowerCase());
-      if (similarity > threshold && (!bestMatch || similarity > bestMatch.score)) {
-        bestMatch = { name: agentName, score: similarity };
-      }
-    }
-
-    return bestMatch ? bestMatch.name : null;
-  }
-
-  /**
-   * Calculate string similarity score (0-1) using Levenshtein distance.
-   */
-  private calculateStringSimilarity(str1: string, str2: string): number {
-    const maxLen = Math.max(str1.length, str2.length);
-    if (maxLen === 0) return 1;
-
-    const distance = this.levenshteinDistance(str1, str2);
-    return 1 - distance / maxLen;
-  }
-
-  /**
-   * Calculate Levenshtein distance between two strings.
-   */
-  private levenshteinDistance(str1: string, str2: string): number {
-    const len1 = str1.length;
-    const len2 = str2.length;
-    const matrix: number[][] = Array.from(
-      { length: len1 + 1 },
-      () => Array.from({ length: len2 + 1 }, () => 0)
-    );
-
-    for (let i = 0; i <= len1; i++) {
-      const row = matrix[i];
-      if (row) row[0] = i;
-    }
-    for (let j = 0; j <= len2; j++) {
-      const firstRow = matrix[0];
-      if (firstRow) firstRow[j] = j;
-    }
-
-    for (let i = 1; i <= len1; i++) {
-      for (let j = 1; j <= len2; j++) {
-        const cost = str1[i - 1] === str2[j - 1] ? 0 : 1;
-        const row = matrix[i];
-        const prevRow = matrix[i - 1];
-        if (row && prevRow) {
-          row[j] = Math.min(
-            (prevRow[j] ?? 0) + 1,
-            (row[j - 1] ?? 0) + 1,
-            (prevRow[j - 1] ?? 0) + cost
-          );
-        }
-      }
-    }
-
-    return matrix[len1]?.[len2] ?? 0;
   }
 
   /**
@@ -657,7 +559,7 @@ ${tasksList}
     const availableAgents = getAvailableAgents();
 
     const agentNames = Array.from(availableAgents.keys());
-    const selectedAgent = this.findBestAgentMatch(userResponse, agentNames);
+    const selectedAgent = findAgentMatch(userResponse, agentNames);
 
     if (!selectedAgent) {
       const availableList = agentNames.join(', ');
@@ -685,14 +587,12 @@ ${tasksList}
     }
   }
 
-  /**
-   * Create a new BacklogAgentManager for manual input.
-   */
   static createEmpty(
     session: BacklogAgentSession,
     workingDir: string,
     agentSessionManager: AgentSessionManager,
-    logger: Logger
+    logger: Logger,
+    chatHistoryService?: ChatHistoryService
   ): BacklogAgentManager {
     const agentType = session.agentName as 'claude' | 'cursor' | 'opencode';
     const backlog: Backlog = {
@@ -706,22 +606,17 @@ ${tasksList}
       summary: { total: 0, completed: 0, failed: 0, in_progress: 0, pending: 0 },
     };
 
-    return new BacklogAgentManager(session, backlog, workingDir, agentSessionManager, logger);
+    return new BacklogAgentManager(session, backlog, workingDir, agentSessionManager, logger, chatHistoryService);
   }
 
-  /**
-   * Creates a manager and attempts to load backlog from file.
-   * If backlog.json doesn't exist, starts with empty backlog.
-   * Used during session restoration to load persisted backlog state.
-   */
   static createAndLoadFromFile(
     session: BacklogAgentSession,
     workingDir: string,
     agentSessionManager: AgentSessionManager,
-    logger: Logger
+    logger: Logger,
+    chatHistoryService?: ChatHistoryService
   ): BacklogAgentManager {
-    const manager = BacklogAgentManager.createEmpty(session, workingDir, agentSessionManager, logger);
-    // Try to load backlog from file
+    const manager = BacklogAgentManager.createEmpty(session, workingDir, agentSessionManager, logger, chatHistoryService);
     manager.updateBacklogFromFile();
     return manager;
   }

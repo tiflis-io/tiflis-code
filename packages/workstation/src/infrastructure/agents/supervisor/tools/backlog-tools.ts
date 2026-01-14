@@ -11,6 +11,7 @@ import { z } from 'zod';
 import type { Logger } from 'pino';
 import type { SessionManager } from '../../../../domain/ports/session-manager.js';
 import type { MessageBroadcaster } from '../../../../domain/ports/message-broadcaster.js';
+import type { ChatHistoryService } from '../../../../application/services/chat-history-service.js';
 import { BacklogAgentManager } from '../../backlog-agent-manager.js';
 import type { AgentSessionManager } from '../../agent-session-manager.js';
 import { WorkspacePath } from '../../../../domain/value-objects/workspace-path.js';
@@ -22,7 +23,8 @@ export function createBacklogTools(
   backlogManagers: Map<string, BacklogAgentManager>,
   workspacesRoot?: string,
   getMessageBroadcaster?: () => MessageBroadcaster | null,
-  logger?: Logger
+  logger?: Logger,
+  getChatHistoryService?: () => ChatHistoryService | null
 ) {
   const createBacklogSession = tool(
     async (args: {
@@ -93,11 +95,13 @@ export function createBacklogTools(
         child: () => noopLogger,
       } as unknown as Logger;
       const backlogLogger = logger ?? noopLogger;
+      const chatHistoryService = getChatHistoryService?.();
       const manager = BacklogAgentManager.createEmpty(
         backlogSession,
         workingDir,
         agentSessionManager,
-        backlogLogger
+        backlogLogger,
+        chatHistoryService ?? undefined
       );
 
       backlogManagers.set(session.id.value, manager);

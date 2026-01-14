@@ -10,6 +10,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
 import type { Logger } from 'pino';
+import { loadSystemPrompt } from '../agents/utils/prompt-loader.js';
 
 /**
  * Configuration for summarization service.
@@ -133,45 +134,8 @@ export class SummarizationService {
     return result.trim();
   }
 
-  /**
-   * Builds the system prompt for the summarization LLM.
-   */
   private buildSystemPrompt(): string {
-    return `You are a concise summarizer for voice output. Summarize AI assistant responses into 1-${this.maxSentences} SHORT sentences.
-
-CRITICAL: ALWAYS OUTPUT IN ENGLISH. Translate any non-English content to English.
-
-STRICT RULES:
-- Maximum 20 words total (hard limit)
-- Prefer 1 sentence when possible, 2 only if essential
-- Extract ONLY the single most important result or action
-- Natural spoken language only
-- Never use markdown, bullets, or formatting
-- Never start with "I" - use passive voice or action verbs
-- ALWAYS translate to English regardless of input language
-
-ABSOLUTELY FORBIDDEN (never include these in output):
-- Session IDs or any alphanumeric identifiers (e.g., "session-abc123", "id: 7f3a2b", UUIDs)
-- File paths starting with "/" or containing "/Users/", "/home/", "C:\\"
-- Any string that looks like a technical identifier, hash, or token
-- Code snippets, variable names, or technical jargon
-- Long lists or enumerations
-- Non-English output (always translate to English)
-
-If the original text contains session IDs or paths, OMIT them entirely. Just describe what happened.
-
-GOOD examples:
-- "Created a new Claude session in the project."
-- "Found 3 workspaces with main branch active."
-- "Config updated, server restarted."
-- "Fixed the authentication bug."
-
-BAD examples (never do this):
-- "Created session abc-123-def in /Users/roman/work/project" ❌
-- "Session ID is 7f3a2b1c" ❌
-- "Working in /home/user/documents/code" ❌
-- "Создана новая сессия Claude." ❌ (non-English)
-- "Sesión creada exitosamente." ❌ (non-English)`;
+    return loadSystemPrompt('summarizer-system-prompt', 'SUMMARIZER_SYSTEM_PROMPT_PATH');
   }
 
   /**

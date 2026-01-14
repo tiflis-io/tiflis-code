@@ -212,7 +212,7 @@ export class TunnelClient {
    * On failure, schedules retry with exponential delay (100ms, 200ms, 400ms).
    */
   private sendWithRetry(message: string, attempt: number): boolean {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
       if (attempt === 0) {
         this.messageBuffer.push(message);
       }
@@ -375,7 +375,7 @@ export class TunnelClient {
    * Detects send failures and triggers reconnection.
    */
   private sendToTunnel(message: OutgoingTunnelMessage): void {
-    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+    if (this.ws?.readyState !== WebSocket.OPEN) {
       this.logger.warn('Cannot send to tunnel - socket not open');
       return;
     }

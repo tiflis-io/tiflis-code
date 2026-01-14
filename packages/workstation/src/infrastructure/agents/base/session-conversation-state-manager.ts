@@ -1,24 +1,24 @@
 /**
- * @file database-state-manager.ts
+ * @file session-conversation-state-manager.ts
  * @copyright 2025 Roman Barinov <rbarinov@gmail.com>
  * @license FSL-1.1-NC
- *
- * AgentStateManager implementation for database persistence.
- * Used by SupervisorAgent to persist conversation history to database.
  */
 
 import type { AgentStateManager, ConversationEntry } from '../../../domain/ports/agent-state-manager.js';
 import type { ChatHistoryService } from '../../../application/services/chat-history-service.js';
 
-export class DatabaseStateManager implements AgentStateManager {
-  constructor(private readonly chatHistoryService: ChatHistoryService) {}
+export class SessionConversationStateManager implements AgentStateManager {
+  constructor(
+    private readonly chatHistoryService: ChatHistoryService,
+    private readonly sessionId: string
+  ) {}
 
   loadHistory(): ConversationEntry[] {
-    const history = this.chatHistoryService.getSupervisorHistory();
+    const history = this.chatHistoryService.getAgentHistory(this.sessionId);
     return history.map((entry) => ({
-      role: entry.role as 'user' | 'assistant',
+      role: entry.role,
       content: entry.content,
-      timestamp: new Date(entry.createdAt).getTime(),
+      timestamp: entry.createdAt.getTime(),
     }));
   }
 
@@ -28,16 +28,20 @@ export class DatabaseStateManager implements AgentStateManager {
     const lastEntry = history[history.length - 1];
     if (!lastEntry || lastEntry.role === 'system') return;
 
-    const storedHistory = this.chatHistoryService.getSupervisorHistory(1);
-    const mostRecentStored = storedHistory[0];
+    const storedHistory = this.chatHistoryService.getAgentHistory(this.sessionId, 1);
+    const mostRecentStored = storedHistory[storedHistory.length - 1];
 
     if (mostRecentStored?.content !== lastEntry.content) {
-      this.chatHistoryService.saveSupervisorMessage(lastEntry.role, lastEntry.content);
+      this.chatHistoryService.saveAgentMessage(
+        this.sessionId,
+        lastEntry.role,
+        lastEntry.content
+      );
     }
   }
 
   clearHistory(): void {
-    this.chatHistoryService.clearSupervisorHistory();
+    this.chatHistoryService.clearAgentHistory(this.sessionId);
   }
 
   loadAdditionalState(_key: string): unknown {
@@ -45,10 +49,6 @@ export class DatabaseStateManager implements AgentStateManager {
   }
 
   saveAdditionalState(_key: string, _state: unknown): void {
-    return;
-  }
-
-  close(): void {
     return;
   }
 }
