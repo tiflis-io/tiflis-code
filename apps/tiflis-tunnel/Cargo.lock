@@ -497,7 +497,7 @@ dependencies = [
 
 [[package]]
 name = "e2e-tests"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "axum",
  "futures",
@@ -2166,7 +2166,7 @@ dependencies = [
 
 [[package]]
 name = "tunnel-client"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -2188,7 +2188,7 @@ dependencies = [
 
 [[package]]
 name = "tunnel-core"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "base64",
  "bytes",
@@ -2202,7 +2202,7 @@ dependencies = [
 
 [[package]]
 name = "tunnel-server"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "axum",
