@@ -1,9 +1,13 @@
 // Copyright (c) 2026 Roman Barinov <rbarinov@gmail.com>
 // Licensed under the FSL-1.1-NC.
 
+use futures::StreamExt;
 use reqwest::Client;
 use std::collections::HashMap;
-use tunnel_core::{codec, HttpRequestMessage, HttpResponseMessage, Message, WsOpenMessage};
+use tunnel_core::{
+    codec, HttpRequestMessage, HttpResponseMessage, Message, SseCloseMessage, SseDataMessage,
+    SseHeadersMessage, SseOpenMessage, WsOpenMessage,
+};
 
 pub struct LocalProxy {
     client: Client,
@@ -184,6 +188,87 @@ impl LocalProxy {
                 }
             },
             _ => None,
+        }
+    }
+
+    pub async fn handle_sse_open(
+        &self,
+        open_msg: SseOpenMessage,
+        mut quic_send: quinn::SendStream,
+        _quic_recv: quinn::RecvStream,
+    ) {
+        let url = format!("{}{}", self.base_url, open_msg.path);
+        let method: reqwest::Method = open_msg.method.parse().unwrap_or(reqwest::Method::GET);
+
+        let mut req_builder = self
+            .client
+            .request(method, &url)
+            .header("accept", "text/event-stream");
+
+        for (name, value) in open_msg.headers.iter() {
+            req_builder = req_builder.header(name, value);
+        }
+
+        match req_builder.send().await {
+            Ok(response) => {
+                let status = response.status().as_u16();
+                let mut headers = HashMap::new();
+
+                for (name, value) in response.headers().iter() {
+                    if let Ok(val_str) = value.to_str() {
+                        headers.insert(name.to_string(), val_str.to_string());
+                    }
+                }
+
+                let headers_msg = Message::SseHeaders(SseHeadersMessage {
+                    stream_id: open_msg.stream_id,
+                    status,
+                    headers,
+                });
+
+                if tunnel_core::quic::send_message(&mut quic_send, &headers_msg)
+                    .await
+                    .is_err()
+                {
+                    return;
+                }
+
+                let stream_id = open_msg.stream_id;
+                let mut stream = response.bytes_stream();
+
+                while let Some(chunk_result) = stream.next().await {
+                    match chunk_result {
+                        Ok(chunk) => {
+                            let data_msg = Message::SseData(SseDataMessage {
+                                stream_id,
+                                data: codec::encode_body(&chunk),
+                            });
+                            if tunnel_core::quic::send_message(&mut quic_send, &data_msg)
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+
+                let close_msg = Message::SseClose(SseCloseMessage {
+                    stream_id,
+                    error: None,
+                });
+                let _ = tunnel_core::quic::send_message(&mut quic_send, &close_msg).await;
+                let _ = quic_send.finish();
+            }
+            Err(e) => {
+                let close_msg = Message::SseClose(SseCloseMessage {
+                    stream_id: open_msg.stream_id,
+                    error: Some(e.to_string()),
+                });
+                let _ = tunnel_core::quic::send_message(&mut quic_send, &close_msg).await;
+                let _ = quic_send.finish();
+            }
         }
     }
 }

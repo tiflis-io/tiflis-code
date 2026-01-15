@@ -50,3 +50,7 @@ path = "e2e_reliability.rs"
 [[test]]
 name = "e2e_restart"
 path = "e2e_restart.rs"
+
+[[test]]
+name = "e2e_sse"
+path = "e2e_sse.rs"

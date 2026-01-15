@@ -3,6 +3,7 @@
 
 use crate::pending::PendingRequests;
 use crate::registry::WorkstationRegistry;
+use axum::body::Bytes;
 use axum::{
     body::Body,
     extract::{Path, State, WebSocketUpgrade},
@@ -13,7 +14,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::time::timeout;
 use tunnel_core::{
-    codec, HttpRequestMessage, Message, WsCloseMessage, WsDataMessage, WsOpenMessage,
+    codec, HttpRequestMessage, Message, SseOpenMessage, WsCloseMessage, WsDataMessage,
+    WsOpenMessage,
 };
 use uuid::Uuid;
 
@@ -21,6 +23,24 @@ pub struct ProxyState {
     pub registry: Arc<WorkstationRegistry>,
     pub pending: Arc<PendingRequests>,
     pub request_timeout: Duration,
+}
+
+fn is_sse_request(headers: &HeaderMap) -> bool {
+    headers
+        .get("accept")
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.contains("text/event-stream"))
+        .unwrap_or(false)
+}
+
+fn headers_to_map(headers: &HeaderMap) -> std::collections::HashMap<String, String> {
+    let mut map = std::collections::HashMap::new();
+    for (name, value) in headers.iter() {
+        if let Ok(val_str) = value.to_str() {
+            map.insert(name.to_string(), val_str.to_string());
+        }
+    }
+    map
 }
 
 pub async fn handle_http_proxy(
@@ -36,6 +56,10 @@ pub async fn handle_http_proxy(
 
     if let Some(ws_upgrade) = ws {
         return handle_websocket_upgrade(workstation_id, path, state, ws_upgrade, headers).await;
+    }
+
+    if is_sse_request(&headers) {
+        return handle_sse_proxy(workstation_id, full_path, state, method, headers).await;
     }
 
     let workstation = state
@@ -265,4 +289,159 @@ async fn handle_websocket_connection(
     });
 
     let _ = tokio::join!(client_to_tunnel_task, tunnel_to_client_task);
+}
+
+async fn handle_sse_proxy(
+    workstation_id: String,
+    path: String,
+    state: Arc<ProxyState>,
+    method: Method,
+    headers: HeaderMap,
+) -> Result<Response, StatusCode> {
+    let workstation = state
+        .registry
+        .get(&workstation_id)
+        .await
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let stream_id = Uuid::new_v4();
+    let headers_map = headers_to_map(&headers);
+
+    let (mut quic_send, mut quic_recv) = match workstation.connection.open_bi().await {
+        Ok(streams) => streams,
+        Err(_) => return Err(StatusCode::BAD_GATEWAY),
+    };
+
+    let open_msg = Message::SseOpen(SseOpenMessage {
+        stream_id,
+        method: method.to_string(),
+        path,
+        headers: headers_map,
+    });
+
+    if tunnel_core::quic::send_message(&mut quic_send, &open_msg)
+        .await
+        .is_err()
+    {
+        return Err(StatusCode::BAD_GATEWAY);
+    }
+
+    let headers_msg = match timeout(
+        state.request_timeout,
+        tunnel_core::quic::recv_message(&mut quic_recv),
+    )
+    .await
+    {
+        Ok(Ok(Message::SseHeaders(h))) => h,
+        Ok(Ok(Message::SseClose(c))) => {
+            let status = if c.error.is_some() {
+                StatusCode::BAD_GATEWAY
+            } else {
+                StatusCode::NO_CONTENT
+            };
+            return Err(status);
+        }
+        Ok(Ok(_)) => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        Ok(Err(_)) => return Err(StatusCode::BAD_GATEWAY),
+        Err(_) => return Err(StatusCode::GATEWAY_TIMEOUT),
+    };
+
+    let (mut tx, rx) = futures::channel::mpsc::channel::<Result<Bytes, std::io::Error>>(16);
+
+    tokio::spawn(async move {
+        relay_sse_to_client(quic_recv, &mut tx).await;
+    });
+
+    let body = Body::from_stream(rx);
+
+    let mut builder = Response::builder().status(headers_msg.status);
+
+    for (name, value) in headers_msg.headers.iter() {
+        builder = builder.header(name, value);
+    }
+
+    builder = builder
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .header("connection", "keep-alive");
+
+    Ok(builder.body(body).unwrap())
+}
+
+async fn relay_sse_to_client(
+    mut quic_recv: quinn::RecvStream,
+    tx: &mut futures::channel::mpsc::Sender<Result<Bytes, std::io::Error>>,
+) {
+    use futures::SinkExt;
+
+    loop {
+        match tunnel_core::quic::recv_message(&mut quic_recv).await {
+            Ok(Message::SseData(data)) => {
+                if let Ok(decoded) = codec::decode_body(&data.data) {
+                    if tx.send(Ok(Bytes::from(decoded))).await.is_err() {
+                        break;
+                    }
+                }
+            }
+            Ok(Message::SseClose(_)) | Err(_) => break,
+            _ => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::http::HeaderValue;
+
+    #[test]
+    fn test_is_sse_request_with_event_stream() {
+        let mut headers = HeaderMap::new();
+        headers.insert("accept", HeaderValue::from_static("text/event-stream"));
+        assert!(is_sse_request(&headers));
+    }
+
+    #[test]
+    fn test_is_sse_request_with_mixed_accept() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            "accept",
+            HeaderValue::from_static("text/event-stream, text/html"),
+        );
+        assert!(is_sse_request(&headers));
+    }
+
+    #[test]
+    fn test_is_sse_request_without_event_stream() {
+        let mut headers = HeaderMap::new();
+        headers.insert("accept", HeaderValue::from_static("application/json"));
+        assert!(!is_sse_request(&headers));
+    }
+
+    #[test]
+    fn test_is_sse_request_no_accept_header() {
+        let headers = HeaderMap::new();
+        assert!(!is_sse_request(&headers));
+    }
+
+    #[test]
+    fn test_is_sse_request_empty_accept() {
+        let mut headers = HeaderMap::new();
+        headers.insert("accept", HeaderValue::from_static(""));
+        assert!(!is_sse_request(&headers));
+    }
+
+    #[test]
+    fn test_headers_to_map() {
+        let mut headers = HeaderMap::new();
+        headers.insert("content-type", HeaderValue::from_static("application/json"));
+        headers.insert("x-custom", HeaderValue::from_static("value"));
+
+        let map = headers_to_map(&headers);
+        assert_eq!(
+            map.get("content-type"),
+            Some(&"application/json".to_string())
+        );
+        assert_eq!(map.get("x-custom"), Some(&"value".to_string()));
+    }
 }

@@ -128,6 +128,9 @@ impl TunnelClient {
                                 Message::WsOpen(open_msg) => {
                                     proxy.handle_websocket_open(open_msg, send, recv).await;
                                 }
+                                Message::SseOpen(open_msg) => {
+                                    proxy.handle_sse_open(open_msg, send, recv).await;
+                                }
                                 _ => {}
                             },
                             Err(e) => {

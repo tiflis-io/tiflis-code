@@ -2,7 +2,9 @@
 // Licensed under the FSL-1.1-NC.
 
 use axum::{
+    body::Body,
     extract::{ws::WebSocketUpgrade, Path},
+    response::Response,
     routing::{any, get},
     Router,
 };
@@ -297,10 +299,114 @@ fn spawn_mock_server(port: u16) -> JoinHandle<()> {
                         })
                     }
                 }),
-            );
+            )
+            .route("/sse/events", get(sse_events_handler))
+            .route("/sse/events/:count", get(sse_events_with_count_handler))
+            .route("/sse/slow", get(sse_slow_handler))
+            .route("/sse/error", get(sse_error_handler))
+            .route("/sse/large", get(sse_large_handler));
 
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
         axum::serve(listener, app).await.unwrap();
     })
+}
+
+async fn sse_events_handler() -> Response {
+    sse_events_with_count_handler(Path(3)).await
+}
+
+async fn sse_events_with_count_handler(Path(count): Path<usize>) -> Response {
+    let (mut tx, rx) = futures::channel::mpsc::channel::<Result<String, std::io::Error>>(16);
+
+    tokio::spawn(async move {
+        use futures::SinkExt;
+        for i in 1..=count {
+            let event = format!("data: event{}\n\n", i);
+            if tx.send(Ok(event)).await.is_err() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+    });
+
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        use futures::StreamExt;
+        match rx.next().await {
+            Some(Ok(data)) => Some((Ok::<_, std::io::Error>(data), rx)),
+            _ => None,
+        }
+    });
+
+    Response::builder()
+        .status(200)
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .header("connection", "keep-alive")
+        .body(Body::from_stream(stream))
+        .unwrap()
+}
+
+async fn sse_slow_handler() -> Response {
+    let (mut tx, rx) = futures::channel::mpsc::channel::<Result<String, std::io::Error>>(16);
+
+    tokio::spawn(async move {
+        use futures::SinkExt;
+        for i in 1..=5 {
+            let event = format!("data: slow_event{}\n\n", i);
+            if tx.send(Ok(event)).await.is_err() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+    });
+
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        use futures::StreamExt;
+        match rx.next().await {
+            Some(Ok(data)) => Some((Ok::<_, std::io::Error>(data), rx)),
+            _ => None,
+        }
+    });
+
+    Response::builder()
+        .status(200)
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .body(Body::from_stream(stream))
+        .unwrap()
+}
+
+async fn sse_error_handler() -> Response {
+    Response::builder()
+        .status(500)
+        .header("content-type", "text/plain")
+        .body(Body::from("SSE Error"))
+        .unwrap()
+}
+
+async fn sse_large_handler() -> Response {
+    let (mut tx, rx) = futures::channel::mpsc::channel::<Result<String, std::io::Error>>(16);
+
+    tokio::spawn(async move {
+        use futures::SinkExt;
+        let large_data = "x".repeat(50_000);
+        let event = format!("data: {}\n\n", large_data);
+        let _ = tx.send(Ok(event)).await;
+    });
+
+    let stream = futures::stream::unfold(rx, |mut rx| async {
+        use futures::StreamExt;
+        match rx.next().await {
+            Some(Ok(data)) => Some((Ok::<_, std::io::Error>(data), rx)),
+            _ => None,
+        }
+    });
+
+    Response::builder()
+        .status(200)
+        .header("content-type", "text/event-stream")
+        .header("cache-control", "no-cache")
+        .body(Body::from_stream(stream))
+        .unwrap()
 }

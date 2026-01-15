@@ -7,7 +7,7 @@ Self-hosted tunnel solution using QUIC for the Tiflis Code project.
 - **QUIC Protocol** — Fast, reliable transport with built-in multiplexing
 - **0-RTT Reconnection** — Instant reconnection after network interruptions
 - **Let's Encrypt** — Automatic TLS certificate management
-- **Path-based Routing** — `/t/{workstation_id}/*` for HTTP and WebSocket
+- **Path-based Routing** — `/t/{workstation_id}/*` for HTTP, WebSocket, and SSE
 - **Graceful Reconnection** — Requests queued during temporary disconnects
 - **Simple Configuration** — TOML files or environment variables
 
@@ -203,6 +203,14 @@ The tunnel uses QUIC for transport with JSON messages:
 - All WebSocket frames flow through the same stream (open, data, close)
 - Binary frames are Base64-encoded
 - Stream remains open until WebSocket close or connection drop
+
+### SSE Proxying (Streams 1+)
+- `sse_open`/`sse_headers`/`sse_data`/`sse_close` — Server-Sent Events streaming
+- **One persistent bidirectional QUIC stream per SSE connection**
+- Detected by `Accept: text/event-stream` header
+- Headers sent first, then event data chunks stream through
+- Base64-encoded data chunks for binary safety
+- Stream remains open until server closes or client disconnects
 
 ## Testing
 

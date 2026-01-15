@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "FSL-1.1-NC"
 authors = ["Roman Barinov <rbarinov@gmail.com>"]
@@ -42,7 +42,7 @@ toml = "0.8"
 clap = { version = "4.5", features = ["derive", "env"] }
 
 # HTTP client - using rustls-tls with ring backend
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls-manual-roots", "stream"] }
 
 # Error handling
 thiserror = "2.0"
