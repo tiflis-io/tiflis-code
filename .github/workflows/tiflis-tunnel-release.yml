@@ -14,7 +14,7 @@ env:
 jobs:
   extract-version:
     name: Extract Version
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
@@ -33,12 +33,12 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
+            os: blacksmith-2vcpu-ubuntu-2404
             archive: tar.gz
             archive_name: x86_64-linux
 
           - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
+            os: blacksmith-2vcpu-ubuntu-2404
             archive: tar.gz
             archive_name: aarch64-linux
 
@@ -148,7 +148,7 @@ jobs:
   build-docker:
     name: Build Docker Images
     needs: extract-version
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -200,7 +200,7 @@ jobs:
   release:
     name: Create Release
     needs: [extract-version, build-binaries, build-docker]
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write
     steps:
