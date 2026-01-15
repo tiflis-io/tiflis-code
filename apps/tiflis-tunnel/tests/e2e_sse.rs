@@ -135,10 +135,7 @@ async fn test_sse_large_events() {
 
     assert_eq!(response.status(), 200);
 
-    let body = response
-        .bytes()
-        .await
-        .expect("Failed to read body");
+    let body = response.bytes().await.expect("Failed to read body");
 
     assert!(body.len() >= 50_000);
 }
