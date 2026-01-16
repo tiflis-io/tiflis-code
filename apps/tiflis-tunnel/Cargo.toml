@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.9"
+version = "0.1.10"
 edition = "2021"
 license = "FSL-1.1-NC"
 authors = ["Roman Barinov <rbarinov@gmail.com>"]
@@ -20,9 +20,10 @@ authors = ["Roman Barinov <rbarinov@gmail.com>"]
 tokio = { version = "1.42", features = ["full"] }
 tokio-tungstenite = "0.24"
 
-# QUIC - using ring crypto backend for cross-compilation compatibility
+# QUIC/TLS - using ring crypto backend for cross-compilation compatibility (aws-lc-rs fails on musl)
 quinn = { version = "0.11", default-features = false, features = ["ring", "runtime-tokio", "rustls"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "tls12"] }
 
 # HTTP server
 axum = { version = "0.7", features = ["ws"] }
