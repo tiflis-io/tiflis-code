@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "FSL-1.1-NC"
 authors = ["Roman Barinov <rbarinov@gmail.com>"]
@@ -29,9 +29,10 @@ axum = { version = "0.7", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
-# ACME/Let's Encrypt
-instant-acme = "0.8"
+# ACME/Let's Encrypt - use ring backend (aws-lc-rs fails on musl cross-compilation)
+instant-acme = { version = "0.8", default-features = false, features = ["ring", "hyper-rustls"] }
 x509-parser = "0.16"
+hyper-rustls = { version = "0.27", default-features = false, features = ["ring", "http1", "http2", "tls12"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
