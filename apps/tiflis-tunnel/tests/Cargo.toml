@@ -22,6 +22,8 @@ rand = { workspace = true }
 rustls = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+x509-parser = { workspace = true }
+tempfile = "3.14"
 
 [lib]
 name = "common"
@@ -54,3 +56,7 @@ path = "e2e_restart.rs"
 [[test]]
 name = "e2e_sse"
 path = "e2e_sse.rs"
+
+[[test]]
+name = "e2e_acme"
+path = "e2e_acme.rs"
