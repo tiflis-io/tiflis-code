@@ -32,11 +32,10 @@ async fn test_acme_challenge_handler_returns_key_auth() {
         );
     }
 
-    let app = Router::new()
-        .route(
-            "/.well-known/acme-challenge/:token",
-            get(handle_acme_challenge).with_state(challenges),
-        );
+    let app = Router::new().route(
+        "/.well-known/acme-challenge/:token",
+        get(handle_acme_challenge).with_state(challenges),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -65,11 +64,10 @@ async fn test_acme_challenge_handler_returns_key_auth() {
 async fn test_acme_challenge_handler_returns_404_for_unknown_token() {
     let challenges: AcmeChallenges = Arc::new(RwLock::new(HashMap::new()));
 
-    let app = Router::new()
-        .route(
-            "/.well-known/acme-challenge/:token",
-            get(handle_acme_challenge).with_state(challenges),
-        );
+    let app = Router::new().route(
+        "/.well-known/acme-challenge/:token",
+        get(handle_acme_challenge).with_state(challenges),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -98,11 +96,10 @@ async fn test_acme_challenge_concurrent_access() {
     let challenges: AcmeChallenges = Arc::new(RwLock::new(HashMap::new()));
     let challenges_clone = challenges.clone();
 
-    let app = Router::new()
-        .route(
-            "/.well-known/acme-challenge/:token",
-            get(handle_acme_challenge).with_state(challenges),
-        );
+    let app = Router::new().route(
+        "/.well-known/acme-challenge/:token",
+        get(handle_acme_challenge).with_state(challenges),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -264,11 +261,10 @@ async fn test_acme_challenge_token_isolation() {
         map.insert("domain2-token".to_string(), "domain2-auth".to_string());
     }
 
-    let app = Router::new()
-        .route(
-            "/.well-known/acme-challenge/:token",
-            get(handle_acme_challenge).with_state(challenges),
-        );
+    let app = Router::new().route(
+        "/.well-known/acme-challenge/:token",
+        get(handle_acme_challenge).with_state(challenges),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -312,11 +308,10 @@ async fn test_acme_challenge_cleanup_after_validation() {
         map.insert("temp-token".to_string(), "temp-auth".to_string());
     }
 
-    let app = Router::new()
-        .route(
-            "/.well-known/acme-challenge/:token",
-            get(handle_acme_challenge).with_state(challenges),
-        );
+    let app = Router::new().route(
+        "/.well-known/acme-challenge/:token",
+        get(handle_acme_challenge).with_state(challenges),
+    );
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();

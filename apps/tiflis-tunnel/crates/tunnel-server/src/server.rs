@@ -324,8 +324,8 @@ impl TunnelServer {
         let cert_pem = std::fs::read_to_string(&cert_path)?;
         let key_pem = std::fs::read_to_string(&key_path)?;
 
-        let certs: Vec<CertificateDer> = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
-            .collect::<Result<Vec<_>, _>>()?;
+        let certs: Vec<CertificateDer> =
+            CertificateDer::pem_slice_iter(cert_pem.as_bytes()).collect::<Result<Vec<_>, _>>()?;
 
         let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())?;
 
