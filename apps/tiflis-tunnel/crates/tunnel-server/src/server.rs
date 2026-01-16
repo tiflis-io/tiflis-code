@@ -69,12 +69,16 @@ impl TunnelServer {
 
     pub async fn run(self: Arc<Self>) -> anyhow::Result<()> {
         let http_handle = self.clone().start_http_server();
+        let https_handle = self.clone().start_https_server();
         let quic_handle = self.clone().start_quic_server().await?;
         let cleanup_handle = self.clone().start_cleanup_task();
 
         tokio::select! {
             result = http_handle => {
                 error!("HTTP server stopped: {:?}", result);
+            }
+            result = https_handle => {
+                error!("HTTPS server stopped: {:?}", result);
             }
             result = quic_handle => {
                 error!("QUIC server stopped: {:?}", result);
@@ -245,6 +249,135 @@ impl TunnelServer {
                 error!("HTTP server error: {}", e);
             }
         })
+    }
+
+    fn start_https_server(self: Arc<Self>) -> JoinHandle<()> {
+        let port = self.config.server.https_port;
+        let proxy_state = Arc::new(ProxyState {
+            registry: self.registry.clone(),
+            pending: self.pending.clone(),
+            request_timeout: Duration::from_secs(self.config.reliability.request_timeout),
+        });
+        let tls_enabled = self.config.tls.enabled;
+        let certs_dir = self.config.tls.certs_dir.clone();
+        let domain = self.config.server.domain.clone();
+
+        tokio::spawn(async move {
+            let app = Router::new()
+                .route("/health", get(health_check))
+                .route("/t/:workstation_id/*path", any(handle_http_proxy))
+                .route("/ws/:workstation_id/*path", get(handle_websocket_proxy))
+                .with_state(proxy_state);
+
+            let addr = SocketAddr::from(([0, 0, 0, 0], port));
+            let listener = match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    error!("Failed to bind HTTPS server: {}", e);
+                    return;
+                }
+            };
+
+            if tls_enabled {
+                let cert_path = certs_dir.join("cert.pem");
+                let key_path = certs_dir.join("key.pem");
+
+                let mut attempts = 0;
+                while (!cert_path.exists() || !key_path.exists()) && attempts < 30 {
+                    tokio::time::sleep(Duration::from_secs(10)).await;
+                    attempts += 1;
+                }
+
+                if !cert_path.exists() || !key_path.exists() {
+                    warn!("HTTPS: Certificates not available, using self-signed");
+                    let cert =
+                        rcgen::generate_simple_self_signed(vec![domain]).unwrap();
+                    let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
+                        rustls::pki_types::PrivatePkcs8KeyDer::from(
+                            cert.key_pair.serialize_der(),
+                        ),
+                    );
+                    let cert_der = rustls::pki_types::CertificateDer::from(cert.cert);
+
+                    let config = rustls::ServerConfig::builder()
+                        .with_no_client_auth()
+                        .with_single_cert(vec![cert_der], key)
+                        .unwrap();
+
+                    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+                    info!("HTTPS server (self-signed) listening on {}", addr);
+                    Self::serve_https(listener, acceptor, app).await;
+                } else {
+                    use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
+
+                    let cert_pem = std::fs::read_to_string(&cert_path).unwrap();
+                    let key_pem = std::fs::read_to_string(&key_path).unwrap();
+
+                    let certs: Vec<CertificateDer> =
+                        CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+                            .collect::<Result<Vec<_>, _>>()
+                            .unwrap();
+                    let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes()).unwrap();
+
+                    let config = rustls::ServerConfig::builder()
+                        .with_no_client_auth()
+                        .with_single_cert(certs, key)
+                        .unwrap();
+
+                    let acceptor = tokio_rustls::TlsAcceptor::from(Arc::new(config));
+                    info!("HTTPS server listening on {}", addr);
+                    Self::serve_https(listener, acceptor, app).await;
+                }
+            } else {
+                warn!("TLS disabled, HTTPS server not started");
+            }
+        })
+    }
+
+    async fn serve_https(
+        listener: tokio::net::TcpListener,
+        acceptor: tokio_rustls::TlsAcceptor,
+        app: Router,
+    ) {
+        use hyper::service::service_fn;
+        use hyper_util::rt::{TokioExecutor, TokioIo};
+        use hyper_util::server::conn::auto::Builder;
+        use tower::ServiceExt;
+
+        loop {
+            let (stream, _) = match listener.accept().await {
+                Ok(conn) => conn,
+                Err(e) => {
+                    error!("HTTPS accept error: {}", e);
+                    continue;
+                }
+            };
+
+            let acceptor = acceptor.clone();
+            let app = app.clone();
+
+            tokio::spawn(async move {
+                let tls_stream = match acceptor.accept(stream).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        error!("TLS handshake error: {}", e);
+                        return;
+                    }
+                };
+
+                let service = service_fn(move |req| {
+                    let app = app.clone();
+                    async move { app.oneshot(req).await }
+                });
+
+                if let Err(e) = Builder::new(TokioExecutor::new())
+                    .serve_connection(TokioIo::new(tls_stream), service)
+                    .await
+                {
+                    error!("HTTPS connection error: {}", e);
+                }
+            });
+        }
     }
 
     async fn start_quic_server(self: Arc<Self>) -> anyhow::Result<JoinHandle<()>> {

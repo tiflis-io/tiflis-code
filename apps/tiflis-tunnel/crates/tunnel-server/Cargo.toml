@@ -41,3 +41,6 @@ tracing-subscriber = { workspace = true }
 uuid = { workspace = true }
 futures = { workspace = true }
 rcgen = "0.13"
+tokio-rustls = "0.26"
+hyper = "1"
+hyper-util = { version = "0.1", features = ["tokio", "server-auto"] }
