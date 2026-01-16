@@ -169,18 +169,19 @@ impl TunnelServer {
 
             {
                 let mut challenges = self.acme_challenges.write().await;
-                challenges.insert(token.clone(), key_auth);
+                challenges.insert(token, key_auth);
             }
 
             challenge.set_ready().await?;
-
-            {
-                let mut challenges = self.acme_challenges.write().await;
-                challenges.remove(&token);
-            }
         }
 
         let status = order.poll_ready(&RetryPolicy::default()).await?;
+
+        {
+            let mut challenges = self.acme_challenges.write().await;
+            challenges.clear();
+        }
+
         if status != OrderStatus::Ready {
             anyhow::bail!("Order not ready: {:?}", status);
         }
