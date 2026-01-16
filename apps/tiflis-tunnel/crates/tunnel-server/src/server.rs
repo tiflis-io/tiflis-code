@@ -308,12 +308,9 @@ impl TunnelServer {
 
                 if !cert_path.exists() || !key_path.exists() {
                     warn!("HTTPS: Certificates not available, using self-signed");
-                    let cert =
-                        rcgen::generate_simple_self_signed(vec![domain]).unwrap();
+                    let cert = rcgen::generate_simple_self_signed(vec![domain]).unwrap();
                     let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
-                        rustls::pki_types::PrivatePkcs8KeyDer::from(
-                            cert.key_pair.serialize_der(),
-                        ),
+                        rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()),
                     );
                     let cert_der = rustls::pki_types::CertificateDer::from(cert.cert);
 
