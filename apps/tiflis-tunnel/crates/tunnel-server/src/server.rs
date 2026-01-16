@@ -216,23 +216,41 @@ impl TunnelServer {
 
     fn start_http_server(self: Arc<Self>) -> JoinHandle<()> {
         let port = self.config.server.http_port;
+        let acme_challenges = self.acme_challenges.clone();
+        let domain = self.config.server.domain.clone();
+        let tls_enabled = self.config.tls.enabled;
         let proxy_state = Arc::new(ProxyState {
             registry: self.registry.clone(),
             pending: self.pending.clone(),
             request_timeout: Duration::from_secs(self.config.reliability.request_timeout),
         });
-        let acme_challenges = self.acme_challenges.clone();
 
         tokio::spawn(async move {
-            let app = Router::new()
-                .route("/health", get(health_check))
-                .route(
-                    "/.well-known/acme-challenge/:token",
-                    get(handle_acme_challenge).with_state(acme_challenges),
-                )
-                .route("/t/:workstation_id/*path", any(handle_http_proxy))
-                .route("/ws/:workstation_id/*path", get(handle_websocket_proxy))
-                .with_state(proxy_state);
+            let app = if tls_enabled {
+                let redirect_handler = move |req: axum::http::Request<axum::body::Body>| {
+                    let domain = domain.clone();
+                    async move {
+                        let uri = req.uri();
+                        let path_and_query =
+                            uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
+                        let https_url = format!("https://{}{}", domain, path_and_query);
+                        axum::response::Redirect::permanent(&https_url).into_response()
+                    }
+                };
+
+                Router::new()
+                    .route(
+                        "/.well-known/acme-challenge/:token",
+                        get(handle_acme_challenge).with_state(acme_challenges),
+                    )
+                    .fallback(redirect_handler)
+            } else {
+                Router::new()
+                    .route("/health", get(health_check))
+                    .route("/t/:workstation_id/*path", any(handle_http_proxy))
+                    .route("/ws/:workstation_id/*path", get(handle_websocket_proxy))
+                    .with_state(proxy_state)
+            };
 
             let addr = SocketAddr::from(([0, 0, 0, 0], port));
             let listener = match tokio::net::TcpListener::bind(addr).await {
