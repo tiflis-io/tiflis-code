@@ -10,7 +10,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 edition = "2021"
 license = "FSL-1.1-NC"
 authors = ["Roman Barinov <rbarinov@gmail.com>"]
@@ -29,8 +29,9 @@ axum = { version = "0.7", features = ["ws"] }
 tower = "0.5"
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 
-# ACME/Let's Encrypt - using ring crypto backend
-rustls-acme = { version = "0.12", default-features = false, features = ["ring"] }
+# ACME/Let's Encrypt
+instant-acme = "0.8"
+x509-parser = "0.16"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

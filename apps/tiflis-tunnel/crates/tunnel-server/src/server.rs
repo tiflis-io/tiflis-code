@@ -6,22 +6,28 @@ use crate::pending::PendingRequests;
 use crate::proxy::{handle_http_proxy, handle_websocket_proxy, ProxyState};
 use crate::registry::WorkstationRegistry;
 use axum::{
+    extract::{Path, State},
     http::StatusCode,
     response::IntoResponse,
     routing::{any, get},
     Router,
 };
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::RwLock;
 use tokio::task::JoinHandle;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use tunnel_core::{quic, ErrorMessage, Message, RegisteredMessage};
+
+type AcmeChallenges = Arc<RwLock<HashMap<String, String>>>;
 
 pub struct TunnelServer {
     config: Config,
     registry: Arc<WorkstationRegistry>,
     pending: Arc<PendingRequests>,
+    acme_challenges: AcmeChallenges,
 }
 
 impl TunnelServer {
@@ -35,7 +41,30 @@ impl TunnelServer {
             config,
             registry,
             pending,
+            acme_challenges: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Initialize and return Arc<Self> with ACME configured if TLS is enabled
+    pub async fn init(config: Config) -> anyhow::Result<Arc<Self>> {
+        let registry = Arc::new(WorkstationRegistry::new(Duration::from_secs(
+            config.reliability.grace_period,
+        )));
+        let pending = Arc::new(PendingRequests::new());
+        let acme_challenges = Arc::new(RwLock::new(HashMap::new()));
+
+        let server = Arc::new(Self {
+            config,
+            registry,
+            pending,
+            acme_challenges,
+        });
+
+        if server.config.tls.enabled {
+            server.clone().start_acme_manager();
+        }
+
+        Ok(server)
     }
 
     pub async fn run(self: Arc<Self>) -> anyhow::Result<()> {
@@ -58,6 +87,128 @@ impl TunnelServer {
         Ok(())
     }
 
+    fn start_acme_manager(self: Arc<Self>) {
+        tokio::spawn(async move {
+            loop {
+                if let Err(e) = self.obtain_or_renew_certificate().await {
+                    error!("ACME certificate error: {}", e);
+                    tokio::time::sleep(Duration::from_secs(60)).await;
+                    continue;
+                }
+                tokio::time::sleep(Duration::from_secs(12 * 60 * 60)).await;
+            }
+        });
+    }
+
+    async fn obtain_or_renew_certificate(&self) -> anyhow::Result<()> {
+        use instant_acme::{
+            Account, AuthorizationStatus, ChallengeType, Identifier, LetsEncrypt, NewAccount,
+            NewOrder, OrderStatus, RetryPolicy,
+        };
+
+        let cert_path = self.config.tls.certs_dir.join("cert.pem");
+        let key_path = self.config.tls.certs_dir.join("key.pem");
+
+        if cert_path.exists() && key_path.exists() {
+            if let Ok(cert_pem) = std::fs::read_to_string(&cert_path) {
+                if let Some(days) = Self::days_until_expiry(&cert_pem) {
+                    if days > 30 {
+                        info!("Certificate valid for {} more days, skipping renewal", days);
+                        return Ok(());
+                    }
+                    info!("Certificate expires in {} days, renewing...", days);
+                }
+            }
+        }
+
+        let email = self
+            .config
+            .tls
+            .acme_email
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("TLS_ACME_EMAIL required"))?;
+
+        std::fs::create_dir_all(&self.config.tls.certs_dir)?;
+
+        info!(
+            "Requesting certificate for {} via Let's Encrypt",
+            self.config.server.domain
+        );
+
+        let (account, _) = Account::builder()?
+            .create(
+                &NewAccount {
+                    contact: &[&format!("mailto:{}", email)],
+                    terms_of_service_agreed: true,
+                    only_return_existing: false,
+                },
+                LetsEncrypt::Production.url().to_owned(),
+                None,
+            )
+            .await?;
+
+        let identifiers = vec![Identifier::Dns(self.config.server.domain.clone())];
+        let mut order = account.new_order(&NewOrder::new(&identifiers)).await?;
+
+        let mut authorizations = order.authorizations();
+        while let Some(result) = authorizations.next().await {
+            let mut authz = result?;
+
+            if authz.status == AuthorizationStatus::Valid {
+                continue;
+            }
+
+            let mut challenge = authz
+                .challenge(ChallengeType::Http01)
+                .ok_or_else(|| anyhow::anyhow!("No HTTP-01 challenge found"))?;
+
+            let key_auth = challenge.key_authorization().as_str().to_string();
+            let token = challenge.token.clone();
+
+            info!("ACME HTTP-01 challenge: token={}", token);
+
+            {
+                let mut challenges = self.acme_challenges.write().await;
+                challenges.insert(token.clone(), key_auth);
+            }
+
+            challenge.set_ready().await?;
+
+            {
+                let mut challenges = self.acme_challenges.write().await;
+                challenges.remove(&token);
+            }
+        }
+
+        let status = order.poll_ready(&RetryPolicy::default()).await?;
+        if status != OrderStatus::Ready {
+            anyhow::bail!("Order not ready: {:?}", status);
+        }
+
+        let private_key_pem = order.finalize().await?;
+        let cert_chain_pem = order.poll_certificate(&RetryPolicy::default()).await?;
+
+        std::fs::write(&key_path, &private_key_pem)?;
+        std::fs::write(&cert_path, &cert_chain_pem)?;
+
+        info!("Certificate saved to {}", cert_path.display());
+        Ok(())
+    }
+
+    fn days_until_expiry(cert_pem: &str) -> Option<i64> {
+        use rustls::pki_types::pem::PemObject;
+        use rustls::pki_types::CertificateDer;
+
+        let cert = CertificateDer::from_pem_slice(cert_pem.as_bytes()).ok()?;
+        let parsed = x509_parser::parse_x509_certificate(&cert).ok()?.1;
+        let not_after = parsed.validity().not_after.timestamp();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .ok()?
+            .as_secs() as i64;
+        Some((not_after - now) / 86400)
+    }
+
     fn start_http_server(self: Arc<Self>) -> JoinHandle<()> {
         let port = self.config.server.http_port;
         let proxy_state = Arc::new(ProxyState {
@@ -65,10 +216,15 @@ impl TunnelServer {
             pending: self.pending.clone(),
             request_timeout: Duration::from_secs(self.config.reliability.request_timeout),
         });
+        let acme_challenges = self.acme_challenges.clone();
 
         tokio::spawn(async move {
             let app = Router::new()
                 .route("/health", get(health_check))
+                .route(
+                    "/.well-known/acme-challenge/:token",
+                    get(handle_acme_challenge).with_state(acme_challenges),
+                )
                 .route("/t/:workstation_id/*path", any(handle_http_proxy))
                 .route("/ws/:workstation_id/*path", get(handle_websocket_proxy))
                 .with_state(proxy_state);
@@ -92,7 +248,7 @@ impl TunnelServer {
 
     async fn start_quic_server(self: Arc<Self>) -> anyhow::Result<JoinHandle<()>> {
         let crypto = if self.config.tls.enabled {
-            self.setup_tls_with_acme().await?
+            self.setup_tls_from_files().await?
         } else {
             self.setup_no_tls()?
         };
@@ -124,6 +280,7 @@ impl TunnelServer {
     }
 
     fn setup_no_tls(&self) -> anyhow::Result<rustls::ServerConfig> {
+        warn!("TLS disabled, using self-signed certificate");
         let cert = rcgen::generate_simple_self_signed(vec![self.config.server.domain.clone()])?;
         let key = rustls::pki_types::PrivateKeyDer::Pkcs8(
             rustls::pki_types::PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()),
@@ -138,14 +295,48 @@ impl TunnelServer {
         Ok(crypto)
     }
 
-    async fn setup_tls_with_acme(&self) -> anyhow::Result<rustls::ServerConfig> {
-        info!("Note: Let's Encrypt ACME support requires additional implementation");
-        info!(
-            "For production, manually provide certificates in {}",
-            self.config.tls.certs_dir.display()
-        );
-        info!("Falling back to self-signed certificate for testing");
-        self.setup_no_tls()
+    async fn setup_tls_from_files(&self) -> anyhow::Result<rustls::ServerConfig> {
+        use rustls::pki_types::{pem::PemObject, CertificateDer, PrivateKeyDer};
+
+        let cert_path = self.config.tls.certs_dir.join("cert.pem");
+        let key_path = self.config.tls.certs_dir.join("key.pem");
+
+        const MAX_CERT_WAIT_ATTEMPTS: u32 = 30;
+        let mut attempts = 0;
+        while (!cert_path.exists() || !key_path.exists()) && attempts < MAX_CERT_WAIT_ATTEMPTS {
+            info!(
+                "Waiting for certificates ({}/30)... cert={}, key={}",
+                attempts + 1,
+                cert_path.exists(),
+                key_path.exists()
+            );
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            attempts += 1;
+        }
+
+        if !cert_path.exists() || !key_path.exists() {
+            warn!("Certificates not available after timeout, falling back to self-signed");
+            return self.setup_no_tls();
+        }
+
+        info!("Loading certificates from {}", cert_path.display());
+
+        let cert_pem = std::fs::read_to_string(&cert_path)?;
+        let key_pem = std::fs::read_to_string(&key_path)?;
+
+        let certs: Vec<CertificateDer> = CertificateDer::pem_slice_iter(cert_pem.as_bytes())
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let key = PrivateKeyDer::from_pem_slice(key_pem.as_bytes())?;
+
+        let mut crypto = rustls::ServerConfig::builder()
+            .with_no_client_auth()
+            .with_single_cert(certs, key)?;
+
+        crypto.alpn_protocols = vec![b"tiflis-tunnel".to_vec()];
+
+        info!("TLS configured with Let's Encrypt certificate");
+        Ok(crypto)
     }
 
     async fn handle_connection(&self, conn: quinn::Incoming) -> anyhow::Result<()> {
@@ -317,4 +508,15 @@ impl TunnelServer {
 
 async fn health_check() -> impl IntoResponse {
     (StatusCode::OK, "OK")
+}
+
+async fn handle_acme_challenge(
+    State(challenges): State<AcmeChallenges>,
+    Path(token): Path<String>,
+) -> impl IntoResponse {
+    let challenges = challenges.read().await;
+    match challenges.get(&token) {
+        Some(key_auth) => (StatusCode::OK, key_auth.clone()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }

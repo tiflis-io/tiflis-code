@@ -5,7 +5,6 @@ use tunnel_server::{config, server};
 
 use clap::Parser;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Parser, Debug)]
@@ -35,6 +34,6 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Domain: {}", config.server.domain);
     tracing::info!("TLS enabled: {}", config.tls.enabled);
 
-    let server = Arc::new(server::TunnelServer::new(config));
+    let server = server::TunnelServer::init(config).await?;
     server.run().await
 }
