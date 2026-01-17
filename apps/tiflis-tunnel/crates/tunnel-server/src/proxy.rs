@@ -49,13 +49,18 @@ pub async fn handle_http_proxy(
     ws: Option<WebSocketUpgrade>,
     method: Method,
     headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
     body: Body,
 ) -> Result<Response, StatusCode> {
     let (workstation_id, path) = params;
-    let full_path = format!("/{}", path);
+    let full_path = match query {
+        Some(q) => format!("/{}?{}", path, q),
+        None => format!("/{}", path),
+    };
 
     if let Some(ws_upgrade) = ws {
-        return handle_websocket_upgrade(workstation_id, path, state, ws_upgrade, headers).await;
+        return handle_websocket_upgrade(workstation_id, full_path, state, ws_upgrade, headers)
+            .await;
     }
 
     if is_sse_request(&headers) {
@@ -149,13 +154,11 @@ pub async fn handle_http_proxy(
 
 async fn handle_websocket_upgrade(
     workstation_id: String,
-    path: String,
+    full_path: String,
     state: Arc<ProxyState>,
     ws: WebSocketUpgrade,
     headers: HeaderMap,
 ) -> Result<Response, StatusCode> {
-    let full_path = format!("/{}", path);
-
     let workstation = state
         .registry
         .get(&workstation_id)
@@ -182,9 +185,14 @@ pub async fn handle_websocket_proxy(
     State(state): State<Arc<ProxyState>>,
     ws: WebSocketUpgrade,
     headers: HeaderMap,
+    axum::extract::RawQuery(query): axum::extract::RawQuery,
 ) -> Result<Response, StatusCode> {
     let (workstation_id, path) = params;
-    handle_websocket_upgrade(workstation_id, path, state, ws, headers).await
+    let full_path = match query {
+        Some(q) => format!("/{}?{}", path, q),
+        None => format!("/{}", path),
+    };
+    handle_websocket_upgrade(workstation_id, full_path, state, ws, headers).await
 }
 
 async fn handle_websocket_connection(
